@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreVideo
+import CryptoKit
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest
@@ -508,5 +509,69 @@ final class VideoFileSourceTests: XCTestCase {
         lock.unlock()
         XCTAssertGreaterThan(received.count, 40, "expected the clip to keep playing past its end")
         XCTAssertEqual(received.first, PixelSize(width: 640, height: 360))
+    }
+}
+
+final class FaceLibraryTests: XCTestCase {
+    private func temporaryFolder() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("gc-faces-\(UUID().uuidString)")
+    }
+
+    private func sampleFace(_ name: String) -> SavedFace {
+        SavedFace(
+            name: name, consent: .myself, identity: (0..<512).map { Float($0) * 0.01 }, thumbnail: Data([1, 2, 3]))
+    }
+
+    func testFacesRoundTripAndAreNotReadableOnDisk() throws {
+        let folder = temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let library = try FaceLibrary(directory: folder, key: SymmetricKey(size: .bits256))
+        let face = sampleFace("Somebody Recognisable")
+        try library.save(face)
+        XCTAssertEqual(library.list(), [face])
+        XCTAssertEqual(try library.load(face.id), face)
+
+        // Neither the name nor the numbers appear in the file.
+        let raw = try Data(contentsOf: folder.appendingPathComponent("\(face.id.uuidString).face"))
+        XCTAssertNil(raw.range(of: Data("Somebody".utf8)))
+        XCTAssertNil(raw.range(of: Data("identity".utf8)))
+    }
+
+    func testAnotherKeyCannotOpenTheFiles() throws {
+        let folder = temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let face = sampleFace("A")
+        try FaceLibrary(directory: folder, key: SymmetricKey(size: .bits256)).save(face)
+        let other = try FaceLibrary(directory: folder, key: SymmetricKey(size: .bits256))
+        XCTAssertTrue(other.list().isEmpty)
+        XCTAssertThrowsError(try other.load(face.id))
+    }
+
+    func testAFileCannotBePassedOffAsAnotherFace() throws {
+        let folder = temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let library = try FaceLibrary(directory: folder, key: SymmetricKey(size: .bits256))
+        let (a, b) = (sampleFace("A"), sampleFace("B"))
+        try library.save(a)
+        try library.save(b)
+        // Put A's file where B's is.
+        let fileA = folder.appendingPathComponent("\(a.id.uuidString).face")
+        let fileB = folder.appendingPathComponent("\(b.id.uuidString).face")
+        try FileManager.default.removeItem(at: fileB)
+        try FileManager.default.copyItem(at: fileA, to: fileB)
+        XCTAssertThrowsError(try library.load(b.id))
+        XCTAssertEqual(library.list(), [a])
+    }
+
+    func testDeleteAllRemovesEveryFace() throws {
+        let folder = temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let library = try FaceLibrary(directory: folder, key: SymmetricKey(size: .bits256))
+        try library.save(sampleFace("A"))
+        try library.save(sampleFace("B"))
+        library.delete(library.list()[0].id)
+        XCTAssertEqual(library.list().count, 1)
+        library.deleteAll()
+        XCTAssertTrue(library.list().isEmpty)
     }
 }

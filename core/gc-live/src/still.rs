@@ -1,7 +1,7 @@
 //! Face swap on one still picture, on the CPU path the tests check against
 //! InsightFace. The command-line tool uses it, and so do previews in the app.
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use gc_infer::image::{self, ImageMut, ImageView, MaskShape};
 use gc_infer::runtime::{Accelerator, InferError, Runtime, Swapper};
@@ -23,19 +23,20 @@ pub struct StillSwapper {
 }
 
 impl StillSwapper {
-    pub fn new(packs: &Path, model: SwapModel, accelerator: Accelerator) -> Result<Self, InferError> {
+    pub fn new(packs: &[PathBuf], model: SwapModel, accelerator: Accelerator) -> Result<Self, InferError> {
         let runtime = Runtime::shared(None)?;
+        let find = |file: &str| crate::engine::find_model(packs, file);
         let swapper = match model {
             SwapModel::Inswapper128 => Swapper::load(
                 runtime,
-                &packs.join("inswapper_128.onnx"),
+                &find("inswapper_128.onnx"),
                 SwapperContract::INSWAPPER_128,
-                Some(&packs.join("inswapper_128.emap.bin")),
+                Some(&find("inswapper_128.emap.bin")),
                 accelerator,
             )?,
             SwapModel::Hyperswap256 => Swapper::load(
                 runtime,
-                &packs.join("hyperswap_1b_256.onnx"),
+                &find("hyperswap_1b_256.onnx"),
                 SwapperContract::HYPERSWAP_256,
                 None,
                 accelerator,

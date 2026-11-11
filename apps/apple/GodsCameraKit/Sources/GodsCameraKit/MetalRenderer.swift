@@ -37,11 +37,34 @@ public struct RenderOverlay {
     }
 }
 
+/// A swapped face to draw onto the primary picture.
+public struct RenderPatch {
+    /// A square RGBA picture; its alpha is the mask.
+    public var texture: MTLTexture
+    /// Maps pixels of the primary picture onto pixels of the patch:
+    /// `x' = a x + b y + tx`, `y' = c x + d y + ty`.
+    public var frameToPatch: (a: Float, b: Float, tx: Float, c: Float, d: Float, ty: Float)
+    public var opacity: Float
+
+    public init(
+        texture: MTLTexture, frameToPatch: (a: Float, b: Float, tx: Float, c: Float, d: Float, ty: Float),
+        opacity: Float
+    ) {
+        self.texture = texture
+        self.frameToPatch = frameToPatch
+        self.opacity = opacity
+    }
+}
+
 /// Draws camera frames into output buffers on the GPU.
 ///
-/// Each pass scales and crops one picture to fill the output, optionally
-/// cross-fades it with a second picture, and optionally draws an overlay.
-public final class MetalRenderer {
+/// Each pass scales and crops one picture to fill the output, optionally draws
+/// a swapped face onto it, optionally cross-fades it with a second picture,
+/// and optionally draws an overlay.
+///
+/// Metal's device, queue and pipeline can be used from any thread, and a
+/// render call keeps nothing between calls.
+public final class MetalRenderer: @unchecked Sendable {
     public let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
@@ -55,6 +78,12 @@ public final class MetalRenderer {
         var overlayAlpha: Float = 0
         var padding: Float = 0
         var overlayRect = SIMD4<Float>(0, 0, 1, 1)
+        /// a, b, tx and the patch's side in pixels.
+        var patchRow0 = SIMD4<Float>(1, 0, 0, 1)
+        /// c, d, ty and the patch's opacity; 0 draws no patch.
+        var patchRow1 = SIMD4<Float>(0, 1, 0, 0)
+        /// Width and height of the primary picture, in pixels.
+        var sourceSize = SIMD4<Float>(1, 1, 0, 0)
     }
 
     // The shader is compiled from source at start-up, so it works the same
@@ -76,6 +105,9 @@ public final class MetalRenderer {
             float overlayAlpha;
             float padding;
             float4 overlayRect;
+            float4 patchRow0;
+            float4 patchRow1;
+            float4 sourceSize;
         };
 
         vertex VertexOut gc_vertex(uint vid [[vertex_id]]) {
@@ -91,9 +123,21 @@ public final class MetalRenderer {
                                     texture2d<float> texA [[texture(0)]],
                                     texture2d<float> texB [[texture(1)]],
                                     texture2d<float> overlay [[texture(2)]],
+                                    texture2d<float> patch [[texture(3)]],
                                     constant Uniforms &u [[buffer(0)]]) {
             constexpr sampler s(filter::linear, address::clamp_to_edge);
-            float3 color = texA.sample(s, (u.uvA * float3(in.uv, 1)).xy).rgb;
+            float2 uvA = (u.uvA * float3(in.uv, 1)).xy;
+            float3 color = texA.sample(s, uvA).rgb;
+            if (u.patchRow1.w > 0.0) {
+                // The core counts pixels with their centres on whole numbers.
+                float2 p = uvA * u.sourceSize.xy - 0.5;
+                float2 c = float2(dot(u.patchRow0.xy, p) + u.patchRow0.z, dot(u.patchRow1.xy, p) + u.patchRow1.z);
+                float side = u.patchRow0.w;
+                if (c.x > -0.5 && c.y > -0.5 && c.x < side - 0.5 && c.y < side - 0.5) {
+                    float4 face = patch.sample(s, (c + 0.5) / side);
+                    color = mix(color, face.rgb, face.a * u.patchRow1.w);
+                }
+            }
             if (u.hasB > 0.5) {
                 float3 other = texB.sample(s, (u.uvB * float3(in.uv, 1)).xy).rgb;
                 color = mix(color, other, u.mix);
@@ -150,11 +194,19 @@ public final class MetalRenderer {
         return (texture, wrapped)
     }
 
-    /// Draw `primary` into `output`, cross-fading towards `secondary` by `mix`
-    /// (0 shows only the primary, 1 only the secondary).
+    /// A texture for swapped-face patches of side `size`.
+    public func makePatchTexture(size: Int) -> MTLTexture? {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: size, height: size, mipmapped: false)
+        descriptor.usage = .shaderRead
+        return device.makeTexture(descriptor: descriptor)
+    }
+
+    /// Draw `primary` into `output`, with `patch` drawn onto it, cross-fading
+    /// towards `secondary` by `mix` (0 shows only the primary, 1 only the secondary).
     public func render(
-        primary: RenderLayer, secondary: RenderLayer? = nil, mix: Float = 0, overlay: RenderOverlay? = nil,
-        into output: CVPixelBuffer
+        primary: RenderLayer, patch: RenderPatch? = nil, secondary: RenderLayer? = nil, mix: Float = 0,
+        overlay: RenderOverlay? = nil, into output: CVPixelBuffer
     ) throws {
         let outputSize = output.pixelSize
         // The wrappers must stay alive until the GPU has finished.
@@ -179,6 +231,13 @@ public final class MetalRenderer {
             uniforms.overlayAlpha = overlay.opacity
             uniforms.overlayRect = overlay.rect
         }
+        if let patch, patch.opacity > 0 {
+            let m = patch.frameToPatch
+            let source = primary.buffer.pixelSize
+            uniforms.patchRow0 = SIMD4<Float>(m.a, m.b, m.tx, Float(patch.texture.width))
+            uniforms.patchRow1 = SIMD4<Float>(m.c, m.d, m.ty, min(patch.opacity, 1))
+            uniforms.sourceSize = SIMD4<Float>(Float(source.width), Float(source.height), 0, 0)
+        }
 
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = targetTexture
@@ -192,6 +251,7 @@ public final class MetalRenderer {
         // Every texture slot the shader declares gets a texture, used or not.
         encoder.setFragmentTexture(secondaryTexture, index: 1)
         encoder.setFragmentTexture(overlay?.texture ?? primaryTexture, index: 2)
+        encoder.setFragmentTexture(patch?.texture ?? primaryTexture, index: 3)
         withUnsafeBytes(of: &uniforms) { bytes in
             encoder.setFragmentBytes(bytes.baseAddress!, length: bytes.count, index: 0)
         }

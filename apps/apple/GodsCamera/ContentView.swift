@@ -25,6 +25,7 @@ struct PreviewView: NSViewRepresentable {
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @State private var clipName = ""
+    @State private var confirmingDelete = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -45,10 +46,20 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     virtualCameraSection
                     sourceSection
+                    FaceSection(face: model.face, status: model.status)
                     loopSection
                     savedLoopsSection
                     Button("Save a diagnostics report…") { model.exportDiagnostics() }
                         .buttonStyle(.link)
+                    Button("Delete all my data…", role: .destructive) { confirmingDelete = true }
+                        .buttonStyle(.link)
+                        .confirmationDialog(
+                            String(localized: "Delete every saved face and loop?"), isPresented: $confirmingDelete
+                        ) {
+                            Button("Delete everything", role: .destructive) { model.deleteAllData() }
+                        } message: {
+                            Text("Saved faces, their encryption key, saved loops and the list of blocked apps are removed from this Mac. This cannot be undone.")
+                        }
                 }
                 .padding(16)
             }
@@ -68,6 +79,7 @@ struct ContentView: View {
                     switch model.status.mode {
                     case .looping: Badge(text: String(localized: "LOOPING"), color: .red)
                     case .live: Badge(text: String(localized: "LIVE"), color: .green)
+                        if model.status.swapping { Badge(text: String(localized: "AI FACE"), color: .purple) }
                     case .idle: Badge(text: String(localized: "NO PICTURE"), color: .gray)
                     }
                     if model.status.isRecording {

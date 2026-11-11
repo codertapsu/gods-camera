@@ -34,6 +34,7 @@ fn follows_and_swaps_a_moving_face() {
     let picture = ImageView::new(&rgb, width, height, width as usize * 3, PixelFormat::Rgb).unwrap();
 
     // The leftmost face moves in the clip; the rightmost is the identity swapped in.
+    let packs = vec![packs];
     let mut enroller = Enroller::new(&packs, None).expect("enroller");
     let mut faces = enroller.detect(&picture).expect("faces");
     faces.sort_by(|a, b| a.bbox[0].total_cmp(&b.bbox[0]));

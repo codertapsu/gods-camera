@@ -28,7 +28,11 @@ fn main() {
     match path.parent() {
         Some(folder) if path.is_file() => {
             println!("cargo:rustc-link-search=native={}", folder.display());
-            println!("cargo:rustc-link-lib=static=clang_rt.{name}");
+            // Not bundled into this crate's own archive: programs Rust links get it
+            // from the search path, and the static library built for the apps must
+            // not contain it. Xcode links it for the apps anyway, and its objects
+            // are tagged for two platforms at once, which Xcode's framework packer rejects.
+            println!("cargo:rustc-link-lib=static:-bundle=clang_rt.{name}");
         }
         _ => println!("cargo:warning={library} was not found; linking may fail"),
     }

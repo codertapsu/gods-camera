@@ -1,6 +1,8 @@
 import AVFoundation
 import AppKit
 import GodsCameraKit
+import ImageIO
+import UniformTypeIdentifiers
 
 /// A check the app runs on itself when started with `--selftest <report path>`.
 ///
@@ -10,6 +12,9 @@ import GodsCameraKit
 /// measured as JSON and quits. No real camera is opened.
 ///
 /// `--soak <seconds>` makes the live part last that long, for endurance runs.
+/// `--swap-photo <path>` also runs the face swap: the photo is shown as the
+/// picture and one output frame is saved beside the report. The face swapped
+/// in is the largest one in `--swap-source <path>`, or in the photo itself.
 enum SelfTest {
     static var requestedReportPath: String? { argument(after: "--selftest") }
 
@@ -57,6 +62,9 @@ enum SelfTest {
         private var latestStatus = CameraEngine.Status()
         private var clip: Clip?
         private var readBack: [(number: UInt32?, latencyMs: Double?, width: Int)] = []
+        private var latestOutput: CVPixelBuffer?
+        private var packFolders: [URL] = []
+        private var cacheFolder: URL?
         /// True only while live test-pattern frames are flowing, when a frame number maps to one send time.
         private var timingLive = false
 
@@ -65,6 +73,8 @@ enum SelfTest {
         }
 
         func start() {
+            packFolders = FaceModel.packFolders
+            cacheFolder = FaceModel.cacheFolder
             report["bundledExtensionBuild"] = ExtensionManager.bundledBuild
             ensureExtension { [self] state in
                 report["extensionState"] = "\(state)"
@@ -161,6 +171,7 @@ enum SelfTest {
             engine.onOutput = { [self] buffer, hostTimeNs in
                 let number = TestPatternSource.readFrameNumber(from: buffer)
                 lock.lock()
+                latestOutput = buffer
                 engineFrames += 1
                 // The number wraps after 65,536 frames, so the latest send time for a number wins.
                 if let number, timingLive { sentAt[number] = hostTimeNs }
@@ -245,6 +256,10 @@ enum SelfTest {
                 report["error"] = "no clip was recorded"
             }
 
+            if let photo = SelfTest.argument(after: "--swap-photo") {
+                runSwap(photo: URL(fileURLWithPath: photo), engine: engine, renderer: renderer)
+            }
+
             // 3. What the extension saw.
             wait(0.5)
             if let before = statsBefore, let after = VirtualCameraLink.readStats() {
@@ -275,6 +290,74 @@ enum SelfTest {
             engine.setSource(nil)
             engine.sync()
             link.close()
+        }
+
+        /// Swap the largest face of `photo` onto the faces in that same photo, shown as the picture.
+        private func runSwap(photo: URL, engine: CameraEngine, renderer: MetalRenderer) {
+            do {
+                let reader = PhotoReader()
+                let cache = cacheFolder ?? FileManager.default.temporaryDirectory
+                // The face swapped in comes from --swap-source when given, else from the photo itself.
+                let source = SelfTest.argument(after: "--swap-source").map(URL.init(fileURLWithPath:)) ?? photo
+                guard let face = try reader.read(source, packFolders: packFolders, cacheFolder: cache) else {
+                    report["swapError"] = "no face in the source photo"
+                    return
+                }
+                report["swapFacesInPhoto"] = face.facesInPhoto
+                var config = FaceSwapConfig(packFolders: packFolders, cacheFolder: cache)
+                if let model = SelfTest.argument(after: "--swap-model").flatMap(FaceSwapConfig.Model.init(rawValue:)) {
+                    config.model = model
+                }
+                report["swapModel"] = config.model.rawValue
+                if let missing = config.missingFile {
+                    report["swapError"] = "model file not installed: \(missing)"
+                    return
+                }
+                let loadStarted = Date()
+                let stage = try FaceSwapStage(config: config, renderer: renderer)
+                report["swapLoadSeconds"] = (Date().timeIntervalSince(loadStarted) * 100).rounded() / 100
+                stage.setIdentity(face.identity)
+                engine.setSwapStage(stage)
+                engine.setSource(try StillImageSource(url: photo))
+                wait(6)
+                let now = status()
+                let stats = stage.stats
+                report["swapDrawn"] = now.swapping
+                report["swapFaceFound"] = now.faceFound
+                report["swapMs"] = (Double(stats.swapMs) * 10).rounded() / 10
+                report["swapAgeMs"] = (Double(stats.swapAgeMs) * 10).rounded() / 10
+                report["swapsPerSecond"] = (Double(stats.swaps) / 6 * 10).rounded() / 10
+                report["swapDetectMs"] = (Double(stats.detectMs) * 10).rounded() / 10
+                report["swapFrameMs"] = (Double(stats.frameMs) * 100).rounded() / 100
+                if let error = stats.lastError { report["swapError"] = error }
+                lock.lock()
+                let frame = latestOutput
+                lock.unlock()
+                if let frame {
+                    let picture = URL(fileURLWithPath: reportPath).deletingPathExtension().appendingPathExtension("swap.png")
+                    report["swapFrame"] = Self.savePNG(frame, to: picture) ? picture.path : "not written"
+                }
+                engine.setSwapStage(nil)
+                engine.sync()
+            } catch {
+                report["swapError"] = "\(error)"
+            }
+        }
+
+        private static func savePNG(_ buffer: CVPixelBuffer, to url: URL) -> Bool {
+            let size = buffer.pixelSize
+            let image = buffer.withLockedBytes(readOnly: true) { base, rowBytes -> CGImage? in
+                CGContext(
+                    data: base, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: rowBytes,
+                    space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)?
+                    .makeImage()
+            }
+            guard let image = image ?? nil,
+                let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
+            else { return false }
+            CGImageDestinationAddImage(destination, image, nil)
+            return CGImageDestinationFinalize(destination)
         }
 
         /// Read the virtual camera the way a meeting app does.

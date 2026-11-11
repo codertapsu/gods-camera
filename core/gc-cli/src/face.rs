@@ -65,7 +65,7 @@ pub struct SwapArgs {
 pub fn swap(args: SwapArgs) -> Result<()> {
     let source = Picture::load(&args.source)?;
     let mut target = Picture::load(&args.target)?;
-    let mut swapper = StillSwapper::new(&args.packs, args.model, gc_infer_cpu())?;
+    let mut swapper = StillSwapper::new(std::slice::from_ref(&args.packs), args.model, gc_infer_cpu())?;
     let enrolled = swapper
         .enroller()
         .enrol(&source.view())?
@@ -127,7 +127,7 @@ fn percentile(sorted: &[f32], fraction: f32) -> f32 {
 pub fn replay(args: ReplayArgs) -> Result<()> {
     const FPS: f32 = 30.0;
     let photo = Picture::load(&args.photo)?;
-    let mut enroller = Enroller::new(&args.packs, args.cache_dir.as_deref())?;
+    let mut enroller = Enroller::new(std::slice::from_ref(&args.packs), args.cache_dir.as_deref())?;
     let mut faces = enroller.detect(&photo.view())?;
     faces.sort_by(|a, b| a.bbox[0].total_cmp(&b.bbox[0]));
     let actor = faces.first().cloned().with_context(|| format!("no face found in {}", args.photo.display()))?;
@@ -141,7 +141,7 @@ pub fn replay(args: ReplayArgs) -> Result<()> {
 
     let load_started = Instant::now();
     let engine = LiveEngine::new(&LiveConfig {
-        packs: args.packs.clone(),
+        packs: vec![args.packs.clone()],
         cache_dir: args.cache_dir.clone(),
         detector: args.detector,
         detector_size: args.detector_size,

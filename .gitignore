@@ -14,3 +14,6 @@ local.properties
 core/gc-infer/tests/golden/*.png
 *.xcodeproj
 .build/
+# Built by tools/build-core-apple.sh
+apps/apple/GodsCameraKit/Frameworks/
+apps/apple/GodsCameraKit/Sources/GCCore/gc_ffi.swift

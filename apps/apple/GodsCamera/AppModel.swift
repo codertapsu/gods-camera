@@ -51,6 +51,8 @@ final class AppModel: ObservableObject {
     @Published var message: String?
 
     let extensionManager = ExtensionManager()
+    /// The face swap: saved faces, the switch and its options.
+    let face: FaceModel
     /// Shows the engine's output. Each frame's surface is handed to the layer as it is, without a copy.
     let previewLayer = CALayer()
 
@@ -89,16 +91,19 @@ final class AppModel: ObservableObject {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("GodsCamera/Loops", isDirectory: true)
         library = try? ClipLibrary(directory: support)
+        var renderer: MetalRenderer?
         do {
-            engine = CameraEngine(renderer: try MetalRenderer())
+            renderer = try MetalRenderer()
         } catch {
-            engine = nil
             message = String(localized: "This Mac's graphics could not be started, so the camera cannot run.")
             Log.app.error("renderer failed: \(String(describing: error))")
         }
+        engine = renderer.map(CameraEngine.init(renderer:))
+        face = FaceModel(engine: engine, renderer: renderer)
         previewLayer.contentsGravity = .resizeAspect
         wireEngine()
         extensionManager.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &bag)
+        face.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &bag)
     }
 
     // MARK: Start-up
@@ -114,6 +119,7 @@ final class AppModel: ObservableObject {
         extensionManager.refresh()
         applySettings()
         registerHotKeys()
+        face.start()
         voice.onVoice = { [weak self] in Task { @MainActor in self?.voiceHeard() } }
         // The camera reports when an app starts or stops reading it; the timer covers everything else.
         watcher = VirtualCameraWatcher { [weak self] in Task { @MainActor in self?.tick() } }
@@ -475,6 +481,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: Everything the app keeps
+
+    /// Remove saved faces, saved loops and the settings around them.
+    func deleteAllData() {
+        face.deleteEverything()
+        for clip in savedClips { library?.delete(clip.id) }
+        savedClips = []
+        currentClip = nil
+        blockedApps = []
+        defaults.removeObject(forKey: "blockedApps")
+        applyBlocking(cameraStats)
+        Log.app.info("all saved data deleted")
+    }
+
     // MARK: Diagnostics
 
     /// Write a report the user can send, and show it in the Finder.
@@ -488,6 +508,7 @@ final class AppModel: ObservableObject {
             "extension counters: \(cameraStats?.encoded ?? "unavailable")",
             "readers: \(readers.map { "\($0.app.name) (\($0.pid))" }), blocked apps: \(blockedApps), withholding: \(withholding)",
             "engine: \(status)",
+            "face swap: \(face.state), \(face.faces.count) saved face(s), quality \(face.quality.rawValue)",
             "camera access: \(cameraAuthorized), cameras: \(cameras.map(\.name))",
             "", "--- log ---",
         ]

@@ -1,0 +1,19 @@
+[package]
+name = "gc-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# A static library for the apps to link, and a dynamic one the bindings
+# generator reads its description from.
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+gc-live = { version = "0.1.0", path = "../gc-live" }
+uniffi = { version = "0.32.2", features = ["cli"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"

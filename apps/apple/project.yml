@@ -13,9 +13,9 @@ settings:
     DEVELOPMENT_TEAM: 4XVYLW8RXS
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "6"
     ENABLE_HARDENED_RUNTIME: YES
+    # The pack script reads the model store, which is outside the project folder.
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
 targets:
   GodsCamera:
     type: application
@@ -37,10 +37,17 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera
         CODE_SIGN_ENTITLEMENTS: GodsCamera/GodsCamera.entitlements
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "7"
     dependencies:
       - package: GodsCameraKit
       - target: CameraExtension
         embed: true
+    postBuildScripts:
+      - name: Bundle the base models
+        script: |
+          "${SRCROOT}/../../tools/bundle-packs.sh"
+        basedOnDependencyAnalysis: false
   CameraExtension:
     type: system-extension
     platform: macOS
@@ -52,5 +59,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera.CameraExtension
         PRODUCT_NAME: dev.godscamera.GodsCamera.CameraExtension
+        # The extension has its own version. macOS replaces the installed extension
+        # whenever either number differs, so raise them only when its code changes.
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "6"
         CODE_SIGN_ENTITLEMENTS: CameraExtension/CameraExtension.entitlements
         INFOPLIST_FILE: CameraExtension/Info.plist

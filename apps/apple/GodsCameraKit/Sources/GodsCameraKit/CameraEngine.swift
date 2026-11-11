@@ -11,9 +11,10 @@ public protocol FrameSink: AnyObject {
 /// The live pipeline: takes pictures from a source, shapes them for the
 /// output, and can record a clip and play it back as a loop.
 ///
-/// All work happens on one private queue. Callbacks are delivered on that
-/// queue too, so receivers hop to the main queue themselves if they need it.
-public final class CameraEngine {
+/// All work happens on one private queue, which is what makes the engine safe
+/// to call from any thread. Callbacks are delivered on that queue too, so
+/// receivers hop to the main queue themselves if they need it.
+public final class CameraEngine: @unchecked Sendable {
     public struct Settings: Equatable, Sendable {
         public var outputSize = PixelSize.hd720
         /// Flip the live picture left to right.
@@ -25,6 +26,8 @@ public final class CameraEngine {
         /// Longest recording, in seconds.
         public var maxClipSeconds = 30.0
         public var frameRate = 30.0
+        /// Draw an "AI" badge on the output while a swapped face is shown.
+        public var showAIBadge = true
 
         public init() {}
     }
@@ -46,6 +49,15 @@ public final class CameraEngine {
         public var liveLuma: Float = 0
         /// Pictures per second arriving from the source, measured.
         public var sourceFps = 0.0
+        /// A swapped face is being drawn on the live picture.
+        public var swapping = false
+        /// The swap is on and a face is being followed.
+        public var faceFound = false
+        /// Smoothed time for one swap, and from a frame's arrival to its swapped face, in milliseconds.
+        public var swapMs = 0.0
+        public var swapAgeMs = 0.0
+        /// What stopped the swap, if anything did.
+        public var swapError: String?
 
         public init() {}
     }
@@ -64,6 +76,10 @@ public final class CameraEngine {
     private var status = Status()
 
     private var latestLive: VideoFrame?
+    /// The live picture as it goes out, swapped face and badge included. Fades
+    /// between live and loop use this, so the real face never shows through them.
+    private var latestComposite: CVPixelBuffer?
+    private var swap: FaceSwapStage?
     private var rateWindowStart: UInt64 = 0
     private var rateWindowFrames = 0
     private var recorder: ClipRecorder?
@@ -78,6 +94,7 @@ public final class CameraEngine {
     private var leavingLoop = false
     private var lastLoopFrame: CVPixelBuffer?
     private lazy var loopBadge = renderer.makeBadge(text: "LOOP", color: CGColor(red: 0.85, green: 0.2, blue: 0.2, alpha: 0.9))
+    private lazy var aiBadge = renderer.makeBadge(text: "AI", color: CGColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 0.75))
 
     public init(renderer: MetalRenderer) {
         self.renderer = renderer
@@ -97,6 +114,19 @@ public final class CameraEngine {
         }
     }
 
+    /// Turn the face swap on by giving it a stage, or off with nil.
+    public func setSwapStage(_ stage: FaceSwapStage?) {
+        queue.async {
+            self.swap = stage
+            if stage == nil {
+                self.status.swapping = false
+                self.status.faceFound = false
+                self.status.swapError = nil
+                self.publish()
+            }
+        }
+    }
+
     /// Replace the source and start it. Pass nil to stop.
     public func setSource(_ newSource: FrameSource?) {
         queue.async {
@@ -104,6 +134,7 @@ public final class CameraEngine {
             self.source?.stop()
             self.source = newSource
             self.latestLive = nil
+            self.latestComposite = nil
             self.rateWindowStart = 0
             self.rateWindowFrames = 0
             self.status.sourceFps = 0
@@ -159,7 +190,7 @@ public final class CameraEngine {
             self.loopClip = clip
             self.sequencer = LoopSequencer(points: clip.loop, mode: clip.mode)
             self.leavingLoop = false
-            self.transitionLeft = self.latestLive == nil ? 0 : self.settings.transitionFrames
+            self.transitionLeft = self.latestComposite == nil ? 0 : self.settings.transitionFrames
             self.status.mode = .looping
             self.startLoopTimer(frameRate: clip.frameRate)
             self.publish()
@@ -170,7 +201,7 @@ public final class CameraEngine {
     public func stopLoop() {
         queue.async {
             guard self.status.mode == .looping, !self.leavingLoop else { return }
-            if self.latestLive == nil || self.settings.transitionFrames == 0 {
+            if self.latestComposite == nil || self.settings.transitionFrames == 0 {
                 self.endLoop()
             } else {
                 self.leavingLoop = true
@@ -189,16 +220,37 @@ public final class CameraEngine {
     private func receive(_ frame: VideoFrame) {
         latestLive = frame
         measureRate()
-        guard status.mode == .live else { return }
+        // The swap follows every frame, also while a loop plays, so that it is
+        // already on the face when the picture returns to live.
+        let patch = swap?.process(frame.pixelBuffer, hostTimeNs: frame.hostTimeNs)
+        if let swap, status.framesOut % 15 == 0 || status.swapping != (patch != nil) {
+            let stats = swap.stats
+            status.faceFound = stats.tracking
+            status.swapMs = Double(stats.swapMs)
+            status.swapAgeMs = Double(stats.swapAgeMs)
+            status.swapError = stats.lastError
+        }
+        status.swapping = patch != nil
         guard let output = makeOutput() else { return }
         let started = hostTimeNanoseconds()
+        var overlay: RenderOverlay?
+        if settings.showAIBadge, let patch, patch.opacity > 0.05, let badge = aiBadge {
+            let height: Float = 0.05
+            let width = height * Float(badge.width) / Float(badge.height) * Float(settings.outputSize.height)
+                / Float(settings.outputSize.width)
+            overlay = RenderOverlay(
+                texture: badge, rect: SIMD4<Float>(1 - 0.02 - width, 0.03, width, height), opacity: patch.opacity)
+        }
         do {
             try renderer.render(
-                primary: RenderLayer(buffer: frame.pixelBuffer, mirrored: settings.mirror), into: output)
+                primary: RenderLayer(buffer: frame.pixelBuffer, mirrored: settings.mirror), patch: patch,
+                overlay: overlay, into: output)
         } catch {
             Log.engine.error("render failed: \(String(describing: error))")
             return
         }
+        latestComposite = output
+        guard status.mode == .live else { return }
         noteRender(since: started)
         if let recorder {
             recorder.append(output)
@@ -221,10 +273,11 @@ public final class CameraEngine {
         var mix = step.mix
         // While fading in or out, the loop picture is blended with the live one
         // instead of with its own cross-fade partner.
-        if transitionLeft > 0, let live = latestLive {
+        if transitionLeft > 0, let live = latestComposite {
             let total = Float(max(1, settings.transitionFrames))
             let progress = 1 - Float(transitionLeft - 1) / total  // rises to 1
-            let liveLayer = RenderLayer(buffer: live.pixelBuffer, mirrored: settings.mirror)
+            // Already mirrored and swapped when it was drawn.
+            let liveLayer = RenderLayer(buffer: live)
             if leavingLoop {
                 second = liveLayer
                 mix = progress

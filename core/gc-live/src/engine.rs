@@ -50,8 +50,9 @@ pub enum SwapModel {
 /// What the engine is built with. Changing any of it means building a new engine.
 #[derive(Debug, Clone)]
 pub struct LiveConfig {
-    /// Folder that holds the model files.
-    pub packs: PathBuf,
+    /// Folders that hold the model files, searched in order: the ones that
+    /// come with the app first, then the ones added later.
+    pub packs: Vec<PathBuf>,
     /// Folder for compiled models, so later starts are fast.
     pub cache_dir: Option<PathBuf>,
     pub detector: DetectorKind,
@@ -86,24 +87,36 @@ struct ModelPlan {
     swapper: (PathBuf, SwapperContract, Option<PathBuf>, Accelerator),
 }
 
+/// The first folder that has `file`. If none has it, the path in the first
+/// folder is returned, so the error names a place to put the file.
+pub(crate) fn find_model(folders: &[PathBuf], file: &str) -> PathBuf {
+    folders
+        .iter()
+        .map(|folder| folder.join(file))
+        .find(|path| path.is_file())
+        .unwrap_or_else(|| folders.first().map(|folder| folder.join(file)).unwrap_or_else(|| PathBuf::from(file)))
+}
+
 impl ModelPlan {
     /// The choices measured in spike S3 on Apple silicon: the swap model gets
     /// the unit it is fastest on, and the detector stays off that unit.
     fn new(config: &LiveConfig) -> Self {
-        let packs = &config.packs;
+        let find = |file: &str| find_model(&config.packs, file);
         let on = |accelerator| if config.cpu_only { Accelerator::Cpu } else { accelerator };
         let swapper = match config.swap_model {
             SwapModel::Inswapper128 => {
-                let emap = Some(packs.join("inswapper_128.emap.bin"));
-                let fast = packs.join("inswapper_128.reflectfree.fp16.onnx");
-                if !config.cpu_only && fast.is_file() {
-                    (fast, SwapperContract::INSWAPPER_128, emap, Accelerator::NeuralEngine)
+                let emap = Some(find("inswapper_128.emap.bin"));
+                let fast = find("inswapper_128.reflectfree.fp16.onnx");
+                let full = find("inswapper_128.onnx");
+                // The half-precision file runs on the Neural Engine. The CPU needs the full one.
+                if fast.is_file() && (!config.cpu_only || !full.is_file()) {
+                    (fast, SwapperContract::INSWAPPER_128, emap, on(Accelerator::NeuralEngine))
                 } else {
-                    (packs.join("inswapper_128.onnx"), SwapperContract::INSWAPPER_128, emap, on(Accelerator::Gpu))
+                    (full, SwapperContract::INSWAPPER_128, emap, on(Accelerator::Gpu))
                 }
             }
             SwapModel::Hyperswap256 => {
-                (packs.join("hyperswap_1b_256.onnx"), SwapperContract::HYPERSWAP_256, None, on(Accelerator::Gpu))
+                (find("hyperswap_1b_256.onnx"), SwapperContract::HYPERSWAP_256, None, on(Accelerator::Gpu))
             }
         };
         // Both detectors run on the CPU. Measured on the M4 Pro at 640 pixels:
@@ -111,8 +124,8 @@ impl ModelPlan {
         // faster than Core ML ran them, and it leaves the GPU and the Neural
         // Engine to the swap model.
         let detector = match config.detector {
-            DetectorKind::Small => (packs.join("buffalo_s/det_500m.onnx"), Accelerator::Cpu),
-            DetectorKind::Large => (packs.join("buffalo_l/det_10g.onnx"), Accelerator::Cpu),
+            DetectorKind::Small => (find("buffalo_s/det_500m.onnx"), Accelerator::Cpu),
+            DetectorKind::Large => (find("buffalo_l/det_10g.onnx"), Accelerator::Cpu),
         };
         Self { detector, swapper }
     }
@@ -754,11 +767,12 @@ pub struct Enroller {
 }
 
 impl Enroller {
-    pub fn new(packs: &std::path::Path, cache_dir: Option<&std::path::Path>) -> Result<Self, InferError> {
+    /// `packs` are the folders that hold the model files, searched in order.
+    pub fn new(packs: &[PathBuf], cache_dir: Option<&std::path::Path>) -> Result<Self, InferError> {
         let runtime = Runtime::shared(cache_dir)?;
         Ok(Self {
-            detector: Detector::load(runtime, &packs.join("buffalo_l/det_10g.onnx"), 640, Accelerator::Cpu)?,
-            encoder: IdentityEncoder::load(runtime, &packs.join("buffalo_l/w600k_r50.onnx"), Accelerator::Cpu)?,
+            detector: Detector::load(runtime, &find_model(packs, "buffalo_l/det_10g.onnx"), 640, Accelerator::Cpu)?,
+            encoder: IdentityEncoder::load(runtime, &find_model(packs, "buffalo_l/w600k_r50.onnx"), Accelerator::Cpu)?,
         })
     }
 
@@ -807,7 +821,7 @@ mod tests {
     #[test]
     fn model_plan_follows_the_measurements() {
         let config = LiveConfig {
-            packs: PathBuf::from("/nonexistent"),
+            packs: vec![PathBuf::from("/nonexistent")],
             cache_dir: None,
             detector: DetectorKind::Large,
             detector_size: 640,

@@ -51,6 +51,66 @@
         }
       }
     },
+    "A model file is not installed: %@": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chưa cài đặt một tệp mô hình: %@"
+          }
+        }
+      }
+    },
+    "Add a face first, then turn the swap on.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hãy thêm một khuôn mặt trước, rồi bật tính năng thay mặt."
+          }
+        }
+      }
+    },
+    "Add a face…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm khuôn mặt…"
+          }
+        }
+      }
+    },
+    "Add this face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm khuôn mặt này"
+          }
+        }
+      }
+    },
+    "AI FACE": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MẶT AI"
+          }
+        }
+      }
+    },
+    "AI-generated face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khuôn mặt do AI tạo"
+          }
+        }
+      }
+    },
     "Allow": {
       "localizations": {
         "vi": {
@@ -81,6 +141,16 @@
         }
       }
     },
+    "An “AI” badge is drawn on your picture. You can turn it off; consider telling people instead.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Một nhãn “AI” được vẽ lên hình của bạn. Bạn có thể tắt nó; khi đó hãy cân nhắc nói cho mọi người biết."
+          }
+        }
+      }
+    },
     "Back and forth": {
       "localizations": {
         "vi": {
@@ -97,6 +167,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Trở về trực tiếp"
+          }
+        }
+      }
+    },
+    "Before you swap your face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trước khi bạn thay khuôn mặt"
           }
         }
       }
@@ -127,6 +207,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Camera"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Huỷ"
           }
         }
       }
@@ -181,12 +271,102 @@
         }
       }
     },
+    "Delete all my data…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xoá toàn bộ dữ liệu của tôi…"
+          }
+        }
+      }
+    },
+    "Delete every saved face and loop?": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xoá mọi khuôn mặt và vòng lặp đã lưu?"
+          }
+        }
+      }
+    },
+    "Delete everything": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xoá tất cả"
+          }
+        }
+      }
+    },
+    "Delete this face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xoá khuôn mặt này"
+          }
+        }
+      }
+    },
     "Delete this loop": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Xoá đoạn lặp này"
+          }
+        }
+      }
+    },
+    "Do not use it to pass as someone else, to deceive, or to harass.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không dùng để mạo danh người khác, lừa dối hay quấy rối."
+          }
+        }
+      }
+    },
+    "Face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khuôn mặt"
+          }
+        }
+      }
+    },
+    "Face %lld": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khuôn mặt %lld"
+          }
+        }
+      }
+    },
+    "Getting the first swapped face…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang tạo khuôn mặt thay thế đầu tiên…"
+          }
+        }
+      }
+    },
+    "Getting the models ready. The first time takes a little longer.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang chuẩn bị các mô hình. Lần đầu sẽ lâu hơn một chút."
           }
         }
       }
@@ -221,6 +401,26 @@
         }
       }
     },
+    "I understand": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tôi hiểu"
+          }
+        }
+      }
+    },
+    "If none of these is true, do not add the face.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nếu không có điều nào đúng, đừng thêm khuôn mặt này."
+          }
+        }
+      }
+    },
     "Image": {
       "localizations": {
         "vi": {
@@ -247,6 +447,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Đã cài đặt. Hãy chọn “God's Camera” trong ứng dụng họp của bạn."
+          }
+        }
+      }
+    },
+    "It is AI-generated and shows no real person.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đây là mặt do AI tạo, không phải người thật."
+          }
+        }
+      }
+    },
+    "It is someone else, and I have their permission.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đây là người khác và tôi đã được họ cho phép."
           }
         }
       }
@@ -301,6 +521,16 @@
         }
       }
     },
+    "Match my skin tone": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khớp với màu da của tôi"
+          }
+        }
+      }
+    },
     "Mirror the picture": {
       "localizations": {
         "vi": {
@@ -321,6 +551,16 @@
         }
       }
     },
+    "My own face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khuôn mặt của tôi"
+          }
+        }
+      }
+    },
     "Name": {
       "localizations": {
         "vi": {
@@ -337,6 +577,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Không tìm thấy camera nào."
+          }
+        }
+      }
+    },
+    "No face in the picture.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không thấy khuôn mặt nào trong hình."
+          }
+        }
+      }
+    },
+    "No face was found in that picture.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không tìm thấy khuôn mặt nào trong hình đó."
           }
         }
       }
@@ -371,6 +631,16 @@
         }
       }
     },
+    "Not now": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Để sau"
+          }
+        }
+      }
+    },
     "Open System Settings": {
       "localizations": {
         "vi": {
@@ -391,6 +661,16 @@
         }
       }
     },
+    "People in a call will see a face that is not the one in front of the camera. Please use this fairly.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Những người trong cuộc gọi sẽ thấy một khuôn mặt khác với khuôn mặt trước camera. Hãy dùng tính năng này một cách đàng hoàng."
+          }
+        }
+      }
+    },
     "Picture": {
       "localizations": {
         "vi": {
@@ -407,6 +687,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Phát đoạn lặp"
+          }
+        }
+      }
+    },
+    "Quality": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chất lượng"
           }
         }
       }
@@ -501,6 +791,36 @@
         }
       }
     },
+    "Saved faces are encrypted and stay on this Mac.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Các khuôn mặt đã lưu được mã hoá và chỉ nằm trên máy Mac này."
+          }
+        }
+      }
+    },
+    "Saved faces could not be opened.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không mở được các khuôn mặt đã lưu."
+          }
+        }
+      }
+    },
+    "Saved faces, their encryption key, saved loops and the list of blocked apps are removed from this Mac. This cannot be undone.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Các khuôn mặt đã lưu, khoá mã hoá của chúng, các vòng lặp đã lưu và danh sách ứng dụng bị chặn sẽ bị xoá khỏi máy Mac này. Không thể hoàn tác."
+          }
+        }
+      }
+    },
     "Saved loops": {
       "localizations": {
         "vi": {
@@ -511,12 +831,32 @@
         }
       }
     },
+    "Sharper": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sắc nét hơn"
+          }
+        }
+      }
+    },
     "Show a LOOP badge to others": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Hiện nhãn LOOP cho người khác thấy"
+          }
+        }
+      }
+    },
+    "Show an AI badge to others": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện nhãn AI cho người khác thấy"
           }
         }
       }
@@ -541,6 +881,16 @@
         }
       }
     },
+    "Standard": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiêu chuẩn"
+          }
+        }
+      }
+    },
     "Start to end": {
       "localizations": {
         "vi": {
@@ -557,6 +907,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dừng ghi"
+          }
+        }
+      }
+    },
+    "Swap my face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thay khuôn mặt của tôi"
+          }
+        }
+      }
+    },
+    "Swapping · %.0f ms a face, %.0f ms behind": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang thay mặt · %.0f ms mỗi lần, trễ %.0f ms"
           }
         }
       }
@@ -591,6 +961,16 @@
         }
       }
     },
+    "That picture could not be read.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không đọc được hình đó."
+          }
+        }
+      }
+    },
     "The app gets no picture from now on.": {
       "localizations": {
         "vi": {
@@ -611,6 +991,16 @@
         }
       }
     },
+    "The face could not be saved.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không lưu được khuôn mặt."
+          }
+        }
+      }
+    },
     "The loop could not be saved.": {
       "localizations": {
         "vi": {
@@ -621,12 +1011,32 @@
         }
       }
     },
+    "The picture shows %lld faces. The largest one was used.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trong hình có %lld khuôn mặt. Đã dùng khuôn mặt lớn nhất."
+          }
+        }
+      }
+    },
     "The room looks brighter or darker than in this loop.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Phòng đang sáng hơn hoặc tối hơn so với đoạn lặp này."
+          }
+        }
+      }
+    },
+    "This is me.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đây là tôi."
           }
         }
       }
@@ -657,6 +1067,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cập nhật camera"
+          }
+        }
+      }
+    },
+    "Use only your own face, a face you have permission to use, or an AI-generated face.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chỉ dùng khuôn mặt của chính bạn, khuôn mặt bạn được phép dùng, hoặc khuôn mặt do AI tạo."
+          }
+        }
+      }
+    },
+    "Used with permission": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dùng với sự cho phép"
           }
         }
       }
@@ -697,6 +1127,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Đang chờ bạn cho phép trong Cài đặt hệ thống › Cài đặt chung › Mục đăng nhập & Phần mở rộng › Phần mở rộng camera."
+          }
+        }
+      }
+    },
+    "Whose face is this?": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đây là khuôn mặt của ai?"
           }
         }
       }
