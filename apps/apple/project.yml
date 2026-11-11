@@ -1,0 +1,41 @@
+name: GodsCamera
+options:
+  bundleIdPrefix: dev.godscamera
+  deploymentTarget:
+    macOS: "27.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: 4XVYLW8RXS
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+targets:
+  GodsCamera:
+    type: application
+    platform: macOS
+    sources:
+      - GodsCamera
+      - CameraExtension/Shared.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera
+        CODE_SIGN_ENTITLEMENTS: GodsCamera/GodsCamera.entitlements
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.video
+        INFOPLIST_KEY_NSCameraUsageDescription: God's Camera reads your camera to build the virtual camera feed.
+    dependencies:
+      - target: CameraExtension
+        embed: true
+  CameraExtension:
+    type: system-extension
+    platform: macOS
+    sources: [CameraExtension]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera.CameraExtension
+        PRODUCT_NAME: dev.godscamera.GodsCamera.CameraExtension
+        CODE_SIGN_ENTITLEMENTS: CameraExtension/CameraExtension.entitlements
+        INFOPLIST_FILE: CameraExtension/Info.plist

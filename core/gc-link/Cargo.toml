@@ -1,0 +1,24 @@
+[package]
+name = "gc-link"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum = { version = "0.8.9", features = ["ws", "macros"] }
+futures-util = "0.3.34"
+hex = "0.4.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+subtle = "2.6.1"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "signal"] }
+tower-http = { version = "0.7.1", features = ["limit", "trace"] }
+uuid = { version = "1.29.2", features = ["v4"] }
+
+[dev-dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream"] }
+serde_json = "1.0.154"
+uuid = { version = "1.29.2", features = ["v4"] }

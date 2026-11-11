@@ -1,0 +1,14 @@
+{
+  "name": "hyperswap_1b_256",
+  "licence": "Reported as ResearchRAIL; not verified against a primary licence text.",
+  "commercial_ok": false,
+  "files": [
+    {
+      "path": "hyperswap_1b_256.onnx",
+      "source_url": "https://github.com/facefusion/facefusion-assets/releases/download/models-3.3.0/hyperswap_1b_256.onnx",
+      "sha256": "5124031789c42f71b9558fb71954ef7aedb6da7ed9fac79293e23c61a792a73e",
+      "bytes": 402742682,
+      "role": "swap model, 256 px"
+    }
+  ]
+}

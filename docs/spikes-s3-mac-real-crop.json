@@ -1,0 +1,152 @@
+{
+ "machine": "MacBook Pro, M4 Pro, 24 GB, macOS 27.2.1",
+ "onnxruntime": "1.31.1",
+ "input": "real aligned face crop from InsightFace's sample photo",
+ "diff_units": "8-bit levels against the fp32 CPU output",
+ "rows": [
+  {
+   "model": "inswapper_128",
+   "provider": "cpu",
+   "median_ms": 209.9,
+   "p95_ms": 225.2,
+   "max_level_diff": 0.0,
+   "mean_level_diff": 0.0,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128",
+   "provider": "coreml-gpu",
+   "median_ms": 54.0,
+   "p95_ms": 55.0,
+   "max_level_diff": 0.0,
+   "mean_level_diff": 0.0,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128",
+   "provider": "coreml-all",
+   "median_ms": 54.1,
+   "p95_ms": 56.0,
+   "max_level_diff": 0.0,
+   "mean_level_diff": 0.0,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128",
+   "provider": "coreml-ane",
+   "median_ms": 209.7,
+   "p95_ms": 225.0,
+   "max_level_diff": 0.0,
+   "mean_level_diff": 0.0,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128 fp16, reflect padding kept",
+   "provider": "cpu",
+   "median_ms": 209.1,
+   "p95_ms": 222.1,
+   "max_level_diff": 0.33,
+   "mean_level_diff": 0.021,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128 fp16, reflect padding kept",
+   "provider": "coreml-gpu",
+   "median_ms": 49.7,
+   "p95_ms": 50.5,
+   "max_level_diff": 0.34,
+   "mean_level_diff": 0.048,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128 fp16, reflect padding kept",
+   "provider": "coreml-all",
+   "median_ms": 162.3,
+   "p95_ms": 168.6,
+   "max_level_diff": 2.01,
+   "mean_level_diff": 0.45,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128 fp16, reflect padding kept",
+   "provider": "coreml-ane",
+   "median_ms": 126.1,
+   "p95_ms": 127.5,
+   "max_level_diff": 1.95,
+   "mean_level_diff": 0.449,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128 reflect-free fp16",
+   "provider": "cpu",
+   "median_ms": 211.3,
+   "p95_ms": 225.7,
+   "max_level_diff": 0.34,
+   "mean_level_diff": 0.028,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128 reflect-free fp16",
+   "provider": "coreml-gpu",
+   "median_ms": 50.0,
+   "p95_ms": 51.1,
+   "max_level_diff": 0.34,
+   "mean_level_diff": 0.048,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128 reflect-free fp16",
+   "provider": "coreml-all",
+   "median_ms": 36.8,
+   "p95_ms": 37.7,
+   "max_level_diff": 2.01,
+   "mean_level_diff": 0.45,
+   "finite": true
+  },
+  {
+   "model": "inswapper_128 reflect-free fp16",
+   "provider": "coreml-ane",
+   "median_ms": 37.5,
+   "p95_ms": 38.4,
+   "max_level_diff": 1.95,
+   "mean_level_diff": 0.449,
+   "finite": true
+  },
+  {
+   "model": "hyperswap_1b_256",
+   "provider": "cpu",
+   "median_ms": 113.5,
+   "p95_ms": 133.8,
+   "max_level_diff": 0.0,
+   "mean_level_diff": 0.0,
+   "finite": true
+  },
+  {
+   "model": "hyperswap_1b_256",
+   "provider": "coreml-gpu",
+   "median_ms": 33.9,
+   "p95_ms": 42.1,
+   "max_level_diff": 0.46,
+   "mean_level_diff": 0.024,
+   "finite": true
+  },
+  {
+   "model": "hyperswap_1b_256",
+   "provider": "coreml-all",
+   "median_ms": 131.9,
+   "p95_ms": 143.7,
+   "max_level_diff": 0.67,
+   "mean_level_diff": 0.045,
+   "finite": true
+  },
+  {
+   "model": "hyperswap_1b_256",
+   "provider": "coreml-ane",
+   "median_ms": 56.6,
+   "p95_ms": 62.7,
+   "max_level_diff": 0.84,
+   "mean_level_diff": 0.054,
+   "finite": true
+  }
+ ]
+}

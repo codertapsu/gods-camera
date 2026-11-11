@@ -1,0 +1,15 @@
+target/
+.gc-data/
+.venv/
+__pycache__/
+.DS_Store
+*.onnx
+*.mlmodelc
+xcuserdata/
+DerivedData/
+build/
+.gradle/
+local.properties
+# Golden images come from InsightFace's sample photo; regenerate with tools/modelkit/reference_run.py.
+core/gc-infer/tests/golden/*.png
+*.xcodeproj

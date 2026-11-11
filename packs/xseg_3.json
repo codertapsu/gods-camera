@@ -1,0 +1,14 @@
+{
+  "name": "xseg_3",
+  "licence": "Not stated by the distributor.",
+  "commercial_ok": false,
+  "files": [
+    {
+      "path": "xseg_3.onnx",
+      "source_url": "https://github.com/facefusion/facefusion-assets/releases/download/models-3.2.0/xseg_3.onnx",
+      "sha256": "48ccd7e8541e159a5a754ec9e62df2f12065f7df8f9af842c1750342c6533559",
+      "bytes": 70327709,
+      "role": "occlusion mask"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-link", "gc-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+
+[profile.release]
+lto = "thin"

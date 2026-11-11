@@ -1,0 +1,14 @@
+{
+  "name": "buffalo_s",
+  "licence": "Non-commercial research only (insightface/README.md:42-44).",
+  "commercial_ok": false,
+  "files": [
+    {
+      "path": "buffalo_s/det_500m.onnx",
+      "source_url": "https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_s.zip",
+      "sha256": "5e4447f50245bbd7966bd6c0fa52938c61474a04ec7def48753668a9d8b4ea3a",
+      "bytes": 2524817,
+      "role": "detector, phones"
+    }
+  ]
+}

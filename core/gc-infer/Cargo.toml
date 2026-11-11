@@ -1,0 +1,12 @@
+[package]
+name = "gc-infer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gc-align = { version = "0.1.0", path = "../gc-align" }
+
+[dev-dependencies]
+serde_json = "1.0.154"

@@ -1,0 +1,14 @@
+{
+  "name": "inswapper_128",
+  "licence": "Non-commercial research only (insightface/README.md:42-44). Licensing by contact since 2025-11-24 (insightface/README.md:48).",
+  "commercial_ok": false,
+  "files": [
+    {
+      "path": "inswapper_128.onnx",
+      "source_url": "https://github.com/deepinsight/insightface/releases/download/model-zoo/inswapper_128.onnx",
+      "sha256": "e4a3f08c753cb72d04e10aa0f7dbe3deebbf39567d4ead6dce08e98aa49e16af",
+      "bytes": 554253681,
+      "role": "swap model, 128 px"
+    }
+  ]
+}
