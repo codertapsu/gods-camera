@@ -29,6 +29,16 @@ public final class Clip {
 
     public var frameCount: Int { samples.count }
     public var duration: Double { Double(frameCount) / frameRate }
+
+    /// How unlike each other the two ends of the loop are, in 8-bit levels: the
+    /// mean difference between the frames that the cross-fade blends. Near zero
+    /// when the picture at the end matches the picture at the start.
+    public var seamMismatch: Float { LoopFinder.seamMismatch(thumbnails: thumbnails, points: loop) }
+
+    /// The way of repeating that hides the seam best. A clip whose end matches
+    /// its start plays start to end; one where the person has moved in between
+    /// plays back and forth, which has no jump at all.
+    public var suggestedMode: LoopMode { seamMismatch <= LoopFinder.visibleSeam ? .forward : .pingPong }
     /// Average brightness, used to warn when the room's lighting has changed.
     public var meanLuma: Float {
         guard !thumbnails.isEmpty else { return 0 }
@@ -51,6 +61,18 @@ public final class Clip {
     }
 }
 
+/// Names for measured frame rates.
+public enum FrameRate {
+    /// The rate to call a stream that was measured at `measured` pictures a
+    /// second, or nil when the measurement is not believable. A rate close to a
+    /// common one is rounded to it, so that playback ticks evenly.
+    public static func label(forMeasured measured: Double) -> Double? {
+        guard measured >= 4, measured <= 130 else { return nil }
+        let common: [Double] = [10, 12, 15, 20, 24, 25, 30, 50, 60, 120]
+        return common.first { abs($0 - measured) / $0 < 0.05 } ?? (measured * 10).rounded() / 10
+    }
+}
+
 /// Compresses frames into a `Clip` as they arrive.
 public final class ClipRecorder {
     public let size: PixelSize
@@ -61,14 +83,30 @@ public final class ClipRecorder {
     private var samples: [Int: CMSampleBuffer] = [:]
     private var thumbnails: [[UInt8]] = []
     private var appended = 0
+    private let maxSeconds: Double
+    /// When the first and the latest frame arrived, on the host clock.
+    private var firstNs: UInt64 = 0
+    private var lastNs: UInt64 = 0
 
     public var frameCount: Int { appended }
-    public var isFull: Bool { appended >= maxFrames }
+    /// How long the recording has run, by the clock.
+    public var elapsedSeconds: Double { appended < 2 ? 0 : Double(lastNs - firstNs) / 1_000_000_000 }
+    public var isFull: Bool { appended >= maxFrames || elapsedSeconds >= maxSeconds }
+
+    /// The rate the frames really arrived at, or nil while too few have arrived
+    /// to tell. A camera in dim light may deliver 15 pictures a second where 30
+    /// were expected; played back at 30, the loop would run at double speed.
+    public var measuredFrameRate: Double? {
+        guard appended >= 8, elapsedSeconds > 0.2 else { return nil }
+        return FrameRate.label(forMeasured: Double(appended - 1) / elapsedSeconds)
+    }
 
     public init(size: PixelSize, frameRate: Double, maxSeconds: Double) throws {
         self.size = size
         self.frameRate = frameRate
-        maxFrames = max(1, Int(maxSeconds * frameRate))
+        self.maxSeconds = maxSeconds
+        // A cap on memory as well as on time, for sources faster than expected.
+        maxFrames = max(1, Int(maxSeconds * max(frameRate, 60)))
         var created: VTCompressionSession?
         let status = VTCompressionSessionCreate(
             allocator: kCFAllocatorDefault, width: Int32(size.width), height: Int32(size.height),
@@ -87,11 +125,14 @@ public final class ClipRecorder {
     deinit { VTCompressionSessionInvalidate(session) }
 
     /// Add a frame. Returns false once the clip has reached its maximum length.
+    /// `hostNs` is when the frame arrived; it is the present moment when left out.
     @discardableResult
-    public func append(_ buffer: CVPixelBuffer) -> Bool {
+    public func append(_ buffer: CVPixelBuffer, at hostNs: UInt64? = nil) -> Bool {
         guard !isFull else { return false }
         let index = appended
         appended += 1
+        lastNs = max(lastNs, hostNs ?? hostTimeNanoseconds())
+        if index == 0 { firstNs = lastNs }
         thumbnails.append(Thumbnail.make(from: buffer))
         let scale = CMTimeScale(frameRate.rounded())
         VTCompressionSessionEncodeFrame(
@@ -107,7 +148,11 @@ public final class ClipRecorder {
     }
 
     /// Finish compressing and return the clip, with loop points chosen for it.
-    public func finish(name: String, mode: LoopMode = .forward, crossfade: Int = 8) throws -> Clip {
+    /// The clip plays back at the rate its frames really arrived at. Without a
+    /// `crossfade`, the seam fades over about a third of a second.
+    public func finish(name: String, mode: LoopMode = .forward, crossfade: Int? = nil) throws -> Clip {
+        let rate = measuredFrameRate ?? frameRate
+        let crossfade = crossfade ?? max(4, Int((0.35 * rate).rounded()))
         VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
         lock.lock()
         let collected = samples
@@ -121,9 +166,9 @@ public final class ClipRecorder {
         guard !ordered.isEmpty else { throw ClipError.empty }
         let thumbs = Array(thumbnails.prefix(ordered.count))
         let loop = LoopFinder.find(
-            thumbnails: thumbs, minimumLength: min(ordered.count, Int(frameRate)), crossfade: crossfade)
+            thumbnails: thumbs, minimumLength: min(ordered.count, Int(rate)), crossfade: crossfade)
         return Clip(
-            name: name, size: size, frameRate: frameRate, samples: ordered, thumbnails: thumbs, loop: loop,
+            name: name, size: size, frameRate: rate, samples: ordered, thumbnails: thumbs, loop: loop,
             mode: mode)
     }
 }

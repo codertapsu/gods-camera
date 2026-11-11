@@ -254,7 +254,7 @@ public final class CameraEngine: @unchecked Sendable {
         noteRender(since: started)
         if let recorder {
             recorder.append(output)
-            status.recordedSeconds = Double(recorder.frameCount) / recorder.frameRate
+            status.recordedSeconds = recorder.elapsedSeconds
             if recorder.isFull { finishRecording() }
         }
         emit(output, hostTimeNs: frame.hostTimeNs)
@@ -339,12 +339,11 @@ public final class CameraEngine: @unchecked Sendable {
         }
     }
 
-    /// The rate a new clip is labelled with: the source's measured rate when it
-    /// is close to a common one, the configured rate otherwise.
+    /// The rate a recording is expected to arrive at: the source's measured
+    /// rate, once known. The recorder then measures the clip's own rate, which
+    /// is the one the loop is played back at.
     private func recordingRate() -> Double {
-        let measured = status.sourceFps
-        let common: [Double] = [24, 25, 30, 50, 60]
-        return common.first { abs($0 - measured) / $0 < 0.08 } ?? settings.frameRate
+        FrameRate.label(forMeasured: status.sourceFps) ?? settings.frameRate
     }
 
     private func noteRender(since started: UInt64) {

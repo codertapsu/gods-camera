@@ -203,9 +203,34 @@ final class PipelineTests: XCTestCase {
         for number in 0..<frames {
             let buffer = pool.makeBuffer()!
             TestPatternSource.draw(frame: UInt32(number), into: buffer)
-            recorder.append(buffer)
+            // Frames arrive on a steady 30-a-second clock, whatever the test machine's speed.
+            recorder.append(buffer, at: Self.clockStart + UInt64(number) * 1_000_000_000 / 30)
         }
         return try recorder.finish(name: "test")
+    }
+
+    /// An arbitrary moment for frames with made-up arrival times.
+    private static let clockStart: UInt64 = 5_000_000_000
+
+    /// Record `frames` flat grey frames that arrive `rate` times a second.
+    private func recordGrey(
+        frames: Int, arriving rate: Double, expecting nominal: Double, maxSeconds: Double = 30
+    ) throws -> (clip: Clip, accepted: Int) {
+        let size = PixelSize(width: 640, height: 360)
+        let recorder = try ClipRecorder(size: size, frameRate: nominal, maxSeconds: maxSeconds)
+        let pool = PixelBufferPool(size: size)!
+        var accepted = 0
+        for number in 0..<frames {
+            let buffer = pool.makeBuffer()!
+            TestPatternSource.draw(frame: UInt32(number), into: buffer)
+            if recorder.isFull {
+                XCTAssertFalse(recorder.append(buffer))
+            } else {
+                recorder.append(buffer, at: Self.clockStart + UInt64(Double(number) * 1_000_000_000 / rate))
+                accepted += 1
+            }
+        }
+        return (try recorder.finish(name: "grey"), accepted)
     }
 
     func testClipFramesDecodeInAnyOrder() throws {
@@ -226,23 +251,34 @@ final class PipelineTests: XCTestCase {
         XCTAssertNil(decoder.frame(at: -1))
     }
 
-    func testRecorderStopsAtItsLimit() throws {
-        let size = PixelSize(width: 640, height: 360)
-        let recorder = try ClipRecorder(size: size, frameRate: 30, maxSeconds: 0.5)
-        let pool = PixelBufferPool(size: size)!
-        var accepted = 0
-        for number in 0..<40 {
-            let buffer = pool.makeBuffer()!
-            TestPatternSource.draw(frame: UInt32(number), into: buffer)
-            if recorder.frameCount < recorder.maxFrames {
-                recorder.append(buffer)
-                accepted += 1
-            } else {
-                XCTAssertFalse(recorder.append(buffer))
-            }
-        }
-        XCTAssertEqual(accepted, 15)
-        XCTAssertEqual(try recorder.finish(name: "limit").frameCount, 15)
+    func testRecorderStopsAfterItsTimeLimit() throws {
+        // Half a second at 30 frames a second: the frame that arrives at 0.5 s is the last.
+        let recorded = try recordGrey(frames: 40, arriving: 30, expecting: 30, maxSeconds: 0.5)
+        XCTAssertEqual(recorded.accepted, 16)
+        XCTAssertEqual(recorded.clip.frameCount, 16)
+    }
+
+    func testRecorderStopsAtItsFrameLimitWhenFramesFloodIn() throws {
+        // 600 frames a second for half a second would be 300 frames; the cap is
+        // what a 60-a-second camera delivers in that time.
+        let recorded = try recordGrey(frames: 200, arriving: 600, expecting: 30, maxSeconds: 0.5)
+        XCTAssertEqual(recorded.accepted, 30)
+        XCTAssertEqual(recorded.clip.frameCount, 30)
+    }
+
+    func testRecorderLabelsAClipWithTheRateItsFramesArrivedAt() throws {
+        // A camera in dim light: 15 pictures a second where 30 were expected.
+        let slow = try recordGrey(frames: 75, arriving: 15, expecting: 30).clip
+        XCTAssertEqual(slow.frameRate, 15)
+        XCTAssertEqual(slow.duration, 5, accuracy: 0.001, "five seconds recorded, five seconds played")
+        XCTAssertEqual(slow.loop.crossfade, 5, "about a third of a second at 15 frames a second")
+        XCTAssertGreaterThanOrEqual(slow.loop.length, 50, "the loop keeps most of the recording")
+
+        // A rate close to a common one is called by it; an odd one is kept.
+        XCTAssertEqual(try recordGrey(frames: 60, arriving: 29.6, expecting: 30).clip.frameRate, 30)
+        XCTAssertEqual(try recordGrey(frames: 60, arriving: 17.3, expecting: 30).clip.frameRate, 17.3, accuracy: 0.11)
+        // Too few frames to tell: the expected rate stands.
+        XCTAssertEqual(try recordGrey(frames: 5, arriving: 15, expecting: 30).clip.frameRate, 30)
     }
 
     func testLibrarySavesAndLoadsAClipExactly() throws {

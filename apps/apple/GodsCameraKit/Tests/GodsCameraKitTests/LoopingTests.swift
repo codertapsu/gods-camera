@@ -23,15 +23,46 @@ final class LoopingTests: XCTestCase {
         XCTAssertLessThanOrEqual(loop.end, thumbnails.count)
     }
 
-    func testFinderPrefersTheStillPartOfAClip() {
-        // Frames 0..<40 flicker; frames 40..<120 are perfectly still.
+    func testFinderSkipsADisturbanceAtTheStartAndTheEnd() {
+        // The first 15 and the last 10 frames flicker, as when a hand reaches for
+        // the Record and Stop buttons; the frames between are perfectly still.
         var thumbnails: [[UInt8]] = []
-        for frame in 0..<120 {
-            let level: UInt8 = frame < 40 ? (frame % 2 == 0 ? 40 : 200) : 120
+        for frame in 0..<150 {
+            let disturbed = frame < 15 || frame >= 140
+            let level: UInt8 = disturbed ? (frame % 2 == 0 ? 40 : 200) : 120
             thumbnails.append([UInt8](repeating: level, count: Thumbnail.count))
         }
-        let loop = LoopFinder.find(thumbnails: thumbnails, minimumLength: 20, crossfade: 4)
-        XCTAssertGreaterThanOrEqual(loop.start, 40, "the loop should avoid the flickering part")
+        let loop = LoopFinder.find(thumbnails: thumbnails, minimumLength: 30, crossfade: 8)
+        XCTAssertGreaterThanOrEqual(loop.start, 15, "the loop should start after the disturbance")
+        XCTAssertLessThanOrEqual(loop.end, 140, "the loop should end before the disturbance")
+    }
+
+    func testSeamMismatchTellsAMatchingEndFromAMovedOne() {
+        func flat(_ level: UInt8) -> [UInt8] { [UInt8](repeating: level, count: Thumbnail.count) }
+        // The picture ends as it began.
+        let steady = (0..<60).map { _ in flat(100) }
+        let points = LoopPoints(start: 8, end: 60, crossfade: 8)
+        XCTAssertEqual(LoopFinder.seamMismatch(thumbnails: steady, points: points), 0)
+        // The picture ends 30 levels brighter than it began.
+        let moved = (0..<60).map { flat($0 < 30 ? 100 : 130) }
+        XCTAssertEqual(LoopFinder.seamMismatch(thumbnails: moved, points: points), 30)
+        XCTAssertGreaterThan(30, LoopFinder.visibleSeam)
+        // Without a cross-fade, the last frame is compared with the first.
+        XCTAssertEqual(
+            LoopFinder.seamMismatch(thumbnails: moved, points: LoopPoints(start: 0, end: 60, crossfade: 0)), 30)
+    }
+
+    func testFinderKeepsMostOfASlowlyChangingClip() {
+        // Brightness drifts steadily, as when the light or the pose changes a little
+        // over five seconds. The shortest loop would hide the drift best, but
+        // someone who records five seconds wants about five seconds back.
+        let thumbnails: [[UInt8]] = (0..<150).map { frame in
+            [UInt8](repeating: UInt8(100 + frame / 5), count: Thumbnail.count)
+        }
+        let loop = LoopFinder.find(thumbnails: thumbnails, minimumLength: 30, crossfade: 8)
+        XCTAssertGreaterThanOrEqual(loop.length, 90, "the loop keeps most of the recording")
+        XCTAssertLessThanOrEqual(loop.start, 8 + 150 / 6)
+        XCTAssertGreaterThanOrEqual(loop.end, 150 - 150 / 6)
     }
 
     func testFinderHandlesClipsTooShortToChoose() {
