@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 mod face;
+mod paired;
+
+use paired::HubAccess;
 
 #[derive(Parser)]
 #[command(name = "gc", about = "God's Camera development tool")]
@@ -18,7 +21,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run the development hub on loopback.
+    /// Run the hub: on loopback for development, and with --lan also on the local network for paired devices.
     Hub {
         #[arg(long, default_value = "127.0.0.1:47800")]
         addr: SocketAddr,
@@ -31,12 +34,42 @@ enum Command {
         /// The program that reads text from pictures, such as `gc-ocr`. Without it the hub refuses document jobs.
         #[arg(long, env = "GC_OCR")]
         ocr: Option<PathBuf>,
+        /// Also listen on the local network, over TLS. The hub's certificate is kept in the data folder.
+        #[arg(long)]
+        lan: bool,
+        /// The port of the network listener.
+        #[arg(long, default_value_t = 47801, requires = "lan")]
+        lan_port: u16,
+        /// Show a six-digit code at the start, so that one device can pair.
+        #[arg(long, requires = "lan")]
+        pair: bool,
+        /// The hub's name, as a device shows it.
+        #[arg(long, default_value = "gc hub", requires = "lan")]
+        name: String,
+    },
+    /// Pair with a hub on the network, as a device does, and save what is needed to use it afterwards.
+    Pair {
+        /// Where the hub's network listener is, as host:port.
+        #[arg(long)]
+        address: String,
+        /// The six digits the hub shows.
+        #[arg(long, env = "GC_PAIR_CODE")]
+        code: String,
+        /// The name the hub lists this device under.
+        #[arg(long)]
+        name: String,
+        /// The file to save the pairing in. It holds this device's token: keep it private.
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Turn a folder of photos into one document: upload them, read and merge the text on the hub, fetch the result.
     Scan {
         folder: PathBuf,
         #[arg(long, default_value = "http://127.0.0.1:47800")]
         hub: String,
+        /// Use the hub as a paired device: the file written by `gc pair`.
+        #[arg(long, conflicts_with = "hub")]
+        paired: Option<PathBuf>,
         /// Folder for document.md, document.txt and document.json.
         #[arg(long, default_value = ".")]
         out: PathBuf,
@@ -46,6 +79,9 @@ enum Command {
         folder: PathBuf,
         #[arg(long, default_value = "http://127.0.0.1:47800")]
         hub: String,
+        /// Use the hub as a paired device: the file written by `gc pair`.
+        #[arg(long, conflicts_with = "hub")]
+        paired: Option<PathBuf>,
         /// Resume into an existing upload instead of creating one.
         #[arg(long)]
         upload_id: Option<String>,
@@ -144,36 +180,57 @@ enum Command {
 }
 
 /// The hub token comes from the environment so it never appears in shell history.
-fn token() -> Result<String> {
+pub(crate) fn token() -> Result<String> {
     std::env::var("GC_HUB_TOKEN").context("set GC_HUB_TOKEN to the hub token (16+ characters)")
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // The HTTP client and the hub share one TLS library.
+    gc_link::tls::install_crypto_provider();
     match Cli::parse().command {
-        Command::Hub { addr, data_dir, max_file_mb, ocr } => {
+        Command::Hub { addr, data_dir, max_file_mb, ocr, lan, lan_port, pair, name } => {
             if let Some(program) = &ocr {
                 if !program.is_file() {
                     bail!("the text reader {} does not exist", program.display());
                 }
             }
+            let lan = match lan {
+                true => Some(gc_link::LanConfig {
+                    bind: SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, lan_port)),
+                    identity_pem: paired::hub_identity(&data_dir, &name)?,
+                    name,
+                }),
+                false => None,
+            };
             let config = HubConfig {
                 token: token()?,
                 data_dir,
                 max_file_bytes: max_file_mb << 20,
                 allowed_origins: vec![],
                 ocr_command: ocr.map(|program| vec![program.to_string_lossy().into_owned()]),
+                lan,
             };
-            let listener = gc_link::bind_dev(addr, &config).await?;
-            println!("hub (development mode) listening on http://{}", listener.local_addr()?);
-            gc_link::serve(listener, config).await?;
+            let bound = gc_link::Hub::bind(addr, config).await?;
+            let hub = bound.hub();
+            println!("hub (development mode) listening on http://{}", bound.local_addr()?);
+            if let (Some(address), Some(fingerprint)) = (bound.lan_addr(), hub.fingerprint()) {
+                println!("hub (paired devices) listening on https://{address}");
+                println!("certificate fingerprint {fingerprint}");
+            }
+            if pair {
+                tokio::spawn(paired::show_code(hub));
+            }
+            bound.serve().await?;
         }
-        Command::Upload { folder, hub, upload_id } => {
+        Command::Pair { address, code, name, out } => paired::pair(&address, &code, &name, &out).await?,
+        Command::Upload { folder, hub, paired, upload_id } => {
+            let hub = HubAccess::open(hub, paired.as_deref())?;
             let (id, _) = upload(&folder, &hub, upload_id).await?;
             let job = start_job(&hub, "inventory", &id).await?;
             println!("job {} {}: {}", job.id, job.status, job.result.unwrap_or_default());
         }
-        Command::Scan { folder, hub, out } => scan(&folder, &hub, &out).await?,
+        Command::Scan { folder, hub, paired, out } => scan(&folder, &HubAccess::open(hub, paired.as_deref())?, &out).await?,
         Command::VerifyPacks { manifests, store } => verify_packs(&manifests, &store)?,
         Command::MergeOcr { ocr, out, truth } => merge_ocr(&ocr, out.as_deref(), truth.as_deref())?,
         Command::Swap { packs, source, target, out, model, mask, all, no_colour_match } => {
@@ -227,7 +284,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn expect_ok(res: reqwest::Response) -> Result<reqwest::Response> {
+pub(crate) async fn expect_ok(res: reqwest::Response) -> Result<reqwest::Response> {
     if res.status().is_success() {
         return Ok(res);
     }
@@ -236,11 +293,11 @@ async fn expect_ok(res: reqwest::Response) -> Result<reqwest::Response> {
 }
 
 /// Start a job on the hub.
-async fn start_job(hub: &str, kind: &str, upload_id: &str) -> Result<Job> {
+async fn start_job(hub: &HubAccess, kind: &str, upload_id: &str) -> Result<Job> {
     let job = expect_ok(
-        reqwest::Client::new()
-            .post(format!("{hub}/v1/jobs"))
-            .bearer_auth(token()?)
+        hub.http
+            .post(format!("{}/v1/jobs", hub.base))
+            .bearer_auth(&hub.token)
             .json(&serde_json::json!({ "kind": kind, "upload_id": upload_id }))
             .send()
             .await?,
@@ -252,12 +309,11 @@ async fn start_job(hub: &str, kind: &str, upload_id: &str) -> Result<Job> {
 }
 
 /// Upload a folder of photos, have the hub read and merge their text, and save the document.
-async fn scan(folder: &Path, hub: &str, out: &Path) -> Result<()> {
+async fn scan(folder: &Path, access: &HubAccess, out: &Path) -> Result<()> {
     let started = Instant::now();
-    let (upload_id, files) = upload(folder, hub, None).await?;
-    let mut job = start_job(hub, "document", &upload_id).await?;
-    let http = reqwest::Client::new();
-    let token = token()?;
+    let (upload_id, files) = upload(folder, access, None).await?;
+    let mut job = start_job(access, "document", &upload_id).await?;
+    let (hub, http, token) = (&access.base, &access.http, &access.token);
     let mut shown = -1i32;
     while job.status == "queued" || job.status == "running" {
         let percent = (job.progress * 100.0) as i32;
@@ -266,7 +322,7 @@ async fn scan(folder: &Path, hub: &str, out: &Path) -> Result<()> {
             shown = percent;
         }
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-        job = expect_ok(http.get(format!("{hub}/v1/jobs/{}", job.id)).bearer_auth(&token).send().await?).await?.json().await?;
+        job = expect_ok(http.get(format!("{hub}/v1/jobs/{}", job.id)).bearer_auth(token).send().await?).await?.json().await?;
     }
     if job.status != "done" {
         bail!("the job failed: {}", job.error.unwrap_or_else(|| "no reason given".into()));
@@ -274,7 +330,7 @@ async fn scan(folder: &Path, hub: &str, out: &Path) -> Result<()> {
     std::fs::create_dir_all(out)?;
     for name in &job.files {
         let url = format!("{hub}/v1/jobs/{}/files/{name}", job.id);
-        let bytes = expect_ok(http.get(url).bearer_auth(&token).send().await?).await?.bytes().await?;
+        let bytes = expect_ok(http.get(url).bearer_auth(token).send().await?).await?.bytes().await?;
         std::fs::write(out.join(name), &bytes)?;
     }
     println!(
@@ -287,9 +343,8 @@ async fn scan(folder: &Path, hub: &str, out: &Path) -> Result<()> {
 }
 
 /// Upload every file in a folder, resuming partial files. Returns the upload's id and the number of files.
-async fn upload(folder: &Path, hub: &str, upload_id: Option<String>) -> Result<(String, usize)> {
-    let token = token()?;
-    let http = reqwest::Client::new();
+async fn upload(folder: &Path, access: &HubAccess, upload_id: Option<String>) -> Result<(String, usize)> {
+    let (hub, http, token) = (&access.base, &access.http, &access.token);
     let mut names: Vec<PathBuf> = std::fs::read_dir(folder)
         .with_context(|| format!("cannot read {}", folder.display()))?
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -298,11 +353,11 @@ async fn upload(folder: &Path, hub: &str, upload_id: Option<String>) -> Result<(
     names.sort();
 
     let existing: UploadInfo = match upload_id {
-        Some(id) => expect_ok(http.get(format!("{hub}/v1/uploads/{id}")).bearer_auth(&token).send().await?)
+        Some(id) => expect_ok(http.get(format!("{hub}/v1/uploads/{id}")).bearer_auth(token).send().await?)
             .await?
             .json()
             .await?,
-        None => expect_ok(http.post(format!("{hub}/v1/uploads")).bearer_auth(&token).send().await?)
+        None => expect_ok(http.post(format!("{hub}/v1/uploads")).bearer_auth(token).send().await?)
             .await?
             .json()
             .await?,
@@ -324,7 +379,7 @@ async fn upload(folder: &Path, hub: &str, upload_id: Option<String>) -> Result<(
         sent += rest.len() as u64;
         let url = format!("{hub}/v1/uploads/{}/files/{name}?offset={stored}", existing.id);
         let info: FileInfo =
-            expect_ok(http.put(url).bearer_auth(&token).body(rest).send().await?).await?.json().await?;
+            expect_ok(http.put(url).bearer_auth(token).body(rest).send().await?).await?.json().await?;
         if info.bytes != data.len() as u64 {
             bail!("{name}: the hub stored {} of {} bytes", info.bytes, data.len());
         }

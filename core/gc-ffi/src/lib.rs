@@ -370,28 +370,92 @@ impl FaceEnroller {
     }
 }
 
-/// The hub: the local server that phones and tablets send their work to.
+/// The network side of the hub: where paired phones and tablets reach it.
+#[derive(Clone, uniffi::Record)]
+pub struct HubLan {
+    /// The port to listen on, on every network interface of this computer.
+    /// 0 lets the system pick one; `HubServer::lan_port` then says which.
+    pub port: u16,
+    /// The hub's certificate and private key, as `generate_hub_identity`
+    /// returns them. Keep the same one between runs, somewhere only this
+    /// app can read: paired devices trust that certificate only.
+    pub identity_pem: String,
+    /// The hub's name as a person knows it, such as the computer's name. A
+    /// device shows it when it finds the hub.
+    pub name: String,
+}
+
+/// A phone or tablet that has paired with the hub.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PairedDevice {
+    pub id: String,
+    pub name: String,
+    /// When it paired, in seconds since 1970.
+    pub paired_at: u64,
+    /// When it last made a request, in seconds since 1970.
+    pub last_seen: u64,
+}
+
+impl From<gc_link::DeviceInfo> for PairedDevice {
+    fn from(device: gc_link::DeviceInfo) -> Self {
+        Self { id: device.id, name: device.name, paired_at: device.paired_at, last_seen: device.last_seen }
+    }
+}
+
+/// How the last pairing code stopped being good.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PairingOutcome {
+    /// A device paired.
+    Paired,
+    /// Too many wrong codes were tried. Show a new code.
+    TooManyAttempts,
+    /// Nobody paired in time.
+    Expired,
+    /// The app closed pairing.
+    Closed,
+}
+
+/// Where pairing stands, for the app to show.
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PairingState {
+    /// True while a code is good.
+    pub open: bool,
+    /// The six digits to show, while a code is good.
+    pub code: Option<String>,
+    pub seconds_left: u32,
+    /// Wrong codes that may still be tried before this code is thrown away.
+    pub attempts_left: u32,
+    /// How the last code ended. Nothing while a code is good, or before the first.
+    pub ended: Option<PairingOutcome>,
+    /// The device that paired last, since the hub started.
+    pub paired: Option<PairedDevice>,
+}
+
+/// The hub: the server that phones and tablets send their work to.
 ///
-/// This is development mode. It listens only on this computer's own loopback
-/// address, so a device reaches it through a USB cable with `adb reverse`.
+/// It always listens on this computer's own loopback address, where a device
+/// reaches it through a USB cable with `adb reverse` and presents the hub's
+/// token. Started with `start_with_lan`, it also listens on the local network
+/// over TLS, where a device first pairs with a six-digit code and from then on
+/// presents a token of its own.
 #[derive(uniffi::Object)]
 pub struct HubServer {
     // Dropping the runtime stops the server's threads.
     _runtime: tokio::runtime::Runtime,
     stop: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     address: String,
+    lan_port: Option<u16>,
+    hub: gc_link::Hub,
 }
 
-#[uniffi::export]
 impl HubServer {
-    /// Start the hub on `port` of the loopback address.
-    ///
-    /// `token` is what clients must present, at least 16 characters. Uploads
-    /// and results are kept under `data_dir`. `ocr_command` is the program
-    /// that reads text from pictures, with any leading arguments; when it is
-    /// empty the hub refuses document jobs.
-    #[uniffi::constructor]
-    pub fn start(port: u16, token: String, data_dir: String, ocr_command: Vec<String>) -> Result<Arc<Self>, CoreError> {
+    fn launch(
+        port: u16,
+        token: String,
+        data_dir: String,
+        ocr_command: Vec<String>,
+        lan: Option<HubLan>,
+    ) -> Result<Arc<Self>, CoreError> {
         let failed = |message: String| CoreError::Failed { message };
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -405,23 +469,123 @@ impl HubServer {
             max_file_bytes: 64 << 20,
             allowed_origins: Vec::new(),
             ocr_command: (!ocr_command.is_empty()).then_some(ocr_command),
+            lan: lan.map(|lan| gc_link::LanConfig {
+                // Every interface, IPv6 and IPv4 alike.
+                bind: std::net::SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, lan.port)),
+                identity_pem: lan.identity_pem,
+                name: lan.name,
+            }),
         };
         let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-        let listener = runtime.block_on(gc_link::bind_dev(address, &config)).map_err(|e| failed(e.to_string()))?;
-        let bound = listener.local_addr().map_err(|e| failed(e.to_string()))?;
+        let bound = runtime.block_on(gc_link::Hub::bind(address, config)).map_err(|e| failed(e.to_string()))?;
+        let local = bound.local_addr().map_err(|e| failed(e.to_string()))?;
+        let lan_port = bound.lan_addr().map(|address| address.port());
+        let hub = bound.hub();
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
         runtime.spawn(async move {
-            let _ = gc_link::serve_until(listener, config, async {
-                let _ = stopped.await;
-            })
-            .await;
+            let _ = bound
+                .serve_until(async {
+                    let _ = stopped.await;
+                })
+                .await;
         });
-        Ok(Arc::new(Self { _runtime: runtime, stop: Mutex::new(Some(stop)), address: format!("http://{bound}") }))
+        Ok(Arc::new(Self {
+            _runtime: runtime,
+            stop: Mutex::new(Some(stop)),
+            address: format!("http://{local}"),
+            lan_port,
+            hub,
+        }))
+    }
+}
+
+#[uniffi::export]
+impl HubServer {
+    /// Start the hub on `port` of the loopback address only.
+    ///
+    /// `token` is what clients must present, at least 16 characters. Uploads
+    /// and results are kept under `data_dir`. `ocr_command` is the program
+    /// that reads text from pictures, with any leading arguments; when it is
+    /// empty the hub refuses document jobs.
+    #[uniffi::constructor]
+    pub fn start(port: u16, token: String, data_dir: String, ocr_command: Vec<String>) -> Result<Arc<Self>, CoreError> {
+        Self::launch(port, token, data_dir, ocr_command, None)
     }
 
-    /// Where the hub listens, as a URL.
+    /// Start the hub on loopback, as `start` does, and on the local network
+    /// as well, so that devices can pair and then reach it without a cable.
+    #[uniffi::constructor]
+    pub fn start_with_lan(
+        port: u16,
+        token: String,
+        data_dir: String,
+        ocr_command: Vec<String>,
+        lan: HubLan,
+    ) -> Result<Arc<Self>, CoreError> {
+        Self::launch(port, token, data_dir, ocr_command, Some(lan))
+    }
+
+    /// Where the hub listens on loopback, as a URL.
     pub fn address(&self) -> String {
         self.address.clone()
+    }
+
+    /// The port of the network listener, when the hub has one. This is what
+    /// the app advertises for devices to find.
+    pub fn lan_port(&self) -> Option<u16> {
+        self.lan_port
+    }
+
+    /// The SHA-256 of the hub's certificate as 64 hexadecimal digits, when
+    /// the hub listens on the network.
+    pub fn identity_fingerprint(&self) -> Option<String> {
+        self.hub.fingerprint()
+    }
+
+    /// Show a new six-digit code and return it. It is good for `seconds`
+    /// (0 means five minutes), for one device, and for a few wrong tries. A
+    /// code that was showing stops working.
+    pub fn open_pairing(&self, seconds: u32) -> Result<String, CoreError> {
+        let ttl = match seconds {
+            0 => gc_link::DEFAULT_PAIRING_TTL,
+            seconds => std::time::Duration::from_secs(seconds.into()),
+        };
+        let code = self.hub.open_pairing(ttl).map_err(|e| CoreError::Failed { message: e.to_string() })?;
+        Ok(code.digits().to_string())
+    }
+
+    /// Stop taking the code that is showing, if any.
+    pub fn close_pairing(&self) {
+        self.hub.close_pairing();
+    }
+
+    /// Where pairing stands. Cheap enough to ask a few times a second.
+    pub fn pairing_status(&self) -> PairingState {
+        let status = self.hub.pairing_status();
+        PairingState {
+            open: status.open,
+            code: status.code.map(|code| code.digits().to_string()),
+            seconds_left: status.seconds_left.min(u32::MAX.into()) as u32,
+            attempts_left: status.attempts_left,
+            ended: status.ended.map(|ended| match ended {
+                gc_link::PairingEnd::Paired => PairingOutcome::Paired,
+                gc_link::PairingEnd::TooManyAttempts => PairingOutcome::TooManyAttempts,
+                gc_link::PairingEnd::Expired => PairingOutcome::Expired,
+                gc_link::PairingEnd::Closed => PairingOutcome::Closed,
+            }),
+            paired: status.paired.map(PairedDevice::from),
+        }
+    }
+
+    /// The paired devices, oldest first.
+    pub fn devices(&self) -> Vec<PairedDevice> {
+        self.hub.devices().into_iter().map(PairedDevice::from).collect()
+    }
+
+    /// Remove a paired device. Its token stops working at once. Returns false
+    /// when there is no such device.
+    pub fn revoke_device(&self, id: String) -> Result<bool, CoreError> {
+        self.hub.revoke_device(&id).map_err(|e| CoreError::Failed { message: e.to_string() })
     }
 
     /// Stop taking requests. Requests in hand are finished first.
@@ -430,6 +594,28 @@ impl HubServer {
             let _ = stop.send(());
         }
     }
+}
+
+/// Make a new identity for the hub's network listener: a certificate and its
+/// private key, in PEM form. `name` goes into the certificate; the computer's
+/// name does well.
+///
+/// The app makes one on first use and stores it where only it can read it,
+/// then passes it to `HubServer::start_with_lan` every time. Making another
+/// cuts off every paired device.
+#[uniffi::export]
+pub fn generate_hub_identity(name: String) -> Result<String, CoreError> {
+    let identity = gc_link::gc_pair::HubIdentity::generate(&name).map_err(|e| CoreError::Failed { message: e.to_string() })?;
+    Ok(identity.to_pem().to_string())
+}
+
+/// The SHA-256 of an identity's certificate, as 64 hexadecimal digits. Fails
+/// when the text is not an identity from `generate_hub_identity`.
+#[uniffi::export]
+pub fn hub_identity_fingerprint(identity_pem: String) -> Result<String, CoreError> {
+    let identity =
+        gc_link::gc_pair::HubIdentity::from_pem(&identity_pem).map_err(|e| CoreError::Failed { message: e.to_string() })?;
+    Ok(identity.fingerprint())
 }
 
 /// The version of the core, for diagnostics.

@@ -1,0 +1,30 @@
+[package]
+name = "gc-pair"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = ["hub"]
+# What only the hub needs: making its TLS identity and keeping the list of
+# paired devices. A device leaves this out and stays small.
+hub = ["dep:rcgen", "dep:rustls-pki-types", "dep:time", "dep:serde", "dep:serde_json"]
+
+[dependencies]
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+getrandom = "0.4.3"
+hex = "0.4.3"
+hkdf = "0.13.0"
+hmac = "0.13.0"
+sha2 = "0.11.1"
+spake2 = "0.4.0"
+subtle = "2.6.1"
+thiserror = "2.0.21"
+zeroize = "1.9.1"
+
+rcgen = { version = "0.14.10", optional = true }
+rustls-pki-types = { version = "1.16.0", features = ["std"], optional = true }
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+serde_json = { version = "1.0.154", optional = true }
+time = { version = "0.3.47", default-features = false, features = ["std"], optional = true }
