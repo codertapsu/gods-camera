@@ -18,3 +18,9 @@ core/gc-infer/tests/golden/*.png
 apps/apple/GodsCameraKit/Frameworks/
 apps/apple/GodsCameraKit/Sources/GCCore/gc_ffi.swift
 apps/apple/tools/gc-ocr/.build/
+apps/android/.gradle/
+apps/android/local.properties
+apps/android/app/build/
+apps/android/build/
+apps/android/app/src/main/jniLibs/
+apps/android/.kotlin/

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">God\'s Camera</string>
+    <string name="connection">Kết nối với máy Mac</string>
+    <string name="hub_address">Địa chỉ</string>
+    <string name="hub_token">Mã truy cập</string>
+    <string name="check_connection">Kiểm tra</string>
+    <string name="connected">Đã kết nối với máy Mac.</string>
+    <string name="not_connected">Chưa kết nối.</string>
+    <string name="wrong_token">Máy Mac có trả lời nhưng không chấp nhận mã truy cập.</string>
+    <string name="cannot_reach">Không liên lạc được với máy Mac ở địa chỉ đó.</string>
+    <string name="pages">Các trang</string>
+    <string name="no_pages">Chưa có trang nào. Hãy quét tài liệu hoặc thêm hình.</string>
+    <plurals name="page_count">
+        <item quantity="other">%d trang</item>
+    </plurals>
+    <string name="scan_document">Quét tài liệu</string>
+    <string name="add_pictures">Thêm hình</string>
+    <string name="clear_pages">Xoá tất cả</string>
+    <string name="send_to_mac">Gửi sang máy Mac</string>
+    <string name="uploading">Đang gửi trang %1$d trên %2$d…</string>
+    <string name="reading">Máy Mac đang đọc chữ… %d %%</string>
+    <string name="result">Văn bản</string>
+    <string name="copy">Sao chép</string>
+    <string name="share">Chia sẻ</string>
+    <string name="copied">Đã sao chép.</string>
+    <string name="start_over">Làm lại từ đầu</string>
+    <string name="failed">Không thực hiện được: %s</string>
+    <string name="scanner_unavailable">Thiết bị này không có trình quét tài liệu.</string>
+    <string name="result_summary">%1$d hình, đọc được %2$d dòng, bỏ %3$d dòng lặp lại.</string>
+    <string name="core_version">Lõi %s</string>
+</resources>

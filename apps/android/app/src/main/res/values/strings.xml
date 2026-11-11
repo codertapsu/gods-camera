@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">God\'s Camera</string>
+    <string name="connection">Connection to the Mac</string>
+    <string name="hub_address">Address</string>
+    <string name="hub_token">Token</string>
+    <string name="check_connection">Check</string>
+    <string name="connected">Connected to the Mac.</string>
+    <string name="not_connected">Not connected.</string>
+    <string name="wrong_token">The Mac answered, but did not accept the token.</string>
+    <string name="cannot_reach">The Mac cannot be reached at that address.</string>
+    <string name="pages">Pages</string>
+    <string name="no_pages">No pages yet. Scan a document or add pictures.</string>
+    <plurals name="page_count">
+        <item quantity="one">%d page</item>
+        <item quantity="other">%d pages</item>
+    </plurals>
+    <string name="scan_document">Scan a document</string>
+    <string name="add_pictures">Add pictures</string>
+    <string name="clear_pages">Remove all</string>
+    <string name="send_to_mac">Send to the Mac</string>
+    <string name="uploading">Sending page %1$d of %2$d…</string>
+    <string name="reading">The Mac is reading the text… %d %%</string>
+    <string name="result">Text</string>
+    <string name="copy">Copy</string>
+    <string name="share">Share</string>
+    <string name="copied">Copied.</string>
+    <string name="start_over">Start over</string>
+    <string name="failed">That did not work: %s</string>
+    <string name="scanner_unavailable">The document scanner is not available on this device.</string>
+    <string name="result_summary">%1$d pictures, %2$d lines read, %3$d repeated lines removed.</string>
+    <string name="core_version">Core %s</string>
+</resources>
