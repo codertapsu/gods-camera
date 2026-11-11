@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use gc_align::Affine;
 
-use crate::text::{edit_distance, is_fragment_of, normalise, similarity};
+use crate::text::{edit_distance, normalise};
 use crate::{OcrLine, OcrPage, PlacedLine};
 
 /// Where every photo sits.
@@ -48,8 +48,15 @@ fn distance(a: [f32; 2], b: [f32; 2]) -> f32 {
 }
 
 /// Which ends of a line a photo's edges run through: left, right, and top or bottom.
+///
+/// A line cut by the left or right edge does not always reach it: the letter
+/// the edge slices is often not read at all, so the text stops up to a
+/// letter's width short. A line that ends within most of a line height of the
+/// edge is therefore treated as cut. A whole line that happens to end there
+/// loses nothing by it: it is only passed over when a better reading exists.
 fn cut_ends(quad: &[f32; 8], width: f32, height: f32) -> [bool; 3] {
-    let (edge_x, edge_y) = (width * 0.012, height * 0.012);
+    let line_height = self::height(quad);
+    let (edge_x, edge_y) = ((width * 0.012).max(0.8 * line_height), height * 0.012);
     let xs = [quad[0], quad[2], quad[4], quad[6]];
     let ys = [quad[1], quad[3], quad[5], quad[7]];
     [
@@ -101,20 +108,32 @@ fn tail(text: &str, count: usize) -> String {
     text.chars().skip(length.saturating_sub(count)).collect()
 }
 
-/// Points that two photos both show, as (point in `a`, point in `b`, line height in `a`).
+/// A point that two photos both show.
+#[derive(Clone, Copy)]
+struct Shared {
+    in_a: [f32; 2],
+    in_b: [f32; 2],
+    /// How far apart the two may land and still count as agreeing, in pixels of `a`.
+    slack: f32,
+}
+
+/// Points that two photos both show: first the ones known exactly, then the
+/// ones judged from counting characters.
 ///
 /// A line both photos show whole gives its centre. A line that one photo
 /// cuts gives the end both can see: a piece cut off on its right still starts
-/// where the whole line starts.
-fn shared_points(a: &[Landmark], b: &[Landmark]) -> Vec<([f32; 2], [f32; 2], f32)> {
+/// where the whole line starts. Two pieces that overlap give points that are
+/// only roughly known, kept apart so they are used only when needed.
+fn shared_points(a: &[Landmark], b: &[Landmark]) -> (Vec<Shared>, Vec<Shared>) {
     let mut points = Vec::new();
+    let mut rough = Vec::new();
     let whole = |mark: &Landmark| !mark.cut_left && !mark.cut_right;
     let by_text: HashMap<&str, &Landmark> =
         a.iter().filter(|mark| mark.unique && mark.text.chars().count() >= 8).map(|mark| (mark.text.as_str(), mark)).collect();
     for mark in b.iter().filter(|mark| mark.unique) {
         if let Some(same) = by_text.get(mark.text.as_str()) {
             if whole(mark) == whole(same) {
-                points.push((same.centre, mark.centre, same.height));
+                points.push(Shared { in_a: same.centre, in_b: mark.centre, slack: 0.7 * same.height });
             }
         }
     }
@@ -137,19 +156,97 @@ fn shared_points(a: &[Landmark], b: &[Landmark]) -> Vec<([f32; 2], [f32; 2], f32
             });
             if let (Some(line), None) = (matches.next(), matches.next()) {
                 let (in_full, in_cut) = if piece.cut_right { (line.left, piece.left) } else { (line.right, piece.right) };
-                points.push(if cut_is_b { (in_full, in_cut, line.height) } else { (in_cut, in_full, piece.height) });
+                points.push(if cut_is_b {
+                    Shared { in_a: in_full, in_b: in_cut, slack: 0.7 * line.height }
+                } else {
+                    Shared { in_a: in_cut, in_b: in_full, slack: 0.7 * piece.height }
+                });
             }
         }
     };
     pieces(b, a, true);
     pieces(a, b, false);
-    points
+
+    // Two pieces of one line, where neither photo shows it whole: the end of
+    // the left piece and the start of the right piece read the same. Each
+    // piece's cut end is a real place, and where it falls along the other
+    // piece is judged from the count of characters. That is only roughly
+    // right, since letters differ in width, so these points get more slack.
+    let along = |mark: &Landmark, characters: f32| {
+        let t = characters / mark.text.chars().count().max(1) as f32;
+        [mark.left[0] + (mark.right[0] - mark.left[0]) * t, mark.left[1] + (mark.right[1] - mark.left[1]) * t]
+    };
+    let mut joined = |lefts: &[Landmark], rights: &[Landmark], left_is_a: bool| {
+        let rights: Vec<(&Landmark, Vec<char>)> =
+            rights.iter().filter(|mark| mark.cut_left).map(|mark| (mark, mark.text.chars().collect())).collect();
+        for left in lefts.iter().filter(|mark| mark.cut_right) {
+            let text: Vec<char> = left.text.chars().collect();
+            let mut matches = rights.iter().filter_map(|(right, other)| {
+                // A short overlap could be chance.
+                overlap_of(&text, other, 8, true).map(|found| (*right, other.len(), found))
+            });
+            if let (Some((right, right_length, found)), None) = (matches.next(), matches.next()) {
+                // The left piece's end, seen in the right piece; and the right piece's start, seen in the left.
+                let pairs = [
+                    (left.right, along(right, (found.trim_right + found.size + found.trim_left).min(right_length) as f32)),
+                    (along(left, text.len().saturating_sub(found.trim_left + found.size + found.trim_right) as f32), right.left),
+                ];
+                for (in_left, in_right) in pairs {
+                    rough.push(if left_is_a {
+                        Shared { in_a: in_left, in_b: in_right, slack: 1.3 * left.height }
+                    } else {
+                        Shared { in_a: in_right, in_b: in_left, slack: 1.3 * right.height }
+                    });
+                }
+            }
+        }
+    };
+    joined(a, b, true);
+    joined(b, a, false);
+    (points, rough)
+}
+
+/// The transform most of `points` agree with, and how many do.
+fn consensus(points: &[Shared]) -> Option<(Affine, usize)> {
+    if points.len() < 2 {
+        return None;
+    }
+    // Two points fix a transform; the best one is the one most other points agree with.
+    let agrees = |t: &Affine, point: &Shared| distance(t.apply(point.in_b), point.in_a) < point.slack;
+    let mut best: Option<(Affine, usize)> = None;
+    for first in 0..points.len() {
+        for second in first + 1..points.len() {
+            let (p, q) = (&points[first], &points[second]);
+            // Points too close together give a poor estimate.
+            if distance(p.in_b, q.in_b) < 2.0 * p.slack {
+                continue;
+            }
+            let Ok(t) = gc_align::estimate_similarity(&[p.in_b, q.in_b], &[p.in_a, q.in_a]) else { continue };
+            if !(0.5..=2.0).contains(&t.scale()) {
+                continue;
+            }
+            let count = points.iter().filter(|point| agrees(&t, point)).count();
+            if best.as_ref().is_none_or(|(_, most)| count > *most) {
+                best = Some((t, count));
+            }
+        }
+    }
+    let (rough, count) = best?;
+    // Two agreeing points could be chance; three or more are not.
+    if count < 3 && points.len() > 2 {
+        return None;
+    }
+    let inliers: Vec<&Shared> = points.iter().filter(|point| agrees(&rough, point)).collect();
+    let from: Vec<[f32; 2]> = inliers.iter().map(|point| point.in_b).collect();
+    let to: Vec<[f32; 2]> = inliers.iter().map(|point| point.in_a).collect();
+    let refined = gc_align::estimate_similarity(&from, &to).unwrap_or(rough);
+    Some((refined, inliers.len()))
 }
 
 /// The transform that takes photo `b`'s pixels onto photo `a`'s, from the
-/// lines both show, with the number of lines that agree with it.
+/// lines both show, with the number of points that agree with it.
 fn pair_transform(a: &[Landmark], b: &[Landmark]) -> Option<(Affine, usize)> {
-    let mut points = shared_points(a, b);
+    let (mut points, rough) = shared_points(a, b);
     // Near matches are a fallback for when two readings of a line differ by a
     // letter. They are risky where lines resemble each other, as in a numbered
     // list, so they are used only when exact matches are too few, only when
@@ -169,44 +266,19 @@ fn pair_transform(a: &[Landmark], b: &[Landmark]) -> Option<(Affine, usize)> {
                     && edit_distance(&other.text, &mark.text, limit) <= limit
             });
             if let (Some(other), None) = (near.next(), near.next()) {
-                points.push((other.centre, mark.centre, other.height));
+                points.push(Shared { in_a: other.centre, in_b: mark.centre, slack: 0.7 * other.height });
             }
         }
     }
-    if points.len() < 2 {
-        return None;
-    }
-
-    // Two points fix a transform; the best one is the one most other points agree with.
-    let agrees = |t: &Affine, point: &([f32; 2], [f32; 2], f32)| distance(t.apply(point.1), point.0) < 0.7 * point.2;
-    let mut best: Option<(Affine, usize)> = None;
-    for first in 0..points.len() {
-        for second in first + 1..points.len() {
-            let (p, q) = (&points[first], &points[second]);
-            // Points too close together give a poor estimate.
-            if distance(p.1, q.1) < 2.0 * p.2 {
-                continue;
-            }
-            let Ok(t) = gc_align::estimate_similarity(&[p.1, q.1], &[p.0, q.0]) else { continue };
-            if !(0.5..=2.0).contains(&t.scale()) {
-                continue;
-            }
-            let count = points.iter().filter(|point| agrees(&t, point)).count();
-            if best.as_ref().is_none_or(|(_, most)| count > *most) {
-                best = Some((t, count));
-            }
+    // The exactly known points decide when there are enough of them. The
+    // roughly known ones join in only when the exact ones cannot settle it.
+    if let Some((transform, agreeing)) = consensus(&points) {
+        if agreeing >= 3 {
+            return Some((transform, agreeing));
         }
     }
-    let (rough, count) = best?;
-    // Two agreeing points could be chance; three or more are not.
-    if count < 3 && points.len() > 2 {
-        return None;
-    }
-    let inliers: Vec<&([f32; 2], [f32; 2], f32)> = points.iter().filter(|point| agrees(&rough, point)).collect();
-    let from: Vec<[f32; 2]> = inliers.iter().map(|point| point.1).collect();
-    let to: Vec<[f32; 2]> = inliers.iter().map(|point| point.0).collect();
-    let refined = gc_align::estimate_similarity(&from, &to).unwrap_or(rough);
-    Some((refined, inliers.len()))
+    points.extend(rough);
+    consensus(&points)
 }
 
 /// Work out how the photos sit against each other.
@@ -283,45 +355,66 @@ fn overlap(a0: f32, a1: f32, b0: f32, b1: f32) -> f32 {
     (a1.min(b1) - a0.max(b0)).max(0.0)
 }
 
-/// Join two cut readings of one line: the end of `left` and the start of
-/// `right` show the same words. Returns the whole line, or `None` if the two
-/// do not overlap in text.
-fn stitch(left: &str, right: &str) -> Option<String> {
-    let l: Vec<char> = left.chars().collect();
-    let r: Vec<char> = right.chars().collect();
+/// Where the end of one piece of a line and the start of another show the
+/// same text.
+struct Overlap {
+    /// Characters dropped from the end of the left piece and the start of the
+    /// right piece: a cut can leave half a letter, misread, at the very edge.
+    trim_left: usize,
+    trim_right: usize,
+    /// Characters the two pieces share.
+    size: usize,
+}
+
+/// Find the longest overlap of at least `least` characters between the end of
+/// `left` and the start of `right`. With `exact` unset, an overlap that
+/// differs by a letter in ten is accepted when no exact one exists.
+fn overlap_of(left: &[char], right: &[char], least: usize, exact_only: bool) -> Option<Overlap> {
+    let same = |a: char, b: char| a == b || a.to_lowercase().eq(b.to_lowercase());
     // An exact overlap is looked for first. Only then are small differences
     // allowed, because a near match can be one letter out of step and would
     // join the two pieces in the wrong place.
     for exact in [true, false] {
-        // A cut can leave half a letter, misread, at the very edge; allow dropping a few.
-        for trim_left in 0..=3usize.min(l.len()) {
-            for trim_right in 0..=3usize.min(r.len()) {
-                let l = &l[..l.len() - trim_left];
-                let r = &r[trim_right..];
-                let longest = l.len().min(r.len());
-                for size in (4..=longest).rev() {
-                    let tail: String = l[l.len() - size..].iter().collect::<String>().to_lowercase();
-                    let head: String = r[..size].iter().collect::<String>().to_lowercase();
+        if !exact && exact_only {
+            break;
+        }
+        for trim_left in 0..=3usize.min(left.len()) {
+            for trim_right in 0..=3usize.min(right.len()) {
+                let l = &left[..left.len() - trim_left];
+                let r = &right[trim_right..];
+                for size in (least..=l.len().min(r.len())).rev() {
+                    let (tail, head) = (&l[l.len() - size..], &r[..size]);
                     let matches = if exact {
-                        tail == head
+                        tail.iter().zip(head).all(|(a, b)| same(*a, *b))
                     } else {
                         // The ends must line up, which rules out a match that is out of step.
                         let slack = size / 10;
-                        slack > 0
-                            && tail.chars().next() == head.chars().next()
-                            && tail.chars().last() == head.chars().last()
-                            && edit_distance(&tail, &head, slack) <= slack
+                        slack > 0 && same(tail[0], head[0]) && same(tail[size - 1], head[size - 1]) && {
+                            let tail: String = tail.iter().collect::<String>().to_lowercase();
+                            let head: String = head.iter().collect::<String>().to_lowercase();
+                            edit_distance(&tail, &head, slack) <= slack
+                        }
                     };
                     if matches {
-                        let mut whole: String = l.iter().collect();
-                        whole.extend(&r[size..]);
-                        return Some(whole);
+                        return Some(Overlap { trim_left, trim_right, size });
                     }
                 }
             }
         }
     }
     None
+}
+
+/// Join two cut readings of one line: the end of `left` and the start of
+/// `right` show the same words. Returns the whole line, or `None` if the two
+/// do not overlap in text.
+fn stitch(left: &str, right: &str) -> Option<String> {
+    let l: Vec<char> = left.chars().collect();
+    let r: Vec<char> = right.chars().collect();
+    let found = overlap_of(&l, &r, 4, false)?;
+    let mut whole: String = l[..l.len() - found.trim_left].iter().collect();
+    whole.extend(&r[found.trim_right + found.size..]);
+    Some(whole)
 }
 
 /// A line's corners in the group's frame, the photo it came from, the line
@@ -356,7 +449,7 @@ pub fn merge(pages: &[OcrPage], placement: &Placement, group: &[usize]) -> (Vec<
     let (sin, cos) = (-angles[angles.len() / 2]).sin_cos();
     let level = |p: [f32; 2]| [p[0] * cos - p[1] * sin, p[0] * sin + p[1] * cos];
 
-    let mut candidates: Vec<Candidate> = corners
+    let candidates: Vec<Candidate> = corners
         .into_iter()
         .map(|(quad, page, line, cut)| {
             let q = quad.map(level);
@@ -379,63 +472,109 @@ pub fn merge(pages: &[OcrPage], placement: &Placement, group: &[usize]) -> (Vec<
             }
         })
         .collect();
-    candidates.sort_by(|a, b| b.quality().total_cmp(&a.quality()));
-
-    let mut kept: Vec<Candidate> = Vec::new();
-    let mut removed = 0;
-    'candidates: for candidate in candidates {
-        for held in kept.iter_mut() {
-            if held.line.page == candidate.line.page {
+    // Gather the readings of each line: readings from different photos that
+    // lie in the same row and overlap sideways belong together, directly or
+    // through a third reading that bridges them.
+    let count = candidates.len();
+    let mut group_of: Vec<usize> = (0..count).collect();
+    fn root(group_of: &mut [usize], mut i: usize) -> usize {
+        while group_of[i] != i {
+            group_of[i] = group_of[group_of[i]];
+            i = group_of[i];
+        }
+        i
+    }
+    let mut by_top: Vec<usize> = (0..count).collect();
+    by_top.sort_by(|a, b| candidates[*a].line.bbox[1].total_cmp(&candidates[*b].line.bbox[1]));
+    for (position, &i) in by_top.iter().enumerate() {
+        let a = candidates[i].line.bbox;
+        for &j in &by_top[position + 1..] {
+            let b = candidates[j].line.bbox;
+            if b[1] >= a[3] {
+                break;
+            }
+            if candidates[i].line.page == candidates[j].line.page {
                 continue;
             }
-            let (a, b) = (&held.line.bbox, &candidate.line.bbox);
             let rows = overlap(a[1], a[3], b[1], b[3]) / (a[3] - a[1]).min(b[3] - b[1]).max(1.0);
             let across = overlap(a[0], a[2], b[0], b[2]) / (a[2] - a[0]).min(b[2] - b[0]).max(1.0);
-            if rows < 0.5 || across < 0.2 {
+            if rows >= 0.5 && across >= 0.2 {
+                let (ri, rj) = (root(&mut group_of, i), root(&mut group_of, j));
+                group_of[ri] = rj;
+            }
+        }
+    }
+    let mut readings: HashMap<usize, Vec<Candidate>> = HashMap::new();
+    for (i, candidate) in candidates.into_iter().enumerate() {
+        let key = root(&mut group_of, i);
+        readings.entry(key).or_default().push(candidate);
+    }
+
+    let mut kept = Vec::with_capacity(readings.len());
+    for (_, mut pieces) in readings {
+        pieces.sort_by(|a, b| b.quality().total_cmp(&a.quality()));
+        // A reading that shows the whole line settles it. Several such
+        // readings are compared word by word, since each photo misreads a
+        // letter here and there.
+        if pieces[0].is_whole() || pieces.len() == 1 {
+            let whole: Vec<&str> = pieces.iter().filter(|piece| piece.is_whole()).map(|piece| piece.line.text.as_str()).collect();
+            let text = if whole.len() > 1 { Some(crate::text::vote(&whole)) } else { None };
+            let mut line = pieces.swap_remove(0).line;
+            if let Some(text) = text {
+                line.text = text;
+            }
+            kept.push(line);
+            continue;
+        }
+        // No photo shows the line whole: build it from its pieces, left to
+        // right, each joined to the next where their words overlap. Sliced
+        // readings are used only if nothing else is there.
+        if pieces.iter().any(|piece| !piece.clipped) {
+            pieces.retain(|piece| !piece.clipped);
+        }
+        pieces.sort_by(|a, b| a.line.bbox[0].total_cmp(&b.line.bbox[0]).then(b.line.bbox[2].total_cmp(&a.line.bbox[2])));
+        // Start from the piece that has the line's true beginning, if one
+        // does: among the pieces that begin about where the line begins, one
+        // whose left end is not cut.
+        let begins = pieces[0].line.bbox[0] + pieces[0].line.height();
+        let first = pieces.iter().position(|piece| !piece.cut_left && piece.line.bbox[0] <= begins).unwrap_or(0);
+        let first = pieces.remove(first);
+        let mut line = first.line;
+        let mut end_is_cut = first.cut_right;
+        for piece in pieces {
+            // A piece adds to the line if it reaches further right, or if it
+            // has the line's true ending where the line so far was cut short,
+            // even when that is only a letter more.
+            let reaches_further = piece.line.bbox[2] > line.bbox[2] + 0.5 * line.height();
+            let has_the_ending = end_is_cut && !piece.cut_right;
+            if !(reaches_further || has_the_ending) {
                 continue;
             }
-            // The same row of the page, read from two photos.
-            let (held_text, new_text) = (normalise(&held.line.text), normalise(&candidate.line.text));
-            let related = similarity(&held_text, &new_text) >= 0.5
-                || is_fragment_of(&new_text, &held_text)
-                || is_fragment_of(&held_text, &new_text);
-            if held.is_whole() {
-                if !related && candidate.is_whole() {
-                    // Two whole lines with different text: neighbours that the placement
-                    // put a little too close. Both stay.
-                    continue;
-                }
-                // The kept reading is complete; this one adds nothing.
-            } else if candidate.is_whole() || held.clipped {
-                // A complete reading replaces a cut one, and anything replaces a sliced one.
-                if related || held.clipped {
-                    *held = candidate;
-                }
-            } else {
-                // Both are cut. Each can supply the end the other lacks, joined
-                // where their text overlaps.
-                if held.cut_right && !candidate.cut_right {
-                    if let Some(whole) = stitch(&held.line.text, &candidate.line.text) {
-                        held.line.text = whole;
-                        held.line.bbox[2] = held.line.bbox[2].max(candidate.line.bbox[2]);
-                        held.cut_right = false;
-                    }
-                }
-                if held.cut_left && !candidate.cut_left {
-                    if let Some(whole) = stitch(&candidate.line.text, &held.line.text) {
-                        held.line.text = whole;
-                        held.line.bbox[0] = held.line.bbox[0].min(candidate.line.bbox[0]);
-                        held.cut_left = false;
-                    }
-                }
-                held.line.confidence = held.line.confidence.min(candidate.line.confidence);
+            let joined = stitch(&line.text, &piece.line.text).or_else(|| {
+                // No shared words. If the piece begins about where the line so
+                // far ends, the two simply follow one another.
+                let follows = piece.line.bbox[0] > line.bbox[2] - 1.5 * line.height();
+                follows.then(|| format!("{} {}", line.text, piece.line.text))
+            });
+            if let Some(whole) = joined {
+                line.text = whole;
+                line.bbox = [
+                    line.bbox[0],
+                    line.bbox[1].min(piece.line.bbox[1]),
+                    line.bbox[2].max(piece.line.bbox[2]),
+                    line.bbox[3].max(piece.line.bbox[3]),
+                ];
+                line.confidence = line.confidence.min(piece.line.confidence);
+                line.title = line.title || piece.line.title;
+                end_is_cut = piece.cut_right;
             }
-            removed += 1;
-            continue 'candidates;
         }
-        kept.push(candidate);
+        kept.push(line);
     }
-    (kept.into_iter().map(|candidate| candidate.line).collect(), removed)
+    // The order is settled by the layout; a steady order here keeps results repeatable.
+    kept.sort_by(|a, b| a.bbox[1].total_cmp(&b.bbox[1]).then(a.bbox[0].total_cmp(&b.bbox[0])));
+    let removed = count - kept.len();
+    (kept, removed)
 }
 
 #[cfg(test)]
@@ -484,6 +623,47 @@ mod tests {
     }
 
     #[test]
+    fn a_line_no_photo_shows_whole_is_built_from_three_pieces() {
+        // Three photos side by side, each 1000 wide and overlapping the next.
+        // Two lines run across all three, cut by every photo.
+        let rows = ["Sáng nay mực nước trên sông Tiền tại Tân Châu đã lên thêm mười hai phân", "so với hôm qua và người dân đầu nguồn bắt đầu chuẩn bị lưới cùng xuồng"];
+        // Every character is 30 wide; the line starts at x = 100 on the page.
+        let piece = |row: &str, y: f32, photo_left: f32| -> OcrLine {
+            let characters: Vec<char> = row.chars().collect();
+            let from = (((photo_left - 100.0) / 30.0).ceil().max(0.0) as usize).min(characters.len());
+            let to = (((photo_left + 1000.0 - 100.0) / 30.0).floor().max(0.0) as usize).min(characters.len());
+            let text: String = characters[from..to].iter().collect();
+            line(text.trim(), 100.0 + from as f32 * 30.0 - photo_left, y, (to - from) as f32 * 30.0)
+        };
+        let pages: Vec<OcrPage> = [0.0, 600.0, 1300.0]
+            .iter()
+            .enumerate()
+            .map(|(i, left)| page(&format!("p{i}"), rows.iter().enumerate().map(|(r, row)| piece(row, 200.0 + 80.0 * r as f32, *left)).collect()))
+            .collect();
+        let placement = register(&pages);
+        assert_eq!(placement.groups.len(), 1, "the three photos should join up");
+        let (lines, _) = merge(&pages, &placement, &placement.groups[0]);
+        let texts: Vec<&str> = lines.iter().map(|l| l.text.as_str()).collect();
+        assert_eq!(texts, rows);
+    }
+
+    #[test]
+    fn a_true_ending_one_letter_longer_replaces_a_cut_one() {
+        // The right photo sits 600 further right than the left one.
+        let shared: Vec<String> = (0..3).map(|i| format!("cột chung dòng {i}")).collect();
+        let mut left: Vec<OcrLine> = shared.iter().enumerate().map(|(i, t)| line(t, 750.0, 100.0 + 60.0 * i as f32, 200.0)).collect();
+        // Cut at the left photo's right edge, its last letter lost.
+        left.push(line("rau nhút và cá linh no", 400.0, 400.0, 590.0));
+        let mut right: Vec<OcrLine> = shared.iter().enumerate().map(|(i, t)| line(t, 150.0, 100.0 + 60.0 * i as f32, 200.0)).collect();
+        // The right photo cuts the line's start but has its end, which lies only a letter further on.
+        right.push(line("út và cá linh non", 5.0, 400.0, 400.0));
+        let pages = [page("left", left), page("right", right)];
+        let placement = register(&pages);
+        let (lines, _) = merge(&pages, &placement, &placement.groups[0]);
+        assert!(lines.iter().any(|l| l.text == "rau nhút và cá linh non"), "{:?}", lines.iter().map(|l| &l.text).collect::<Vec<_>>());
+    }
+
+    #[test]
     fn photos_with_nothing_in_common_stay_apart() {
         let a = page("a", (0..5).map(|i| line(&format!("trang thứ nhất dòng {i}"), 50.0, 100.0 + 60.0 * i as f32, 500.0)).collect());
         let b = page("b", (0..5).map(|i| line(&format!("another page line {i}"), 50.0, 100.0 + 60.0 * i as f32, 500.0)).collect());
@@ -506,7 +686,12 @@ mod tests {
         let placement = register(&pages);
         assert_eq!(placement.groups.len(), 1);
         let (lines, _) = merge(&pages, &placement, &placement.groups[0]);
-        assert!(lines.iter().any(|l| l.text == "Mực nước trên sông Tiền tại Tân Châu đã lên"), "{:?}", lines.iter().map(|l| &l.text).collect::<Vec<_>>());
+        assert!(
+            lines.iter().any(|l| l.text == "Mực nước trên sông Tiền tại Tân Châu đã lên"),
+            "{:?} with photo 2 at {:?}",
+            lines.iter().map(|l| (&l.text, l.bbox)).collect::<Vec<_>>(),
+            placement.transforms[1]
+        );
         assert_eq!(lines.len(), 4);
     }
 }

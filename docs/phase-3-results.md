@@ -22,33 +22,54 @@ Phase 3 is under way, not finished. The scanner, the second idea on your list, w
 
 No picture processing is involved; the text itself does the work.
 
-1. **Placing the photos.** A line that two photos both show is a landmark. A few shared lines fix how one photo sits against another. Where two photos share only a cut-off piece of a line, the end both can see is used.
-2. **Keeping each line once.** A whole reading of a line replaces a cut one. Where every photo cuts a line, the pieces are joined where their words overlap.
+1. **Placing the photos.** A line that two photos both show is a landmark. A few shared lines fix how one photo sits against another. Where two photos share only a piece of a line, the place where their words overlap is used instead, so it also works when every photo is narrower than the text it shows.
+2. **Keeping each line once.** The readings of one line are gathered from all photos. A whole reading settles the line; several whole readings are compared word by word, so one photo's misread letter is outvoted. Where no photo shows the line whole, it is built from its pieces, left to right, joined where their words overlap.
 3. **Reading order.** The page is cut along its empty strips: first into bands across, then into columns, and so on. A headline comes before the columns under it, and columns are read left to right.
 4. **Paragraphs.** A wider gap, an indent, or a short line that ends a sentence starts a new paragraph. A word split by a hyphen at a line's end is put back together.
 
 ## Measurements
 
-Test pages are made by `make_document.py`: a newspaper-like page with known text, cut into overlapping shots that are each slightly turned, skewed and unevenly lit.
+Test pages are made by `make_document.py`: a newspaper-like page with known text, cut into overlapping shots that are each slightly turned, skewed and unevenly lit. The Vietnamese page has 398 words and the English page 248.
 
-| Test | Shots | Result |
+| Page | Shots | Words wrong | Characters right |
+|---|---|---|---|
+| Vietnamese, three columns | 6, in a 3 × 2 grid | 1 | 99.94 % |
+| Vietnamese, two columns | 8, in a 4 × 2 grid | 1 | 99.94 % |
+| Vietnamese, three columns | 9, in a 3 × 3 grid | 5 | 99.72 % |
+| Vietnamese, one wide column | 5, in a strip | 5 | 99.72 % |
+| English, two columns | 4, in a 2 × 2 grid | 0 | 100 % |
+| English, three columns | 6, in a 3 × 2 grid | 0 | 100 % |
+| English, two columns, every shot narrower than a column | 9, in a 3 × 3 grid | 0 | 100 % |
+
+The target is 98 %. Every page came out as one document with the right reading order.
+
+- **What is still wrong.** Every remaining slip is one Vietnamese letter that Vision misread: a tone mark lost or swapped, or `đ` read as `d`. A language model can fix these; that is part of Phase 5.
+- **What the first version got wrong.** A wider test found two failures: a stray photo on a 3 × 3 grid (97.7 %), and 39 % when no photo showed any line whole. Both are fixed, and both layouts are in the table above.
+- **Speed.** About 1 second for six photos once Vision is warm, and about 29 seconds the first time in a newly installed app, while Vision loads.
+
+The six-shot Vietnamese document was also sent along each path. The merger was improved part-way through, and not every path has been run again since:
+
+| Path | Merger | Result |
 |---|---|---|
-| Vietnamese page, three columns | 6 | 99.8 % of characters right; 3 of 398 words differ. Target: 98 % |
-| English page, two columns | 4 | 100 % |
-| Through the hub, from the command line | 6 | The same document, in about 1 second once Vision is warm |
-| Through the installed Mac app's own hub and bundled reader | 6 | The same document; 29 seconds the first time, while Vision loads |
-| From the Android app in the emulator | 6 | The same document, shown in the app |
+| `gc merge-ocr`, without the hub | Current | 1 word wrong |
+| The Android app on the Galaxy Tab S9+, over Wi-Fi debugging, through the hub | Current | 1 word wrong, in 2 seconds; the app showed the text in Vietnamese |
+| `gc scan` through the hub | Earlier | 3 words wrong |
+| The Android app in the emulator | Earlier | 3 words wrong |
+| The installed Mac app's own hub and bundled reader | Earlier | 3 words wrong. Not run again, because you were using the app |
 
-The three Vietnamese slips: one `đ` read as `d`, and two words at a cut where neither photo had the letters whole. A language model can fix slips like these; that is part of Phase 5.
-
-Tests: 69 in the core and 36 in the Swift package, all passing. The core's check also builds for Android and Windows.
+Tests: 72 in the core and 36 in the Swift package. The core's check also builds for Android and Windows.
 
 These pages are rendered, not photographed. Real newspaper photos will be harder: curved paper, shadows, smaller print. The measure on real photos is still to come.
 
-## What I could not check
+## The tablet
 
-- **The tablet.** It is locked with a screen lock, so I could not open the app on it. I checked the app in an Android 16 emulator instead. The document scanner needs Google Play services and a camera, so it has not run at all yet.
-- **The share sheet** into the Android app.
+On 2026-11-11 you switched the tablet to Wi-Fi debugging and unlocked it, so I could run the app on it.
+
+- The port forward the hub needs works over Wi-Fi debugging as it does over the cable.
+- The app connected, sent six test pages and showed the merged text. The pages came from a folder in the app's own storage, through a debug-only switch, so your photo library was not opened.
+- **Scan a document** opens Google's document scanner. I did not take a picture with it or capture that screen, since it shows the camera's view.
+
+Still unchecked: a real page photographed with the scanner, the photo picker with your own pictures, and a share from another app.
 
 ## Open in this phase
 
@@ -63,8 +84,8 @@ These pages are rendered, not photographed. Real newspaper photos will be harder
 ## Checks for you
 
 1. On the Mac, open God's Camera. In **Scanner**, turn on **Receive scans from my phone or tablet**.
-2. Connect the tablet by cable and unlock it. In a terminal on the Mac, run `tools/connect-android.sh`. It sets up the connection, opens the app on the tablet and gives it the hub's token. macOS asks once for permission to read the token from the Keychain; click **Always Allow**.
-3. On the tablet, the app should say **Connected to the Mac**. The app is already installed.
+2. With the tablet unlocked and connected for debugging, by cable or Wi-Fi, run `tools/connect-android.sh` in a terminal on the Mac. It sets up the connection, opens the app on the tablet and gives it the hub's token. macOS asks once for permission to read the token from the Keychain; click **Always Allow**.
+3. On the tablet, the app should say **Connected to the Mac** (**Đã kết nối với máy Mac**).
 4. Tap **Scan a document** and photograph a printed page, or tap **Add pictures** and choose several overlapping photos of a newspaper page.
 5. Tap **Send to the Mac**. The text should appear on the tablet, and the document in the Mac app's **Scanner** list.
 6. Tell me how the text compares with the page, especially the reading order and the Vietnamese tone marks.

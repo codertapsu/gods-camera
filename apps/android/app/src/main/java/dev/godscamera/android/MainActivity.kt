@@ -87,6 +87,12 @@ class MainActivity : ComponentActivity() {
                 model.setToken(it)
                 model.checkConnection()
             }
+            // Development only: take the pictures in a folder of the app's own
+            // storage as pages, so a check can run without anyone's photo library.
+            intent?.getStringExtra("debug_pages")?.takeIf { name -> name.all { it.isLetterOrDigit() || it == '-' } }?.let { name ->
+                val pictures = java.io.File(filesDir, name).listFiles { file -> file.extension.lowercase() in setOf("jpg", "jpeg", "png") }
+                model.addPages(pictures.orEmpty().sortedBy { it.name }.map(Uri::fromFile))
+            }
         }
         val shared: List<Uri> = when (intent?.action) {
             Intent.ACTION_SEND -> listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))

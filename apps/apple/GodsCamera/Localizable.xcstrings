@@ -251,12 +251,12 @@
         }
       }
     },
-    "Connect the device with a USB cable and run tools/connect-android.sh. It sets up the connection and gives the app this token.": {
+    "Connect the device for debugging, by USB cable or Wi-Fi, and run tools/connect-android.sh. It sets up the connection and gives the app this token.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nối thiết bị bằng cáp USB rồi chạy tools/connect-android.sh. Lệnh này thiết lập kết nối và chuyển mã này cho ứng dụng."
+            "value": "Kết nối thiết bị ở chế độ gỡ lỗi, bằng cáp USB hoặc Wi-Fi, rồi chạy tools/connect-android.sh. Lệnh này thiết lập kết nối và chuyển mã này cho ứng dụng."
           }
         }
       }

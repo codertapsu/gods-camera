@@ -598,10 +598,10 @@ State: the scanner works from end to end. Pictures sent from the Android app are
 - [x] Test documents with a character-error measure: `make_document.py` renders a page with known text and overlapping, skewed shots of it. Photos of real newspapers are still to be added.
 - [x] Android app in the emulator: Compose shell and hub client. It uploads pictures and follows a job. Loading the Rust core in the app waits for Phase 6, which is the first to need it; the core already builds for Android.
 
-3b. With the Tab S9+ on a USB cable
+3b. With the Tab S9+ connected for debugging, by USB cable or Wi-Fi
 
 - [x] A script that sets up `adb reverse`; a debug-only setting that allows unencrypted traffic to localhost.
-- [x] Single documents with the ML Kit document scanner: edge detection, clean-up, gallery import. Written; it needs the unlocked tablet to try.
+- [x] Single documents with the ML Kit document scanner: edge detection, clean-up, gallery import. The scanner opens on the tablet; a real page has not been photographed with it yet.
 - [ ] Long-document mode with CameraX: guided overlapping shots for newspapers and scrolls.
 - [x] Import through the system photo picker; a share target so screenshots can be sent from any app. Batch auto-capture is open.
 - [ ] On-device OCR preview with ML Kit, whose Latin model covers Vietnamese, so a page can be checked before moving on.
@@ -612,7 +612,7 @@ State: the scanner works from end to end. Pictures sent from the Android app are
 
 Checks only you can do
 
-- [ ] Unlock the tablet and run the scanner on it: the document scanner, the photo picker, and a share from another app.
+- [ ] Run the scanner on the tablet with real pages: the document scanner, the photo picker, and a share from another app. I ran it there with test pages over Wi-Fi debugging.
 
 3c. Paired mode over Wi-Fi (spike S7 first)
 

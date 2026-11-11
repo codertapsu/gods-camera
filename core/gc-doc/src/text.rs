@@ -58,6 +58,57 @@ pub fn is_fragment_of(short: &str, long: &str) -> bool {
     edit_distance(short, &head, slack) <= slack || edit_distance(short, &tail, slack) <= slack
 }
 
+/// How many marks a letter carries: 0 for a plain letter, 1 for a letter with
+/// a tone mark or a changed shape (`á`, `ơ`, `đ`), 2 for one with both (`ở`).
+/// Letters of other scripts count as 1.
+fn marks_on(letter: char) -> usize {
+    if letter.is_ascii() || !letter.is_alphabetic() {
+        return 0;
+    }
+    let lower = letter.to_lowercase().next().unwrap_or(letter);
+    // Vietnamese letters that have both a changed shape and a tone mark.
+    const SHAPED_AND_TONED: &str = "ắằẳẵặấầẩẫậếềểễệốồổỗộớờởỡợứừửữự";
+    if SHAPED_AND_TONED.contains(lower) {
+        2
+    } else {
+        1
+    }
+}
+
+/// One text from several readings of the same line, settled word by word.
+///
+/// Each photo misreads a letter now and then, most often a tone mark, and
+/// different photos get different words wrong. Where the readings disagree on
+/// a word, the version most of them give wins. On a tie, the version with
+/// more marked letters wins, because a lost mark is the commoner mistake;
+/// then the earlier reading, so the caller lists its best reading first.
+///
+/// Only readings with the same number of words as the first take part.
+pub fn vote(readings: &[&str]) -> String {
+    let Some(first) = readings.first() else { return String::new() };
+    let split: Vec<Vec<&str>> = readings.iter().map(|text| text.split_whitespace().collect()).collect();
+    let words = split[0].len();
+    let voters: Vec<&Vec<&str>> = split.iter().filter(|reading| reading.len() == words).collect();
+    if voters.len() < 2 {
+        return first.to_string();
+    }
+    let marks = |word: &str| word.chars().map(marks_on).sum::<usize>();
+    let mut out: Vec<&str> = Vec::with_capacity(words);
+    for position in 0..words {
+        let mut best = voters[0][position];
+        let mut best_count = 0;
+        for candidate in voters.iter().map(|reading| reading[position]) {
+            let count = voters.iter().filter(|reading| reading[position] == candidate).count();
+            if count > best_count || (count == best_count && marks(candidate) > marks(best)) {
+                best = candidate;
+                best_count = count;
+            }
+        }
+        out.push(best);
+    }
+    out.join(" ")
+}
+
 /// Character error rate of `got` against `truth`: edits needed, over the
 /// truth's length. White space is collapsed first, since line breaks differ.
 pub fn character_error_rate(got: &str, truth: &str) -> f32 {
@@ -92,6 +143,20 @@ mod tests {
         assert!(is_fragment_of("năm nay nuớc", "năm nay nước về sớm"));
         assert!(!is_fragment_of("một dòng khác hẳn", "năm nay nước về sớm hơn mọi năm"));
         assert!(!is_fragment_of("ab", "abcdef"));
+    }
+
+    #[test]
+    fn readings_are_settled_word_by_word() {
+        // Each reading has one word wrong; together they have every word right.
+        assert_eq!(vote(&["Gia dình ông đã thả", "Gia đình ông dã thả", "Gia đình ông đã thả"]), "Gia đình ông đã thả");
+        // Two readings that disagree: the one that kept its mark wins.
+        assert_eq!(vote(&["đoạn sạt lơ trước", "đoạn sạt lở trước"]), "đoạn sạt lở trước");
+        // Equal on marks: the first reading stands.
+        assert_eq!(vote(&["mùa nước nổi", "mùa nước nối"]), "mùa nước nổi");
+        // A reading with a different number of words takes no part.
+        assert_eq!(vote(&["a b c", "a x", "a b c"]), "a b c");
+        assert_eq!(vote(&["only one"]), "only one");
+        assert_eq!(vote(&[]), "");
     }
 
     #[test]

@@ -102,7 +102,7 @@ struct ScannerSection: View {
             Text("Scanner").font(.headline)
             Toggle("Receive scans from my phone or tablet", isOn: Binding(get: { scan.wanted }, set: { scan.setWanted($0) }))
             if scan.running {
-                Text("Connect the device with a USB cable and run tools/connect-android.sh. It sets up the connection and gives the app this token.")
+                Text("Connect the device for debugging, by USB cable or Wi-Fi, and run tools/connect-android.sh. It sets up the connection and gives the app this token.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Text(scan.token).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle).textSelection(.enabled)

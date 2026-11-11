@@ -1,10 +1,11 @@
 #!/bin/sh
-# Let an Android device on a USB cable reach the hub on this Mac.
+# Let an Android device reach the hub on this Mac. The device must be
+# connected for debugging, by USB cable or by Wi-Fi debugging; both work.
 #
 # The hub in development mode listens only on this Mac's own address. This
-# makes the device's localhost port 47800 lead to the Mac's, through the cable,
-# and hands the hub's token to the app on the device, so it need not be typed.
-# Run it again after re-plugging the cable.
+# makes the device's localhost port 47800 lead to the Mac's, through the
+# debugging connection, and hands the hub's token to the app on the device,
+# so it need not be typed. Run it again after the connection was lost.
 #
 # The token is read from the Keychain, where the Mac app keeps it. macOS asks
 # for your permission the first time; choose Always Allow to skip the question
@@ -15,7 +16,7 @@ adb="$(command -v adb || true)"
 [ -n "$adb" ] || adb="/opt/homebrew/share/android-commandlinetools/platform-tools/adb"
 [ -x "$adb" ] || { echo "adb was not found. Install the Android platform tools first." >&2; exit 1; }
 devices="$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1 }')"
-[ -n "$devices" ] || { echo "No device found. Connect it by cable, unlock it and allow USB debugging." >&2; exit 1; }
+[ -n "$devices" ] || { echo "No device found. Connect it by cable or turn on Wi-Fi debugging, and unlock it." >&2; exit 1; }
 token="${GC_HUB_TOKEN:-$(security find-generic-password -s godscamera.hub -a token -w 2>/dev/null || true)}"
 for device in $devices; do
   model="$("$adb" -s "$device" shell getprop ro.product.model | tr -d '\r')"
