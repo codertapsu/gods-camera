@@ -22,7 +22,7 @@ use std::time::Instant;
 
 use gc_align::{Affine, Keypoints};
 use gc_infer::image::{self, ImageView, MaskShape, PixelFormat};
-use gc_infer::runtime::{Accelerator, Detector, IdentityEncoder, InferError, Runtime, Swapper};
+use gc_infer::runtime::{Accelerator, Detector, IdentityEncoder, InferError, Occluder, Runtime, Swapper};
 use gc_infer::{Detection, SwapperContract};
 use gc_track::{DetectScheduler, FlowConfig, FlowTracker, FrameSignals, Gray, KeypointSmoother, TrackOutcome};
 
@@ -73,11 +73,31 @@ pub struct LiveSettings {
     pub opacity: f32,
     /// Detections below this score are ignored.
     pub score_threshold: f32,
+    /// How much crisper to make the swapped face, 0 to 1. Swap models return a
+    /// small picture, which looks soft once it is enlarged onto the frame.
+    pub sharpen: f32,
+    /// Keep whatever is in front of the face, such as a hand or a cup, in
+    /// front of the swap. Needs the occlusion model; without it nothing changes.
+    pub occlusion: bool,
+    /// Leave the real mouth showing through the swap.
+    pub real_mouth: bool,
+    /// Ask for the picture to be blurred whenever the swap is not fully on the
+    /// face, so the real face never shows. See `FrameResult::blur`.
+    pub blur_when_unswapped: bool,
 }
 
 impl Default for LiveSettings {
     fn default() -> Self {
-        Self { mask: MaskShape::Oval, colour_match: true, opacity: 1.0, score_threshold: 0.5 }
+        Self {
+            mask: MaskShape::Oval,
+            colour_match: true,
+            opacity: 1.0,
+            score_threshold: 0.5,
+            sharpen: 0.4,
+            occlusion: true,
+            real_mouth: false,
+            blur_when_unswapped: false,
+        }
     }
 }
 
@@ -85,6 +105,8 @@ impl Default for LiveSettings {
 struct ModelPlan {
     detector: (PathBuf, Accelerator),
     swapper: (PathBuf, SwapperContract, Option<PathBuf>, Accelerator),
+    /// The occlusion model, when its file is there. The swap works without it.
+    occluder: Option<(PathBuf, Accelerator)>,
 }
 
 /// The first folder that has `file`. If none has it, the path in the first
@@ -127,7 +149,12 @@ impl ModelPlan {
             DetectorKind::Small => (find("buffalo_s/det_500m.onnx"), Accelerator::Cpu),
             DetectorKind::Large => (find("buffalo_l/det_10g.onnx"), Accelerator::Cpu),
         };
-        Self { detector, swapper }
+        // The occlusion model runs beside the swap model, so it gets the unit
+        // the swap model leaves free. Measured on the M4 Pro for one mask:
+        // 15 ms on the GPU, 30 ms on the Neural Engine, 36 ms on the CPU.
+        let beside = if swapper.3 == Accelerator::Gpu { Accelerator::NeuralEngine } else { Accelerator::Gpu };
+        let occluder = Some(find("xseg_3.onnx")).filter(|path| path.is_file()).map(|path| (path, on(beside)));
+        Self { detector, swapper, occluder }
     }
 }
 
@@ -160,6 +187,11 @@ pub struct FrameResult {
     pub patch_age_frames: u32,
     /// The face's five keypoints on this frame.
     pub keypoints: Keypoints,
+    /// How strongly to blur the whole picture, 0 to 1. Above 0 only with
+    /// `LiveSettings::blur_when_unswapped`, while a face is set and the swap
+    /// is not fully on it: no face found, the head turned to profile, the
+    /// face lost, or the first swapped picture still on its way.
+    pub blur: f32,
 }
 
 impl FrameResult {
@@ -170,6 +202,7 @@ impl FrameResult {
         patch_sequence: 0,
         patch_age_frames: 0,
         keypoints: [[0.0; 2]; 5],
+        blur: 0.0,
     };
 }
 
@@ -185,6 +218,8 @@ pub struct LiveStats {
     /// From a frame's arrival to its swapped patch being ready.
     pub swap_age_ms: f32,
     pub tracking: bool,
+    /// The occlusion model is loaded, so `LiveSettings::occlusion` has an effect.
+    pub occlusion: bool,
     pub last_error: Option<String>,
 }
 
@@ -226,6 +261,10 @@ struct Shared {
     detect_jobs: Slot<DetectJob>,
     detect_results: Slot<DetectResult>,
     swap_jobs: Slot<SwapJob>,
+    /// The newest aligned crop for the occlusion model, and when its frame arrived.
+    occlusion_jobs: Slot<(Vec<u8>, Instant)>,
+    /// The newest occlusion mask, and when the frame it was made from arrived.
+    uncovered: Mutex<Option<(Arc<Vec<u8>>, Instant)>>,
     patch: Mutex<Option<Arc<Patch>>>,
     /// The source face's identity vector, as the encoder returned it.
     identity: Mutex<Option<Arc<Vec<f32>>>>,
@@ -268,6 +307,10 @@ struct FrameState {
     unseen_s: f32,
     /// 0 to 1: rises while a face and a patch are present, falls when not.
     presence: f32,
+    /// 0 to 1: rises only while the face is being followed and a patch is on
+    /// it. Unlike `presence` it starts to fall the moment the face is lost,
+    /// not after the hold, so the blur covers the picture before the patch goes.
+    certainty: f32,
 }
 
 /// Seconds a lost face is still drawn at its last place before it fades.
@@ -291,6 +334,9 @@ const SNAP_FRACTION: f32 = 0.16;
 const MOTION_HISTORY: usize = 90;
 /// Faces whose eyes are closer than this, in frame pixels, are too small to swap.
 const MIN_EYE_DISTANCE: f32 = 14.0;
+/// An occlusion mask is used on a patch only if its picture is at most this
+/// much older than the patch's. An older one would cut holes where a hand used to be.
+const MASK_FRESH: std::time::Duration = std::time::Duration::from_millis(250);
 
 pub struct LiveEngine {
     shared: Arc<Shared>,
@@ -311,7 +357,12 @@ impl LiveEngine {
         let crop_size = contract.crop_size;
 
         let shared = Arc::new(Shared::default());
-        let workers = vec![
+        // The swap is still worth having if the occlusion model cannot be used.
+        let occluder = plan.occluder.and_then(|(model, accelerator)| {
+            Occluder::load(runtime, &model, accelerator).map_err(|error| shared.fail(&error)).ok()
+        });
+        lock(&shared.stats).occlusion = occluder.is_some();
+        let mut workers = vec![
             {
                 let shared = shared.clone();
                 std::thread::Builder::new()
@@ -327,6 +378,15 @@ impl LiveEngine {
                     .map_err(|e| InferError::Runtime(e.to_string()))?
             },
         ];
+        if let Some(occluder) = occluder {
+            let shared = shared.clone();
+            workers.push(
+                std::thread::Builder::new()
+                    .name("gc-occlusion".into())
+                    .spawn(move || occlusion_worker(&shared, occluder, crop_size))
+                    .map_err(|e| InferError::Runtime(e.to_string()))?,
+            );
+        }
         let frame = FrameState {
             tracker: FlowTracker::new(FlowConfig::default()),
             smoother: KeypointSmoother::new(
@@ -348,6 +408,7 @@ impl LiveEngine {
             smoothed: None,
             unseen_s: f32::INFINITY,
             presence: 0.0,
+            certainty: 0.0,
         };
         Ok(Self { shared, frame: Mutex::new(frame), crop_size, workers: Mutex::new(workers) })
     }
@@ -412,9 +473,11 @@ impl LiveEngine {
             st.smoothed = None;
             st.gray_size = size;
         }
+        // With the blur option, the picture is hidden whenever a face is set and no swap is on it.
+        let hide = settings.blur_when_unswapped && has_identity && settings.opacity > 0.0;
         if size.0 < 32 || size.1 < 32 {
             st.gray = gray_data;
-            return FrameResult::NONE;
+            return FrameResult { blur: if hide { 1.0 } else { 0.0 }, ..FrameResult::NONE };
         }
         let gray = Gray { data: &gray_data, width: size.0, height: size.1, stride: size.0 };
         // Frame pixels per tracker pixel.
@@ -520,6 +583,7 @@ impl LiveEngine {
                         patch_sequence: patch.as_ref().map(|p| p.sequence).unwrap_or(0),
                         patch_age_frames: patch.as_ref().map(|p| index.saturating_sub(p.frame_index) as u32).unwrap_or(0),
                         keypoints: kps,
+                        blur: 0.0,
                     };
                     result.opacity = turn_fade(&kps);
                 }
@@ -532,10 +596,16 @@ impl LiveEngine {
         // Fades: the patch eases in when it appears and out when the face goes.
         let step = (dt / FADE_S).min(1.0);
         st.presence = if visible { (st.presence + step).min(1.0) } else { (st.presence - step).max(0.0) };
+        st.certainty = if visible && tracking { (st.certainty + step).min(1.0) } else { (st.certainty - step).max(0.0) };
+        // How much of the face the swap covers, before the user's own opacity:
+        // the turn towards profile, and how sure the place of the face is.
+        let covered = if result.patch_sequence == 0 { 0.0 } else { result.opacity * st.certainty };
         result.opacity *= st.presence * settings.opacity.clamp(0.0, 1.0);
         if result.patch_sequence == 0 {
             result.opacity = 0.0;
         }
+        // The blur leads: it is complete by the time the swap is half gone.
+        result.blur = if hide { ((1.0 - covered) * 2.0).clamp(0.0, 1.0) } else { 0.0 };
 
         st.gray = gray_data;
         let mut stats = lock(&self.shared.stats);
@@ -550,6 +620,7 @@ impl Drop for LiveEngine {
     fn drop(&mut self) {
         self.shared.detect_jobs.close();
         self.shared.swap_jobs.close();
+        self.shared.occlusion_jobs.close();
         for worker in lock(&self.workers).drain(..) {
             let _ = worker.join();
         }
@@ -685,10 +756,31 @@ fn detect_worker(shared: &Shared, mut detector: Detector) {
     }
 }
 
+/// Keeps the occlusion mask up to date with the newest crop.
+///
+/// It runs beside the swap model, not in step with it: waiting for both on
+/// every patch cost a third of the swaps a second. The swap thread takes
+/// whichever mask is newest, which is nearly always the one for its own crop,
+/// because this model is the faster of the two.
+fn occlusion_worker(shared: &Shared, mut occluder: Occluder, size: u32) {
+    while let Some((crop, arrived)) = shared.occlusion_jobs.take() {
+        match occluder.mask(&crop, size) {
+            Ok(mask) => *lock(&shared.uncovered) = Some((Arc::new(mask), arrived)),
+            Err(error) => shared.fail(&error),
+        }
+    }
+}
+
 fn swap_worker(shared: &Shared, mut swapper: Swapper) {
     let size = swapper.contract().crop_size;
+    let occlusion_model = lock(&shared.stats).occlusion;
     let box_mask = image::crop_mask(size, MaskShape::Box);
     let oval_mask = image::crop_mask(size, MaskShape::Oval);
+    // 255 everywhere except over the mouth, for showing the real mouth.
+    let mut mouth_hole = vec![255u8; (size * size) as usize];
+    if let Some((centre, radii)) = image::mouth_oval(size) {
+        image::cut_oval(&mut mouth_hole, size, centre, radii, 0.35);
+    }
     // The identity as the encoder gave it, and as this model wants it.
     let mut prepared: Option<(Arc<Vec<f32>>, Vec<f32>)> = None;
     let mut sequence = 0u64;
@@ -706,6 +798,11 @@ fn swap_worker(shared: &Shared, mut swapper: Swapper) {
         let Some((_, input)) = &prepared else { continue };
         let settings = shared.settings();
         let started = Instant::now();
+        // The occlusion model looks at the same crop while the swap model works on it.
+        let occlusion = settings.occlusion && occlusion_model;
+        if occlusion {
+            shared.occlusion_jobs.put((job.crop.clone(), job.arrived));
+        }
         let swapped = match swapper.swap(&job.crop, input) {
             Ok(swapped) => swapped,
             Err(error) => {
@@ -713,16 +810,32 @@ fn swap_worker(shared: &Shared, mut swapper: Swapper) {
                 continue;
             }
         };
+        let uncovered = lock(&shared.uncovered)
+            .clone()
+            .filter(|(_, cut)| occlusion && job.arrived.saturating_duration_since(*cut) <= MASK_FRESH);
         let shape = if settings.mask == MaskShape::Box { &box_mask } else { &oval_mask };
-        // A model's own mask narrows the shape; it never widens it.
-        let mask: Vec<u8> = match &swapped.mask {
-            Some(own) => shape.iter().zip(own).map(|(a, b)| ((*a as u16 * *b as u16) / 255) as u8).collect(),
-            None => shape.clone(),
+        let mut mask = shape.clone();
+        // Every further mask narrows the shape; none widens it.
+        let mut narrow = |other: &[u8]| {
+            for (value, limit) in mask.iter_mut().zip(other) {
+                *value = ((*value as u16 * *limit as u16) / 255) as u8;
+            }
         };
+        if let Some(own) = &swapped.mask {
+            narrow(own);
+        }
+        // Without a mask the swap covers what is in front of the face, as it did before.
+        if let Some((uncovered, _)) = &uncovered {
+            narrow(uncovered);
+        }
+        if settings.real_mouth {
+            narrow(&mouth_hole);
+        }
         let mut rgb = swapped.rgb;
         if settings.colour_match {
             image::match_colour(&mut rgb, &job.crop, &mask);
         }
+        image::sharpen(&mut rgb, size, settings.sharpen.clamp(0.0, 1.0) * 1.2);
         let mut rgba = Vec::with_capacity(mask.len() * 4);
         for (pixel, alpha) in rgb.as_chunks::<3>().0.iter().zip(&mask) {
             rgba.extend_from_slice(&[pixel[0], pixel[1], pixel[2], *alpha]);

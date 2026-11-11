@@ -231,6 +231,54 @@ impl IdentityEncoder {
     }
 }
 
+/// The XSeg occlusion model: tells the face itself from whatever is in front
+/// of it, such as a hand, a cup or a microphone.
+pub struct Occluder {
+    session: Session,
+}
+
+impl Occluder {
+    /// Side of the picture the model looks at.
+    pub const SIDE: usize = 256;
+
+    pub fn load(runtime: &Runtime, model: &Path, accelerator: Accelerator) -> Result<Self, InferError> {
+        // The batch dimension is left open under generated names.
+        Ok(Self { session: runtime.session(model, accelerator, &[("unk__1491", 1), ("unk__1492", 1)])? })
+    }
+
+    /// A mask for an aligned RGB crop of side `size`, one byte per pixel: 255
+    /// where the face itself shows, 0 where something covers it and outside
+    /// the face. Its rim is soft and lies inside the face.
+    pub fn mask(&mut self, crop_rgb: &[u8], size: u32) -> Result<Vec<u8>, InferError> {
+        let side = Self::SIDE;
+        if size == 0 || crop_rgb.len() != (size as usize).pow(2) * 3 {
+            return Err(InferError::Model("the occlusion model needs a square RGB crop".into()));
+        }
+        let resized;
+        let source = if size as usize == side {
+            crop_rgb
+        } else {
+            resized = image::resize_crop(crop_rgb, size, side as u32);
+            &resized
+        };
+        // Blue, green, red from 0 to 1, pixel by pixel: the layout the model was trained on.
+        let mut input = Vec::with_capacity(side * side * 3);
+        for pixel in source.as_chunks::<3>().0 {
+            input.extend_from_slice(&[pixel[2] as f32 / 255.0, pixel[1] as f32 / 255.0, pixel[0] as f32 / 255.0]);
+        }
+        let tensor = Tensor::from_array(([1usize, side, side, 3], input.into_boxed_slice())).map_err(runtime_error)?;
+        let outputs = self.session.run(ort::inputs![tensor]).map_err(runtime_error)?;
+        let (_, values) = outputs[0].try_extract_tensor::<f32>().map_err(runtime_error)?;
+        if values.len() != side * side {
+            return Err(InferError::Model(format!("the occlusion model returned {} values", values.len())));
+        }
+        let mut map: Vec<f32> = values.iter().map(|v| v.clamp(0.0, 1.0)).collect();
+        map = image::resize_map(&map, side, size as usize);
+        image::soften_mask(&mut map, size as usize, size as f32 / 128.0 * 4.0);
+        Ok(map.iter().map(|v| (v * 255.0 + 0.5) as u8).collect())
+    }
+}
+
 /// What a swap model returns for one crop.
 pub struct SwapResult {
     /// The swapped crop, packed RGB, the same size as the input crop.

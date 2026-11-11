@@ -110,6 +110,8 @@ pub struct ReplayArgs {
     /// Feed frames as fast as they can be taken, instead of 30 a second.
     pub unpaced: bool,
     pub cpu_only: bool,
+    /// Leave the occlusion mask out, to see what it costs.
+    pub no_occlusion: bool,
     pub cache_dir: Option<PathBuf>,
     /// Folder for every fifteenth output frame, as PNG.
     pub dump: Option<PathBuf>,
@@ -148,9 +150,10 @@ pub fn replay(args: ReplayArgs) -> Result<()> {
         swap_model: args.model,
         cpu_only: args.cpu_only,
     })?;
-    engine.set_settings(LiveSettings::default());
+    engine.set_settings(LiveSettings { occlusion: !args.no_occlusion, ..LiveSettings::default() });
     engine.set_identity(Some(identity));
     let load_s = load_started.elapsed().as_secs_f32();
+    let occlusion = !args.no_occlusion && engine.stats().occlusion;
 
     // A face about as large as in a video call: eyes a tenth of the frame's width apart.
     let eye_distance = args.width as f32 * 0.1;
@@ -255,6 +258,7 @@ pub fn replay(args: ReplayArgs) -> Result<()> {
         "motion": format!("{:?}", args.motion),
         "frame": format!("{}x{}", args.width, args.height),
         "paced": !args.unpaced,
+        "occlusion_mask": occlusion,
         "cpu_only": args.cpu_only,
         "load_s": load_s,
         "warm_up_s": warm_s,

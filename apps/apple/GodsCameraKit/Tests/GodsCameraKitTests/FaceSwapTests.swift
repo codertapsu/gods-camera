@@ -90,7 +90,7 @@ final class FaceSwapTests: XCTestCase {
         var patch: RenderPatch?
         var time: UInt64 = 1_000_000
         for _ in 0..<240 {
-            patch = stage.process(frame, hostTimeNs: time)
+            patch = stage.process(frame, hostTimeNs: time).patch
             time += 33_333_333
             if let patch, patch.opacity >= 0.99 { break }
             Thread.sleep(forTimeInterval: 0.033)
@@ -137,6 +137,40 @@ final class FaceSwapTests: XCTestCase {
 
         // With no identity the stage draws nothing.
         stage.setIdentity(nil)
-        XCTAssertNil(stage.process(frame, hostTimeNs: time))
+        XCTAssertNil(stage.process(frame, hostTimeNs: time).patch)
+
+        // With the blur option on and a face chosen, a picture without a face is
+        // hidden; with the face in it, the swap comes back and the picture clears.
+        var hiding = FaceSwapSettings()
+        hiding.blurWhenUnswapped = true
+        stage.update(hiding)
+        XCTAssertEqual(stage.process(frame, hostTimeNs: time).blur, 0, "no face chosen, nothing to hide")
+        stage.setIdentity(enrolled.identity)
+        let empty = try XCTUnwrap(pool.makeBuffer())
+        _ = empty.withLockedBytes(readOnly: false) { base, rowBytes in
+            memset(base, 96, rowBytes * frameSize.height)
+        }
+        time += 33_333_333
+        XCTAssertEqual(stage.process(empty, hostTimeNs: time).blur, 1)
+        var cleared = false
+        for _ in 0..<240 where !cleared {
+            time += 33_333_333
+            let output = stage.process(frame, hostTimeNs: time)
+            cleared = output.blur == 0 && (output.patch?.opacity ?? 0) >= 0.99
+            Thread.sleep(forTimeInterval: 0.033)
+        }
+        XCTAssertTrue(cleared, "the swap came back on the face and the blur went")
+
+        // Several photos of one person make one identity; a photo of somebody else is left out.
+        // The largest face of the photo was enrolled above; this corner of it shows only another person.
+        let corner = try XCTUnwrap(photo.cropping(to: CGRect(x: 840, y: 0, width: 260, height: 290)))
+        let other = try XCTUnwrap(try enrolment.enrol(corner))
+        XCTAssertEqual(other.facesInPhoto, 1)
+        let combined = FaceEnrolment.combine([enrolled.identity, other.identity, enrolled.identity])
+        XCTAssertEqual(combined.used, [true, false, true])
+        XCTAssertEqual(combined.identity.count, 512)
+        XCTAssertGreaterThan(combined.similarity[0], 0.99)
+        XCTAssertLessThan(combined.similarity[1], 0.3)
+        XCTAssertTrue(stage.canKeepObjectsInFront, "the occlusion model is in the test packs")
     }
 }

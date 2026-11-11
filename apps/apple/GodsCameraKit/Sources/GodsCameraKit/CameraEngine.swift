@@ -58,6 +58,8 @@ public final class CameraEngine: @unchecked Sendable {
         public var swapAgeMs = 0.0
         /// What stopped the swap, if anything did.
         public var swapError: String?
+        /// The live picture is blurred because the swap is not on the face.
+        public var pictureHidden = false
 
         public init() {}
     }
@@ -79,7 +81,7 @@ public final class CameraEngine: @unchecked Sendable {
     /// The live picture as it goes out, swapped face and badge included. Fades
     /// between live and loop use this, so the real face never shows through them.
     private var latestComposite: CVPixelBuffer?
-    private var swap: FaceSwapStage?
+    private var swap: FaceSwapping?
     private var rateWindowStart: UInt64 = 0
     private var rateWindowFrames = 0
     private var recorder: ClipRecorder?
@@ -115,13 +117,14 @@ public final class CameraEngine: @unchecked Sendable {
     }
 
     /// Turn the face swap on by giving it a stage, or off with nil.
-    public func setSwapStage(_ stage: FaceSwapStage?) {
+    public func setSwapStage(_ stage: FaceSwapping?) {
         queue.async {
             self.swap = stage
             if stage == nil {
                 self.status.swapping = false
                 self.status.faceFound = false
                 self.status.swapError = nil
+                self.status.pictureHidden = false
                 self.publish()
             }
         }
@@ -222,15 +225,18 @@ public final class CameraEngine: @unchecked Sendable {
         measureRate()
         // The swap follows every frame, also while a loop plays, so that it is
         // already on the face when the picture returns to live.
-        let patch = swap?.process(frame.pixelBuffer, hostTimeNs: frame.hostTimeNs)
+        let swapped = swap?.process(frame.pixelBuffer, hostTimeNs: frame.hostTimeNs)
+        let patch = swapped?.patch
+        let blur = swapped?.blur ?? 0
         if let swap, status.framesOut % 15 == 0 || status.swapping != (patch != nil) {
-            let stats = swap.stats
-            status.faceFound = stats.tracking
-            status.swapMs = Double(stats.swapMs)
-            status.swapAgeMs = Double(stats.swapAgeMs)
-            status.swapError = stats.lastError
+            let report = swap.report
+            status.faceFound = report.faceFound
+            status.swapMs = report.swapMs
+            status.swapAgeMs = report.swapAgeMs
+            status.swapError = report.error
         }
         status.swapping = patch != nil
+        status.pictureHidden = blur > 0.5
         guard let output = makeOutput() else { return }
         let started = hostTimeNanoseconds()
         var overlay: RenderOverlay?
@@ -244,7 +250,7 @@ public final class CameraEngine: @unchecked Sendable {
         do {
             try renderer.render(
                 primary: RenderLayer(buffer: frame.pixelBuffer, mirrored: settings.mirror), patch: patch,
-                overlay: overlay, into: output)
+                overlay: overlay, blur: blur, into: output)
         } catch {
             Log.engine.error("render failed: \(String(describing: error))")
             return

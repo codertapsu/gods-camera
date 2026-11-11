@@ -128,6 +128,9 @@ enum Command {
         /// Run every model on the CPU.
         #[arg(long)]
         cpu: bool,
+        /// Leave the occlusion mask out, to see what it costs.
+        #[arg(long)]
+        no_occlusion: bool,
         /// Folder for compiled models, so later runs start faster.
         #[arg(long)]
         cache_dir: Option<PathBuf>,
@@ -189,7 +192,7 @@ async fn main() -> Result<()> {
         }
         Command::Replay {
             packs, photo, source, model, detector, detector_size, motion, seconds, width, height, unpaced, cpu,
-            cache_dir, dump, json,
+            no_occlusion, cache_dir, dump, json,
         } => {
             let args = face::ReplayArgs {
                 packs,
@@ -213,6 +216,7 @@ async fn main() -> Result<()> {
                 height,
                 unpaced,
                 cpu_only: cpu,
+                no_occlusion,
                 cache_dir,
                 dump,
                 json,

@@ -149,6 +149,67 @@ final class PipelineTests: XCTestCase {
 
     // MARK: Test pattern
 
+    /// How much the brightness of a picture varies from place to place: the
+    /// spread of its green channel over a grid of points.
+    private func detail(_ buffer: CVPixelBuffer) -> Double {
+        let size = buffer.pixelSize
+        var values: [Double] = []
+        for y in stride(from: 4, to: size.height, by: 8) {
+            for x in stride(from: 4, to: size.width, by: 8) {
+                values.append(Double(pixel(buffer, x: x, y: y).1))
+            }
+        }
+        let mean = values.reduce(0, +) / Double(values.count)
+        return (values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count)).squareRoot()
+    }
+
+    /// A picture with detail at the scale of a face's features: light and dark squares 40 pixels wide.
+    private func checkerboard(_ size: PixelSize) -> CVPixelBuffer {
+        makeBuffer(size) { x, y in (x / 40 + y / 40) % 2 == 0 ? (40, 40, 40) : (220, 220, 220) }
+    }
+
+    func testRendererBlursThePictureBeyondRecognition() throws {
+        let renderer = try MetalRenderer()
+        let source = checkerboard(.hd720)
+        let output = PixelBufferPool(size: .hd720)!.makeBuffer()!
+
+        try renderer.render(primary: RenderLayer(buffer: source), into: output)
+        let sharp = detail(output)
+        XCTAssertGreaterThan(sharp, 80, "the squares are there")
+
+        try renderer.render(primary: RenderLayer(buffer: source), blur: 1, into: output)
+        XCTAssertLessThan(detail(output), 6, "no square can be told from its neighbour")
+        // The picture keeps its overall brightness, so it still looks like a room and not a failure.
+        assertColor(pixel(output, x: 640, y: 360), (130, 130, 130), tolerance: 12, "the middle is the average grey")
+
+        try renderer.render(primary: RenderLayer(buffer: source), blur: 0.5, into: output)
+        let half = detail(output)
+        XCTAssertTrue(half > sharp * 0.35 && half < sharp * 0.65, "half blurred is in between: \(half) of \(sharp)")
+
+        // Another size of source works with the same renderer.
+        try renderer.render(primary: RenderLayer(buffer: checkerboard(.hd1080)), blur: 1, into: output)
+        XCTAssertLessThan(detail(output), 6)
+    }
+
+    func testRendererDrawsTheSwappedFaceSharpOnABlurredPicture() throws {
+        let renderer = try MetalRenderer()
+        let source = checkerboard(.hd720)
+        let output = PixelBufferPool(size: .hd720)!.makeBuffer()!
+        // A patch of 64 pixels, solid red and fully opaque, placed with its corner at (600, 320).
+        let texture = try XCTUnwrap(renderer.makePatchTexture(size: 64))
+        let red = [UInt8](repeating: 0, count: 64 * 64 * 4).enumerated().map { index, _ in
+            index % 4 == 0 || index % 4 == 3 ? UInt8(255) : UInt8(0)
+        }
+        red.withUnsafeBytes { bytes in
+            texture.replace(
+                region: MTLRegionMake2D(0, 0, 64, 64), mipmapLevel: 0, withBytes: bytes.baseAddress!, bytesPerRow: 64 * 4)
+        }
+        let patch = RenderPatch(texture: texture, frameToPatch: (1, 0, -600, 0, 1, -320), opacity: 1)
+        try renderer.render(primary: RenderLayer(buffer: source), patch: patch, blur: 1, into: output)
+        assertColor(pixel(output, x: 632, y: 352), (0, 0, 255), "the patch is drawn as it is")
+        assertColor(pixel(output, x: 200, y: 200), (130, 130, 130), tolerance: 12, "the rest is blurred")
+    }
+
     func testPatternFrameNumberSurvivesScaling() throws {
         let renderer = try MetalRenderer()
         let source = PixelBufferPool(size: .hd1080)!.makeBuffer()!
@@ -395,6 +456,85 @@ final class PipelineTests: XCTestCase {
         let newestRecorded = try XCTUnwrap(loopNumbers.max())
         XCTAssertTrue(afterLoop.allSatisfy { $0 > newestRecorded }, "live frames are newer than the clip: \(afterLoop.prefix(5))")
 
+        engine.setSource(nil)
+        engine.sync()
+    }
+
+    /// A stand-in for the face swap that asks for whatever blur it is told to.
+    private final class FakeSwap: FaceSwapping, @unchecked Sendable {
+        private let lock = NSLock()
+        private var amount: Float = 0
+        var blur: Float {
+            get {
+                lock.lock()
+                defer { lock.unlock() }
+                return amount
+            }
+            set {
+                lock.lock()
+                amount = newValue
+                lock.unlock()
+            }
+        }
+        func process(_ frame: CVPixelBuffer, hostTimeNs: UInt64) -> FaceSwapOutput { FaceSwapOutput(blur: blur) }
+        var report: FaceSwapReport { FaceSwapReport() }
+    }
+
+    /// A source that shows the same checkerboard on every frame.
+    private final class BoardSource: TimedSource {
+        private let board: CVPixelBuffer
+        init(board: CVPixelBuffer) {
+            self.board = board
+            super.init(frameRate: 30, label: "board")
+        }
+        override func nextBuffer() -> CVPixelBuffer? { board }
+    }
+
+    func testEngineBlursThePictureWhileTheSwapAsksForIt() throws {
+        let engine = CameraEngine(renderer: try MetalRenderer())
+        let lock = NSLock()
+        var newest: CVPixelBuffer?
+        var hidden = false
+        engine.onOutput = { buffer, _ in
+            lock.lock()
+            newest = buffer
+            lock.unlock()
+        }
+        engine.onStatus = { status in
+            lock.lock()
+            hidden = status.pictureHidden
+            lock.unlock()
+        }
+        func outputDetail() -> Double {
+            lock.lock()
+            let buffer = newest
+            lock.unlock()
+            return buffer.map(detail) ?? -1
+        }
+        func isHidden() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return hidden
+        }
+        let swap = FakeSwap()
+        engine.setSwapStage(swap)
+        engine.setSource(BoardSource(board: checkerboard(.hd720)))
+        waitUntil("a sharp picture") { outputDetail() > 80 }
+        XCTAssertFalse(isHidden())
+
+        // The swap loses the face: the picture that goes out is blurred, and the status says so.
+        swap.blur = 1
+        waitUntil("a blurred picture") { outputDetail() >= 0 && outputDetail() < 6 && isHidden() }
+
+        // The swap is back on the face.
+        swap.blur = 0
+        waitUntil("a sharp picture again") { outputDetail() > 80 && !isHidden() }
+
+        // Turning the swap off while it asks for a blur leaves nothing blurred.
+        swap.blur = 1
+        waitUntil("a blurred picture") { outputDetail() >= 0 && outputDetail() < 6 }
+        engine.setSwapStage(nil)
+        waitUntil("a sharp picture without the swap") { outputDetail() > 80 && !isHidden() }
         engine.setSource(nil)
         engine.sync()
     }

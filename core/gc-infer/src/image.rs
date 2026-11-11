@@ -433,6 +433,177 @@ pub fn match_colour(swapped_rgb: &mut [u8], original_rgb: &[u8], mask: &[u8]) {
     }
 }
 
+/// Make a crop crisper. Each pixel moves away from the average of its
+/// neighbours by `amount` times the difference; 0 changes nothing.
+///
+/// A swap model's output is small, 128 or 256 pixels across, and is enlarged
+/// onto the frame. A little of this restores the look of fine detail.
+pub fn sharpen(rgb: &mut [u8], size: u32, amount: f32) {
+    let n = size as usize;
+    if amount <= 0.0 || n < 3 || rgb.len() != n * n * 3 {
+        return;
+    }
+    // A 3 x 3 blur with weights 1 2 1, first along rows, then along columns.
+    let mut rows = vec![0u16; rgb.len()];
+    for y in 0..n {
+        for x in 0..n {
+            let (left, right) = (x.saturating_sub(1), (x + 1).min(n - 1));
+            for c in 0..3 {
+                let at = |xi: usize| rgb[(y * n + xi) * 3 + c] as u16;
+                rows[(y * n + x) * 3 + c] = at(left) + 2 * at(x) + at(right);
+            }
+        }
+    }
+    let original = rgb.to_vec();
+    for y in 0..n {
+        let (up, down) = (y.saturating_sub(1), (y + 1).min(n - 1));
+        for x in 0..n {
+            for c in 0..3 {
+                let at = |yi: usize| rows[(yi * n + x) * 3 + c] as f32;
+                let blurred = (at(up) + 2.0 * at(y) + at(down)) / 16.0;
+                let value = original[(y * n + x) * 3 + c] as f32;
+                rgb[(y * n + x) * 3 + c] = (value + amount * (value - blurred)).clamp(0.0, 255.0).round() as u8;
+            }
+        }
+    }
+}
+
+/// Open an oval hole in a crop mask, so the frame shows through there.
+/// The hole is fully open out to `radii` around `centre`, and closes over a
+/// further `feather` share of the radii.
+pub fn cut_oval(mask: &mut [u8], size: u32, centre: [f32; 2], radii: [f32; 2], feather: f32) {
+    let n = size as usize;
+    if mask.len() != n * n || radii[0] <= 0.0 || radii[1] <= 0.0 {
+        return;
+    }
+    let feather = feather.max(1e-3);
+    for y in 0..n {
+        for x in 0..n {
+            let dx = (x as f32 + 0.5 - centre[0]) / radii[0];
+            let dy = (y as f32 + 0.5 - centre[1]) / radii[1];
+            let t = (((dx * dx + dy * dy).sqrt() - 1.0) / feather).clamp(0.0, 1.0);
+            let keep = t * t * (3.0 - 2.0 * t);
+            let value = &mut mask[y * n + x];
+            *value = (*value as f32 * keep + 0.5) as u8;
+        }
+    }
+}
+
+/// Where the mouth is in an aligned crop of side `size`: the centre and the
+/// radii of an oval that covers the lips, closed or open, with a small margin.
+pub fn mouth_oval(size: u32) -> Option<([f32; 2], [f32; 2])> {
+    let template = gc_align::template(size).ok()?;
+    let (left, right) = (template[3], template[4]);
+    let width = ((right[0] - left[0]).powi(2) + (right[1] - left[1]).powi(2)).sqrt();
+    // An open mouth grows downwards from the line between its corners.
+    let centre = [(left[0] + right[0]) / 2.0, (left[1] + right[1]) / 2.0 + 0.08 * width];
+    Some((centre, [0.75 * width, 0.5 * width]))
+}
+
+/// Resize a square packed RGB crop from side `from` to side `to`, sampling
+/// between the nearest four pixels.
+pub fn resize_crop(crop_rgb: &[u8], from: u32, to: u32) -> Vec<u8> {
+    let (n, m) = (from as usize, to as usize);
+    let mut out = Vec::with_capacity(m * m * 3);
+    let scale = n as f32 / m as f32;
+    for y in 0..m {
+        let sy = ((y as f32 + 0.5) * scale - 0.5).clamp(0.0, n as f32 - 1.0);
+        for x in 0..m {
+            let sx = ((x as f32 + 0.5) * scale - 0.5).clamp(0.0, n as f32 - 1.0);
+            // Positions are kept inside the crop, so the zero beyond its edge never has weight.
+            let pixel: [f32; 3] = sample_crop(crop_rgb, n, sx, sy);
+            out.extend(pixel.iter().map(|v| v.round().clamp(0.0, 255.0) as u8));
+        }
+    }
+    out
+}
+
+/// Resize a square map of numbers from side `from` to side `to`. Shrinking by
+/// a whole factor averages each block; anything else samples between pixels.
+pub fn resize_map(map: &[f32], from: usize, to: usize) -> Vec<f32> {
+    if from == to || map.len() != from * from || to == 0 {
+        return map.to_vec();
+    }
+    let mut out = Vec::with_capacity(to * to);
+    if from.is_multiple_of(to) {
+        let k = from / to;
+        for y in 0..to {
+            for x in 0..to {
+                let mut sum = 0.0;
+                for by in 0..k {
+                    for bx in 0..k {
+                        sum += map[(y * k + by) * from + x * k + bx];
+                    }
+                }
+                out.push(sum / (k * k) as f32);
+            }
+        }
+        return out;
+    }
+    let scale = from as f32 / to as f32;
+    let last = from - 1;
+    for y in 0..to {
+        let sy = ((y as f32 + 0.5) * scale - 0.5).clamp(0.0, last as f32);
+        let (y0, fy) = (sy.floor() as usize, sy.fract());
+        let y1 = (y0 + 1).min(last);
+        for x in 0..to {
+            let sx = ((x as f32 + 0.5) * scale - 0.5).clamp(0.0, last as f32);
+            let (x0, fx) = (sx.floor() as usize, sx.fract());
+            let x1 = (x0 + 1).min(last);
+            let top = map[y0 * from + x0] + (map[y0 * from + x1] - map[y0 * from + x0]) * fx;
+            let bottom = map[y1 * from + x0] + (map[y1 * from + x1] - map[y1 * from + x0]) * fx;
+            out.push(top + (bottom - top) * fy);
+        }
+    }
+    out
+}
+
+/// One pass of a box blur along rows or columns of a square map, with the
+/// edge value repeated beyond the edge.
+fn box_blur_pass(source: &[f32], out: &mut [f32], n: usize, radius: usize, columns: bool) {
+    let width = (2 * radius + 1) as f32;
+    for line in 0..n {
+        let at = |i: isize| -> f32 {
+            let i = i.clamp(0, n as isize - 1) as usize;
+            if columns {
+                source[i * n + line]
+            } else {
+                source[line * n + i]
+            }
+        };
+        let mut sum: f32 = (-(radius as isize)..=radius as isize).map(at).sum();
+        for i in 0..n {
+            let index = if columns { i * n + line } else { line * n + i };
+            out[index] = sum / width;
+            sum += at(i as isize + radius as isize + 1) - at(i as isize - radius as isize);
+        }
+    }
+}
+
+/// Turn a hard face map from a segmentation model, 0 to 1 per pixel, into a
+/// mask with a soft rim that lies wholly inside the face.
+///
+/// The map is blurred by about `sigma` pixels and its upper half is stretched
+/// to the full range: the rim then starts at the old outline and reaches full
+/// strength a little inside it, so nothing outside the face is ever replaced.
+pub fn soften_mask(map: &mut [f32], size: usize, sigma: f32) {
+    if map.len() != size * size || size == 0 {
+        return;
+    }
+    // Three box blurs come close to a Gaussian blur.
+    let radius = (((4.0 * sigma * sigma + 1.0).sqrt() - 1.0) / 2.0).round() as usize;
+    if radius > 0 {
+        let mut scratch = vec![0f32; map.len()];
+        for _ in 0..3 {
+            box_blur_pass(map, &mut scratch, size, radius, false);
+            box_blur_pass(&scratch, map, size, radius, true);
+        }
+    }
+    for value in map.iter_mut() {
+        *value = ((value.clamp(0.5, 1.0)) - 0.5) * 2.0;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,5 +731,72 @@ mod tests {
         let mask = vec![255u8; 8 * 8];
         match_colour(&mut swapped, &original, &mask);
         assert!(swapped.iter().all(|&v| (v as i32 - 100).abs() <= 1));
+    }
+
+    #[test]
+    fn sharpening_steepens_an_edge_and_leaves_flat_areas_alone() {
+        // Left half dark, right half light.
+        let n = 16usize;
+        let mut crop = Vec::new();
+        for _ in 0..n {
+            for x in 0..n {
+                let v = if x < n / 2 { 80 } else { 160 };
+                crop.extend_from_slice(&[v, v, v]);
+            }
+        }
+        let before = crop.clone();
+        sharpen(&mut crop, n as u32, 0.0);
+        assert_eq!(crop, before, "an amount of 0 changes nothing");
+        sharpen(&mut crop, n as u32, 1.0);
+        let at = |x: usize| crop[(8 * n + x) * 3];
+        assert_eq!((at(2), at(13)), (80, 160), "flat areas keep their value");
+        assert!(at(7) < 80 && at(8) > 160, "the two sides of the edge move apart: {} and {}", at(7), at(8));
+    }
+
+    #[test]
+    fn an_oval_hole_opens_the_mask_where_the_mouth_is() {
+        let size = 128u32;
+        let (centre, radii) = mouth_oval(size).expect("a template for 128");
+        // Between the mouth corners of the aligned face, a little below their line.
+        assert!((centre[0] - 64.0).abs() < 1.5 && (88.0..100.0).contains(&centre[1]), "{centre:?}");
+        let mut mask = crop_mask(size, MaskShape::Oval);
+        let n = size as usize;
+        let eye = mask[52 * n + 46];
+        cut_oval(&mut mask, size, centre, radii, 0.35);
+        assert_eq!(mask[centre[1] as usize * n + centre[0] as usize], 0, "the mouth shows the frame");
+        assert_eq!(mask[52 * n + 46], eye, "the eyes are untouched");
+        assert_eq!(mask[60 * n + 64], 255, "so is the nose");
+    }
+
+    #[test]
+    fn maps_resize_by_averaging_blocks_or_sampling_between_pixels() {
+        let map: Vec<f32> = (0..16).map(|i| i as f32).collect();
+        // 4 x 4 to 2 x 2: each value is the mean of a 2 x 2 block.
+        assert_eq!(resize_map(&map, 4, 2), vec![2.5, 4.5, 10.5, 12.5]);
+        // Enlarging a flat map keeps it flat.
+        assert!(resize_map(&[0.25; 9], 3, 7).iter().all(|v| (*v - 0.25).abs() < 1e-6));
+        // A crop of one colour stays that colour at any size.
+        let flat = [10u8, 200, 30].repeat(8 * 8);
+        let bigger = resize_crop(&flat, 8, 20);
+        assert_eq!(bigger.len(), 20 * 20 * 3);
+        assert!(bigger.as_chunks::<3>().0.iter().all(|p| *p == [10, 200, 30]));
+    }
+
+    #[test]
+    fn a_softened_mask_stays_inside_the_face() {
+        // A hard square face map in the middle of a 64 x 64 crop.
+        let n = 64usize;
+        let mut map = vec![0f32; n * n];
+        for y in 16..48 {
+            for x in 16..48 {
+                map[y * n + x] = 1.0;
+            }
+        }
+        soften_mask(&mut map, n, 2.0);
+        assert_eq!(map[32 * n + 10], 0.0, "nothing outside the outline");
+        assert!(map[32 * n + 16] < 0.2, "the rim starts at the outline: {}", map[32 * n + 16]);
+        assert!(map[32 * n + 32] > 0.99, "full strength inside");
+        let rim = map[32 * n + 19];
+        assert!(rim > 0.2 && rim < 1.0, "a soft rim in between: {rim}");
     }
 }

@@ -31,6 +31,10 @@ public struct FaceSwapConfig: Equatable, Sendable {
         }
     }
 
+    /// The model that tells the face from a hand or an object in front of it.
+    /// The swap works without it.
+    public static let occlusionFile = "xseg_3.onnx"
+
     /// The first missing file for the chosen model, or nil when everything is there.
     public var missingFile: String? {
         Self.requiredFiles(for: model).first { file in
@@ -47,8 +51,50 @@ public struct FaceSwapSettings: Equatable, Sendable {
     public var colourMatch = true
     /// 0 shows the real face, 1 the swapped one.
     public var opacity: Float = 1
+    /// How much crisper to make the swapped face, 0 to 1.
+    public var sharpen: Float = 0.4
+    /// Keep a hand, a cup or a microphone in front of the swapped face.
+    public var keepObjectsInFront = true
+    /// Leave the real mouth showing through the swap.
+    public var realMouth = false
+    /// Blur the whole picture whenever the swap is not fully on the face, so
+    /// the real face never shows.
+    public var blurWhenUnswapped = false
 
     public init() {}
+}
+
+/// What a face swap wants drawn for one frame.
+public struct FaceSwapOutput {
+    /// The swapped face to draw, or nil when there is none.
+    public var patch: RenderPatch?
+    /// How strongly to blur the whole picture, 0 to 1, so the real face does not show.
+    public var blur: Float
+
+    public init(patch: RenderPatch? = nil, blur: Float = 0) {
+        self.patch = patch
+        self.blur = blur
+    }
+}
+
+/// What a face swap says about itself.
+public struct FaceSwapReport: Equatable, Sendable {
+    /// A face is being followed.
+    public var faceFound = false
+    /// Smoothed time for one swap, and from a frame's arrival to its swapped face, in milliseconds.
+    public var swapMs = 0.0
+    public var swapAgeMs = 0.0
+    /// What stopped the swap, if anything did.
+    public var error: String?
+
+    public init() {}
+}
+
+/// A face swap as the camera engine sees it: a frame in, what to draw out.
+public protocol FaceSwapping: AnyObject, Sendable {
+    /// Take in one frame and say what to draw on it. Called on the engine's queue.
+    func process(_ frame: CVPixelBuffer, hostTimeNs: UInt64) -> FaceSwapOutput
+    var report: FaceSwapReport { get }
 }
 
 /// The live face swap as the engine sees it: frames in, a patch and its place out.
@@ -59,7 +105,7 @@ public struct FaceSwapSettings: Equatable, Sendable {
 ///
 /// `process` is called from the engine's queue and the setters from the main
 /// thread. The core is safe for that; the one value kept here has its own lock.
-public final class FaceSwapStage: @unchecked Sendable {
+public final class FaceSwapStage: FaceSwapping, @unchecked Sendable {
     private let engine: FaceEngine
     private let texture: MTLTexture
     private let lock = NSLock()
@@ -98,17 +144,35 @@ public final class FaceSwapStage: @unchecked Sendable {
         engine.setSettings(
             settings: EngineSettings(
                 mask: settings.ovalMask ? .oval : .box, colourMatch: settings.colourMatch,
-                opacity: settings.opacity, scoreThreshold: 0.5))
+                opacity: settings.opacity, scoreThreshold: 0.5, sharpen: settings.sharpen,
+                occlusion: settings.keepObjectsInFront, realMouth: settings.realMouth,
+                blurWhenUnswapped: settings.blurWhenUnswapped))
     }
 
     public var stats: EngineStats { engine.stats() }
 
-    /// Take in one frame. Returns the patch to draw on it, or nil when there is none.
-    public func process(_ frame: CVPixelBuffer, hostTimeNs: UInt64) -> RenderPatch? {
-        guard CVPixelBufferGetPixelFormatType(frame) == kCVPixelFormatType_32BGRA else { return nil }
+    /// The occlusion model is loaded, so `keepObjectsInFront` has an effect.
+    public var canKeepObjectsInFront: Bool { engine.stats().occlusion }
+
+    public var report: FaceSwapReport {
+        let stats = engine.stats()
+        var report = FaceSwapReport()
+        report.faceFound = stats.tracking
+        report.swapMs = Double(stats.swapMs)
+        report.swapAgeMs = Double(stats.swapAgeMs)
+        report.error = stats.lastError
+        return report
+    }
+
+    /// Take in one frame and say what to draw on it: the swapped face, if
+    /// there is one, and how much to blur the picture.
+    public func process(_ frame: CVPixelBuffer, hostTimeNs: UInt64) -> FaceSwapOutput {
+        // A frame the swap cannot read is not known to be free of faces.
+        let unreadable = FaceSwapOutput(blur: 0)
+        guard CVPixelBufferGetPixelFormatType(frame) == kCVPixelFormatType_32BGRA else { return unreadable }
         CVPixelBufferLockBaseAddress(frame, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(frame, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(frame) else { return nil }
+        guard let base = CVPixelBufferGetBaseAddress(frame) else { return unreadable }
         let stride = CVPixelBufferGetBytesPerRow(frame)
         let height = CVPixelBufferGetHeight(frame)
         // The core reads the frame's memory in place for the length of this call.
@@ -118,7 +182,8 @@ public final class FaceSwapStage: @unchecked Sendable {
                 width: UInt32(CVPixelBufferGetWidth(frame)), height: UInt32(height), stride: UInt32(stride),
                 layout: .bgra),
             timeNs: hostTimeNs)
-        guard output.face, output.patchSequence > 0, output.opacity > 0 else { return nil }
+        let none = FaceSwapOutput(blur: output.blur)
+        guard output.face, output.patchSequence > 0, output.opacity > 0 else { return none }
 
         lock.lock()
         var held = sequence
@@ -134,17 +199,18 @@ public final class FaceSwapStage: @unchecked Sendable {
             sequence = held
             lock.unlock()
         }
-        guard held > 0 else { return nil }
+        guard held > 0 else { return none }
 
         // The core gives patch-to-frame; the shader wants frame-to-patch.
         let (a, b, c, d) = (output.a, output.b, output.c, output.d)
         let determinant = a * d - b * c
-        guard abs(determinant) > 1e-9 else { return nil }
+        guard abs(determinant) > 1e-9 else { return none }
         let (ia, ib, ic, id) = (d / determinant, -b / determinant, -c / determinant, a / determinant)
-        return RenderPatch(
+        let patch = RenderPatch(
             texture: texture,
             frameToPatch: (ia, ib, -(ia * output.tx + ib * output.ty), ic, id, -(ic * output.tx + id * output.ty)),
             opacity: output.opacity)
+        return FaceSwapOutput(patch: patch, blur: output.blur)
     }
 }
 
@@ -158,8 +224,27 @@ public struct EnrolledIdentity: Sendable {
     public let faceRect: CGRect
 }
 
+/// One identity made from several photos of a person.
+public struct CombinedIdentity: Sendable {
+    /// The identity to swap in. Empty when no photo could be used.
+    public let identity: [Float]
+    /// For each photo, in the order given: whether it went into the identity.
+    /// A photo is left out when it shows somebody other than most of the others.
+    public let used: [Bool]
+    /// For each photo: how alike its face and the combined identity are, -1 to 1.
+    public let similarity: [Float]
+}
+
 /// Turns photos into identities for the face library.
 public final class FaceEnrolment {
+    /// Combine the identities of several photos of one person. The average
+    /// keeps what the photos share, which is the person, and loses what
+    /// differs between them: expression, angle and light.
+    public static func combine(_ identities: [[Float]]) -> CombinedIdentity {
+        let combined = combineIdentities(identities: identities)
+        return CombinedIdentity(identity: combined.identity, used: combined.used, similarity: combined.similarity)
+    }
+
     private let enroller: FaceEnroller
 
     public init(packFolders: [URL], cacheFolder: URL? = nil) throws {

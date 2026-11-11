@@ -3,6 +3,7 @@ import CoreText
 import CoreVideo
 import Foundation
 import Metal
+import MetalPerformanceShaders
 import simd
 
 public enum RenderError: Error {
@@ -58,17 +59,37 @@ public struct RenderPatch {
 
 /// Draws camera frames into output buffers on the GPU.
 ///
-/// Each pass scales and crops one picture to fill the output, optionally draws
-/// a swapped face onto it, optionally cross-fades it with a second picture,
-/// and optionally draws an overlay.
+/// Each pass scales and crops one picture to fill the output, optionally blurs
+/// it, optionally draws a swapped face onto it, optionally cross-fades it with
+/// a second picture, and optionally draws an overlay.
 ///
-/// Metal's device, queue and pipeline can be used from any thread, and a
-/// render call keeps nothing between calls.
+/// Metal's device, queue and pipeline can be used from any thread. The only
+/// things kept between calls are the two small textures the blur works in,
+/// and a lock makes blurred passes take turns at them.
 public final class MetalRenderer: @unchecked Sendable {
     public let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private var textureCache: CVMetalTextureCache!
+
+    /// Width of the small copy the blur is made from. A face that fills a
+    /// third of the picture is about 30 of these pixels wide, and the blur
+    /// then spreads every point over about 20: no feature of it survives.
+    private static let blurWidth = 96
+    private static let blurSigma: Float = 3.2
+    private let blurLock = NSLock()
+    private var blurScratch: (small: MTLTexture, soft: MTLTexture)?
+    private lazy var shrink: MPSImageLanczosScale = {
+        let kernel = MPSImageLanczosScale(device: device)
+        kernel.edgeMode = .clamp
+        return kernel
+    }()
+    private lazy var soften: MPSImageGaussianBlur = {
+        let kernel = MPSImageGaussianBlur(device: device, sigma: MetalRenderer.blurSigma)
+        // Beyond the picture's edge is more of the edge, not black, or the borders would darken.
+        kernel.edgeMode = .clamp
+        return kernel
+    }()
 
     private struct Uniforms {
         var uvA = matrix_identity_float3x3
@@ -76,7 +97,8 @@ public final class MetalRenderer: @unchecked Sendable {
         var mix: Float = 0
         var hasB: Float = 0
         var overlayAlpha: Float = 0
-        var padding: Float = 0
+        /// How much of the blurred copy of the primary picture to show, 0 to 1.
+        var blur: Float = 0
         var overlayRect = SIMD4<Float>(0, 0, 1, 1)
         /// a, b, tx and the patch's side in pixels.
         var patchRow0 = SIMD4<Float>(1, 0, 0, 1)
@@ -103,7 +125,7 @@ public final class MetalRenderer: @unchecked Sendable {
             float mix;
             float hasB;
             float overlayAlpha;
-            float padding;
+            float blur;
             float4 overlayRect;
             float4 patchRow0;
             float4 patchRow1;
@@ -124,10 +146,16 @@ public final class MetalRenderer: @unchecked Sendable {
                                     texture2d<float> texB [[texture(1)]],
                                     texture2d<float> overlay [[texture(2)]],
                                     texture2d<float> patch [[texture(3)]],
+                                    texture2d<float> soft [[texture(4)]],
                                     constant Uniforms &u [[buffer(0)]]) {
             constexpr sampler s(filter::linear, address::clamp_to_edge);
             float2 uvA = (u.uvA * float3(in.uv, 1)).xy;
             float3 color = texA.sample(s, uvA).rgb;
+            // The blur goes under the swapped face, so a face that is fading
+            // in or out is drawn sharp on a picture that is not.
+            if (u.blur > 0.0) {
+                color = mix(color, soft.sample(s, uvA).rgb, u.blur);
+            }
             if (u.patchRow1.w > 0.0) {
                 // The core counts pixels with their centres on whole numbers.
                 float2 p = uvA * u.sourceSize.xy - 0.5;
@@ -202,12 +230,32 @@ public final class MetalRenderer: @unchecked Sendable {
         return device.makeTexture(descriptor: descriptor)
     }
 
+    /// The two small textures the blur works in, sized for a source picture.
+    private func blurTextures(for source: PixelSize) -> (small: MTLTexture, soft: MTLTexture)? {
+        let width = Self.blurWidth
+        let height = max(8, Int((Double(width) * Double(source.height) / Double(max(1, source.width))).rounded()))
+        if let scratch = blurScratch, scratch.small.width == width, scratch.small.height == height { return scratch }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.shaderRead, .shaderWrite]
+        guard let small = device.makeTexture(descriptor: descriptor), let soft = device.makeTexture(descriptor: descriptor)
+        else { return nil }
+        blurScratch = (small, soft)
+        return blurScratch
+    }
+
     /// Draw `primary` into `output`, with `patch` drawn onto it, cross-fading
     /// towards `secondary` by `mix` (0 shows only the primary, 1 only the secondary).
+    ///
+    /// `blur` from 0 to 1 replaces that share of the primary picture with a
+    /// copy blurred beyond recognition. The patch is drawn on top of it, sharp.
     public func render(
         primary: RenderLayer, patch: RenderPatch? = nil, secondary: RenderLayer? = nil, mix: Float = 0,
-        overlay: RenderOverlay? = nil, into output: CVPixelBuffer
+        overlay: RenderOverlay? = nil, blur: Float = 0, into output: CVPixelBuffer
     ) throws {
+        let blur = min(max(blur, 0), 1)
+        if blur > 0 { blurLock.lock() }
+        defer { if blur > 0 { blurLock.unlock() } }
         let outputSize = output.pixelSize
         // The wrappers must stay alive until the GPU has finished.
         let (primaryTexture, primaryRef) = try texture(for: primary.buffer)
@@ -243,15 +291,24 @@ public final class MetalRenderer: @unchecked Sendable {
         pass.colorAttachments[0].texture = targetTexture
         pass.colorAttachments[0].loadAction = .dontCare
         pass.colorAttachments[0].storeAction = .store
-        guard let commands = queue.makeCommandBuffer(),
-            let encoder = commands.makeRenderCommandEncoder(descriptor: pass)
-        else { throw RenderError.commandFailed }
+        guard let commands = queue.makeCommandBuffer() else { throw RenderError.commandFailed }
+        var softTexture = primaryTexture
+        if blur > 0 {
+            // Shrink the picture, blur the small copy, and let the pass below enlarge it again.
+            guard let scratch = blurTextures(for: primary.buffer.pixelSize) else { throw RenderError.textureUnavailable }
+            shrink.encode(commandBuffer: commands, sourceTexture: primaryTexture, destinationTexture: scratch.small)
+            soften.encode(commandBuffer: commands, sourceTexture: scratch.small, destinationTexture: scratch.soft)
+            softTexture = scratch.soft
+            uniforms.blur = blur
+        }
+        guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { throw RenderError.commandFailed }
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentTexture(primaryTexture, index: 0)
         // Every texture slot the shader declares gets a texture, used or not.
         encoder.setFragmentTexture(secondaryTexture, index: 1)
         encoder.setFragmentTexture(overlay?.texture ?? primaryTexture, index: 2)
         encoder.setFragmentTexture(patch?.texture ?? primaryTexture, index: 3)
+        encoder.setFragmentTexture(softTexture, index: 4)
         withUnsafeBytes(of: &uniforms) { bytes in
             encoder.setFragmentBytes(bytes.baseAddress!, length: bytes.count, index: 0)
         }

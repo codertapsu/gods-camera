@@ -127,3 +127,93 @@ fn still_image_pipeline_matches_insightface() {
         "crop {crop_difference:.2}, swap {swap_difference:.2}, pasted {pasted_difference:.3} (unswapped frame: {untouched_difference:.3})"
     );
 }
+
+/// A mean of mask bytes over a rectangle of a square mask, 0 to 1.
+fn mask_mean(mask: &[u8], side: usize, x: std::ops::Range<usize>, y: std::ops::Range<usize>) -> f64 {
+    let mut sum = 0f64;
+    let count = (x.len() * y.len()) as f64;
+    for row in y {
+        for column in x.clone() {
+            sum += mask[row * side + column] as f64;
+        }
+    }
+    sum / count / 255.0
+}
+
+#[test]
+fn occlusion_mask_keeps_the_face_and_drops_what_covers_it() {
+    let Some(packs) = packs() else { return };
+    let model = packs.join("xseg_3.onnx");
+    if !model.is_file() {
+        eprintln!("{} not found; skipping", model.display());
+        return;
+    }
+    let runtime = Runtime::shared(None).expect("runtime");
+    let (crop, width, height) = rgb("aligned_128.png");
+    assert_eq!((width, height), (128, 128));
+    let mut occluder = gc_infer::runtime::Occluder::load(runtime, &model, Accelerator::Cpu).expect("occluder");
+
+    let clear = occluder.mask(&crop, 128).expect("mask");
+    assert_eq!(clear.len(), 128 * 128);
+    assert!(mask_mean(&clear, 128, 48..80, 48..80) > 0.98, "the middle of the face is face");
+    assert!(mask_mean(&clear, 128, 0..12, 0..12) < 0.02, "the corner is not");
+
+    // A flat grey bar across the mouth and chin, like a cup held in front of the face.
+    let mut covered = crop.clone();
+    for y in 75..108 {
+        for x in 20..128 {
+            covered[(y * 128 + x) * 3..(y * 128 + x) * 3 + 3].copy_from_slice(&[90, 92, 102]);
+        }
+    }
+    let mask = occluder.mask(&covered, 128).expect("mask");
+    assert!(mask_mean(&mask, 128, 40..100, 82..102) < 0.05, "the bar is not face");
+    assert!(mask_mean(&mask, 128, 40..88, 46..58) > 0.9, "the eyes still are");
+
+    // The same crop at 256, the size of the sharper swap model.
+    let big = image::resize_crop(&covered, 128, 256);
+    let mask = occluder.mask(&big, 256).expect("mask");
+    assert_eq!(mask.len(), 256 * 256);
+    assert!(mask_mean(&mask, 256, 80..200, 164..204) < 0.05);
+    assert!(mask_mean(&mask, 256, 80..176, 92..116) > 0.9);
+}
+
+/// Not a check: prints how long the occlusion model takes on each processor.
+/// Run with `cargo test -p gc-infer --features runtime --release --test runtime -- --ignored --nocapture occlusion_speed`.
+#[test]
+#[ignore]
+fn occlusion_speed() {
+    let Some(packs) = packs() else { return };
+    let model = packs.join("xseg_3.onnx");
+    let cache = std::env::temp_dir().join("gc-occlusion-speed");
+    let runtime = Runtime::shared(Some(&cache)).expect("runtime");
+    let (crop, _, _) = rgb("aligned_128.png");
+    for accelerator in [Accelerator::Cpu, Accelerator::Gpu, Accelerator::NeuralEngine] {
+        let loading = std::time::Instant::now();
+        let mut occluder = match gc_infer::runtime::Occluder::load(runtime, &model, accelerator) {
+            Ok(occluder) => occluder,
+            Err(error) => {
+                println!("{accelerator:?}: failed to load: {error}");
+                continue;
+            }
+        };
+        let loaded = loading.elapsed();
+        let first = std::time::Instant::now();
+        let reference = occluder.mask(&crop, 128).expect("mask");
+        let first = first.elapsed();
+        let mut times = Vec::new();
+        for _ in 0..40 {
+            let started = std::time::Instant::now();
+            occluder.mask(&crop, 128).expect("mask");
+            times.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        times.sort_by(f64::total_cmp);
+        println!(
+            "{accelerator:?}: load {:.1} s, first run {:.0} ms, median {:.1} ms, worst {:.1} ms, face share {:.3}",
+            loaded.as_secs_f64(),
+            first.as_secs_f64() * 1000.0,
+            times[times.len() / 2],
+            times[times.len() - 1],
+            reference.iter().map(|v| *v as f64).sum::<f64>() / reference.len() as f64 / 255.0
+        );
+    }
+}

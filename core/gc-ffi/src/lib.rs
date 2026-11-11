@@ -94,6 +94,16 @@ pub struct EngineSettings {
     /// 0 shows the real face, 1 the swapped one.
     pub opacity: f32,
     pub score_threshold: f32,
+    /// How much crisper to make the swapped face, 0 to 1.
+    pub sharpen: f32,
+    /// Keep a hand or an object in front of the face in front of the swap.
+    /// Has an effect only when `EngineStats::occlusion` is true.
+    pub occlusion: bool,
+    /// Leave the real mouth showing through the swap.
+    pub real_mouth: bool,
+    /// Ask for the picture to be blurred while the swap is not fully on the
+    /// face. The amount comes back with every frame as `FrameOutput::blur`.
+    pub blur_when_unswapped: bool,
 }
 
 /// One camera frame, described by where its bytes are.
@@ -131,6 +141,9 @@ pub struct FrameOutput {
     pub patch_age_frames: u32,
     /// Five keypoints as x, y pairs, in frame pixels.
     pub keypoints: Vec<f32>,
+    /// How strongly to blur the whole picture, 0 to 1, so that the real face
+    /// does not show. Always 0 unless `EngineSettings::blur_when_unswapped` is set.
+    pub blur: f32,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -152,7 +165,32 @@ pub struct EngineStats {
     pub swap_ms: f32,
     pub swap_age_ms: f32,
     pub tracking: bool,
+    /// The occlusion model is loaded.
+    pub occlusion: bool,
     pub last_error: Option<String>,
+}
+
+/// One identity made from several photos. See `gc_live::combine_identities`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CombinedFace {
+    /// The identity to swap in, or empty when no photo could be used.
+    pub identity: Vec<f32>,
+    /// For each photo, in the order given: whether it went into the identity.
+    /// A photo is left out when it shows somebody other than most of the others.
+    pub used: Vec<bool>,
+    /// For each photo: how alike its face and the combined identity are, -1 to 1.
+    pub similarity: Vec<f32>,
+}
+
+/// Combine the identities of several photos of one person into one identity.
+#[uniffi::export]
+pub fn combine_identities(identities: Vec<Vec<f32>>) -> CombinedFace {
+    let combined = gc_live::combine_identities(&identities);
+    CombinedFace {
+        identity: combined.identity,
+        used: combined.photos.iter().map(|photo| photo.used).collect(),
+        similarity: combined.photos.iter().map(|photo| photo.similarity).collect(),
+    }
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -218,6 +256,10 @@ impl FaceEngine {
             colour_match: settings.colour_match,
             opacity: settings.opacity,
             score_threshold: settings.score_threshold,
+            sharpen: settings.sharpen,
+            occlusion: settings.occlusion,
+            real_mouth: settings.real_mouth,
+            blur_when_unswapped: settings.blur_when_unswapped,
         });
     }
 
@@ -236,6 +278,7 @@ impl FaceEngine {
             patch_sequence: 0,
             patch_age_frames: 0,
             keypoints: Vec::new(),
+            blur: 0.0,
         };
         if frame.address == 0 || frame.length == 0 {
             return none;
@@ -262,6 +305,7 @@ impl FaceEngine {
             patch_sequence: result.patch_sequence,
             patch_age_frames: result.patch_age_frames,
             keypoints: result.keypoints.iter().flatten().copied().collect(),
+            blur: result.blur,
         }
     }
 
@@ -284,6 +328,7 @@ impl FaceEngine {
             swap_ms: stats.swap_ms,
             swap_age_ms: stats.swap_age_ms,
             tracking: stats.tracking,
+            occlusion: stats.occlusion,
             last_error: stats.last_error,
         }
     }
