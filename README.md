@@ -13,7 +13,7 @@ Personal-use virtual camera, face swap, scanner and capture tools for macOS, Win
 
 | Path | What it holds |
 |---|---|
-| `core/` | Shared Rust core: alignment, tracking, model inference, the live face-swap engine, pack manifests, the hub, the `gc` command-line tool |
+| `core/` | Shared Rust core: alignment, tracking, model inference, the live face-swap engine, pack manifests, the hub and its pairing, the `gc` command-line tool |
 | `apps/apple/` | macOS app, Camera Extension and the `gc-ocr` text reader (generate the Xcode project with `xcodegen generate`) |
 | `apps/android/` | Android companion app (`./gradlew :app:assembleDebug` with JDK 17) |
 | `tools/modelkit/` | Python reference runs and model benchmarks (`uv run python ...`) |
@@ -27,6 +27,9 @@ cd core && cargo run -p gc-cli -- verify-packs --manifests ../packs --store ../.
 GC_HUB_TOKEN=<16+ characters> cargo run -p gc-cli -- hub
 tools/build-core-apple.sh                        # the core for the Mac app: static library and Swift bindings
 tools/install-mac-app.sh                         # build the Mac app and put it in /Applications; refuses while the app is running
+tools/install-mac-app.sh --build-only            # build only; safe while the app runs
+tools/snapshot-mac-app.sh /tmp/shots vi          # pictures of every screen with made-up content, drawn off screen (en or vi)
+tools/sync-mac-strings.sh                        # check the Vietnamese translations against the strings the app shows
 cd apps/apple/GodsCameraKit && swift test       # the Mac engine's tests
 open -a /Applications/GodsCamera.app --args --selftest /tmp/gc-selftest.json   # the app checks itself and writes a report
 ```
@@ -45,7 +48,14 @@ The scanner, from a folder of photos to one document:
 swift build -c release --package-path apps/apple/tools/gc-ocr
 GC_HUB_TOKEN=<16+ characters> core/target/release/gc hub --ocr apps/apple/tools/gc-ocr/.build/release/gc-ocr
 GC_HUB_TOKEN=<the same> core/target/release/gc scan <folder of photos> --out <folder>
-tools/connect-android.sh                         # let a device on a USB cable reach the hub
+tools/connect-android.sh                         # let a device attached for debugging reach the hub
+```
+
+A phone or tablet connects over Wi-Fi with a six-digit code: on the Mac, **Scanner › Connect a phone or tablet…**; on the device, **Connect to a Mac**. The same from a terminal, with the tool playing both sides:
+
+```sh
+core/target/release/gc hub --lan --pair --data-dir /tmp/gc-hub      # prints a code; listens on the network at port 47801
+GC_PAIR_CODE=<the code> core/target/release/gc pair --address 127.0.0.1:47801 --name "My device" --out /tmp/pairing.json
 ```
 
 The Mac app carries its base models inside the bundle; the build copies them from `../packs` and checks each against its manifest. Changing anything under `core/` means running `tools/build-core-apple.sh` again before building the app.
