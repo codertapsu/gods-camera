@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-11, revision 8 (Phases 1 and 2 built, Phase 3 under way; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-11, revision 9 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -321,7 +321,8 @@ Measured in Phase 2 with the whole engine running at 1280×720 and 30 frames a s
 
 - **Interface.** HTTP with JSON for control and uploads, a WebSocket for events, and a framed binary stream for live video. One OpenAPI description is the contract for every client.
 - **Modes.** Development and paired, as in section 5.4. The hub is off until the user turns it on.
-- **Pairing.** The desktop shows a QR code holding its address, port, certificate fingerprint and a one-time secret. The phone pins the certificate and receives its own key. A typed code is the fallback.
+- **Pairing.** As built: the desktop shows a six-digit code, good for five minutes, one device and five wrong tries. The device and the hub run SPAKE2 on it, so the code itself never crosses the network, and each proves to the other that it knows the code and saw the same TLS certificate; a relay in the middle with another certificate fails. The device then pins the hub's certificate and receives a token of its own, which the hub keeps only as a hash. The hub's certificate and key live in the Keychain. A QR code holding the same things can be added later as a quicker way in.
+- **Two listeners.** Loopback, plain HTTP, the development token: for a device attached for debugging. The local network, TLS, device tokens only: for paired devices. Neither accepts the other's token.
 - **Discovery.** mDNS only finds the address. Identity always comes from the pinned keys.
 - **Live video.** Hardware-encoded frames, each with a small header: stream, frame ID, timestamp, face transform. The codec is negotiated per pair: HEVC where both ends decode it in hardware, H.264 otherwise. The sender drops frames when the stream backs up.
 - **Remote control.** The same interface exposes the desktop's live controls (loop, source face, preset), so a paired phone or tablet works as a remote during a call.
@@ -499,7 +500,7 @@ Engine without ML
 Loop
 
 - [x] Record the output into a bounded clip store, up to 30 seconds, hardware-encoded.
-- [x] Playback modes: forward with a cross-fade at the seam, ping-pong, automatic loop-point finder. Avoiding blinks at the seam needs eye landmarks and moves to Phase 2.
+- [x] Playback modes: forward with a cross-fade at the seam, ping-pong, automatic loop-point finder. Avoiding blinks at the seam needs eye landmarks and moves to Phase 2. Revised after your test: the finder keeps nearly the whole recording, a clip plays at the rate its frames arrived, and the way of repeating is chosen from how well the loop's end matches its start.
 - [x] Controls: global hotkey and menu-bar toggle.
 - [x] Return-to-live triggers: manual and optional voice activity. A face returning to the frame needs the detector and moves to Phase 2.
 - [x] Local "looping" indicator; optional on-stream badge.
@@ -507,14 +508,14 @@ Loop
 
 App shell
 
-- [x] Menu-bar app and main window, preview, device picker, settings. Onboarding is the guidance in the window's Virtual camera section, not a separate screen.
+- [x] Menu-bar app and main window, preview, device picker, settings. Since version 0.4.0 the window has a sidebar with separate screens: Camera, Loop, Face, Scanner and Settings. Onboarding is the guidance on the Camera screen, not a separate screen.
 - [x] Interface text in Vietnamese and English from the start.
 - [x] File logging and a diagnostics report.
 
 Checks only you can do, listed in [phase-1-results.md](phase-1-results.md)
 
-- [ ] Grant camera access, and confirm the live camera in the preview.
-- [ ] Meeting apps: live picture, loop and return to live in Zoom and in Google Meet; the hot keys; the menu-bar menu with the window closed.
+- [x] Grant camera access, and confirm the live camera in the preview. Done in your first test.
+- [ ] Meeting apps: live picture, loop and return to live in Zoom and in Google Meet; the hot keys; the menu-bar menu with the window closed. In your first test Zoom and Meet listed only the default camera: both apps had been open while the camera was updated. Quit and reopen them, then repeat this check.
 - [ ] 60-minute soak with a meeting app reading the camera.
 
 Exit: passthrough and loop pass the 60-minute soak in the app matrix; added latency within target. The automated part is met; the three checks above are open.
@@ -543,7 +544,7 @@ Perception, in the core
 
 Swap
 
-- [x] Source face library: import photos, compute and store the identity vector.
+- [x] Source face library: import photos, compute and store the identity vector. A face can be made from up to 20 photos of one person; their identity vectors are averaged, and photos that show somebody else are left out.
 - [x] Aligned crop with InsightFace's template and transform. It is cut on the CPU in the core, which takes 0.1 ms; a GPU path is not needed.
 - [x] Swap sessions behind the swapper contract: `inswapper_128` and HyperSwap 256.
 - [x] Latest-wins queue with a face-jump guard.
@@ -551,9 +552,10 @@ Swap
 Compositing
 
 - [x] Inverse-warp paste with a soft mask in crop space, in the Metal shader.
-- [x] Oval mask multiplied by the model's own mask and by track and pose fades. The occlusion mask (a hand in front of the face) is open; it needs your clips to tune.
-- [x] Colour match on the patch. Sharpening is open.
-- [ ] Options to show the real mouth and eyes through the swap.
+- [x] Oval mask multiplied by the model's own mask and by track and pose fades.
+- [x] Occlusion mask from the XSeg model, on its own thread beside the swap, so a hand or an object stays in front of the swapped face. Tuning on your clips is open.
+- [x] Colour match and sharpening on the patch.
+- [x] Option to show the real mouth through the swap. The same for the eyes is open.
 - [x] Late reprojection on every output frame.
 
 Quality and speed
@@ -572,10 +574,11 @@ Safety, required before daily use
 - [ ] A set of synthetic source faces generated for the app. It needs an image model, which arrives with Phase 5.
 - [x] Visible AI indicator, on by default. The invisible watermark is open; content credentials wait for the first export feature.
 - [x] Face data encrypted at rest; delete-everything control.
+- [x] Option to blur the whole picture whenever the swap is not fully on the face, so the real face never shows. Off by default.
 
 Checks only you can do
 
-- [ ] Add your own face from a photo, turn the swap on, and judge the picture: lag during head motion, edges, colour.
+- [ ] Add your own face from a photo, turn the swap on, and judge the picture: lag during head motion, edges, colour. Your first verdict: it works, and the result could be better. Judge again with several photos of the face, the sharpness control and the occlusion mask.
 - [ ] 30-minute soak in Zoom and in Teams with the swap on.
 
 Exit: the Mac meets its targets in section 7; the face region shows no visible lag during head motion; 30-minute soak in Zoom and Teams. The measured targets are met; the two checks above are open.
@@ -584,7 +587,7 @@ Exit: the Mac meets its targets in section 7; the face region shows no visible l
 
 Goal: scan documents into consolidated Vietnamese or English text, and use the phone as a camera and a remote.
 
-State: the scanner works from end to end. Pictures sent from the Android app are read on the Mac and merged into one document. The rest of this phase is open. Details are in [phase-3-results.md](phase-3-results.md).
+State: the scanner works from end to end. Pictures sent from the Android app are read on the Mac and merged into one document. A phone or tablet connects to the Mac over Wi-Fi with a six-digit code. Phone-as-camera and the remote are open. Details are in [phase-3-results.md](phase-3-results.md).
 
 3a. On localhost, no phone needed
 
@@ -614,10 +617,11 @@ Checks only you can do
 
 - [ ] Run the scanner on the tablet with real pages: the document scanner, the photo picker, and a share from another app. I ran it there with test pages over Wi-Fi debugging.
 
-3c. Paired mode over Wi-Fi (spike S7 first)
+3c. Paired mode over Wi-Fi
 
-- [ ] QR pairing, pinned TLS, device registry, per-device permissions, revoke.
-- [ ] Discovery through Android's network service discovery; local-network permission on macOS.
+- [x] Pairing with a six-digit code shown on the Mac (SPAKE2, so the code is never sent), TLS with the hub's certificate pinned by the device, a token per device, a device list on the Mac, and removal that takes effect at once. Pairing by QR code and per-device permissions are open.
+- [x] Discovery: the Mac announces the hub by Bonjour, and the Android app finds it with network service discovery, with typing an address as the fallback. macOS asks once for local-network access.
+- [ ] Before use on a network you do not control: fuzzing of the hub's parsers and an idle timeout on network connections (section 10.2).
 - [ ] The app's minimum and build target are both API 36. Add Android 17's local-network permission flow before raising the target to 37.
 - [ ] Codec negotiation and frame dropping tuned on real Wi-Fi.
 

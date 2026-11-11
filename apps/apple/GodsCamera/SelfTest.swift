@@ -359,13 +359,29 @@ enum SelfTest {
             report["scanReaderBundled"] = reader != nil
             let hub = ScanHub(dataFolder: data, reader: reader)
             let token = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            // The network side too, with a certificate of its own that is thrown
+            // away afterwards, on a port the system picks, and without announcing it.
+            let service = "godscamera.hub.selftest"
+            defer { ScanHub.deleteIdentity(service: service) }
             do {
-                try hub.start(port: 0, token: token)
+                let identity = try ScanHub.identity(service: service, name: "Self-test")
+                try hub.start(
+                    port: 0, token: token,
+                    network: ScanHub.Network(port: 0, name: "Self-test", identity: identity, announce: false))
             } catch {
                 report["scanError"] = "hub did not start: \(error)"
                 return
             }
             defer { hub.stop() }
+            report["scanNetworkListening"] = hub.networkPort != nil
+            if let code = try? hub.openPairing() {
+                report["pairingCodeDigits"] = code.filter(\.isNumber).count
+                report["pairingOpen"] = hub.pairingStatus()?.isOpen ?? false
+                hub.closePairing()
+                report["pairingClosed"] = hub.pairingStatus()?.isOpen == false
+            } else {
+                report["pairingError"] = "no code could be made"
+            }
             guard let base = hub.address else { return }
 
             func call(_ method: String, _ path: String, body: Data? = nil, json: Bool = false) -> (Int, Data) {
