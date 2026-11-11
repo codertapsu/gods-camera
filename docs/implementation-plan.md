@@ -611,11 +611,11 @@ State: the scanner works from end to end. Pictures sent from the Android app are
 - [x] Uploads that resume after a dropped connection. Carrying on in the background is open.
 - [ ] Phone as camera: CameraX into the hardware encoder into the hub stream, with lens, zoom and exposure controls. A camera foreground service keeps it running. The desktop lists it as an input source.
 - [ ] Remote control screen: loop on and off, source face, preset.
-- [x] Adaptive layout for the tablet.
+- [x] Adaptive layout for the tablet. Redesigned for version 0.4.0: a connection card, large actions, numbered page thumbnails, two panes on a tablet.
 
 Checks only you can do
 
-- [ ] Run the scanner on the tablet with real pages: the document scanner, the photo picker, and a share from another app. I ran it there with test pages over Wi-Fi debugging.
+- [ ] Connect the tablet to the Mac app with the six-digit code, then run the scanner with real pages: the document scanner, the photo picker, and a share from another app. I ran it on the tablet with test pages, over Wi-Fi, against a temporary hub.
 
 3c. Paired mode over Wi-Fi
 

@@ -15,7 +15,7 @@ Personal-use virtual camera, face swap, scanner and capture tools for macOS, Win
 |---|---|
 | `core/` | Shared Rust core: alignment, tracking, model inference, the live face-swap engine, pack manifests, the hub and its pairing, the `gc` command-line tool |
 | `apps/apple/` | macOS app, Camera Extension and the `gc-ocr` text reader (generate the Xcode project with `xcodegen generate`) |
-| `apps/android/` | Android companion app (`./gradlew :app:assembleDebug` with JDK 17) |
+| `apps/android/` | Android companion app (`tools/build-core-android.sh` once, then `./gradlew :app:assembleDebug` with JDK 17; see `apps/android/README.md`) |
 | `tools/modelkit/` | Python reference runs and model benchmarks (`uv run python ...`) |
 | `packs/` | Model manifests with pinned SHA-256 hashes. Model files live outside the repository, in `../packs` |
 
