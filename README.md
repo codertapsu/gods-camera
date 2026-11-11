@@ -6,6 +6,7 @@ Personal-use virtual camera, face swap, scanner and capture tools for macOS, Win
 - Research: [docs/research-findings.md](docs/research-findings.md)
 - Phase 0 results: [docs/phase-0-results.md](docs/phase-0-results.md)
 - Phase 1 results: [docs/phase-1-results.md](docs/phase-1-results.md)
+- Phase 2 results: [docs/phase-2-results.md](docs/phase-2-results.md)
 
 ## Layout
 

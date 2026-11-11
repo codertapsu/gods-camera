@@ -36,7 +36,7 @@ Other results:
 - **Match with InsightFace.** On its sample photo the Rust pipeline finds the same six faces, and the swapped crop differs by 1.1 levels out of 255 on average. The target was 2.
 - **Tracker alone.** Started once on the true keypoints and given no detections, it stays within 0.2 px on a still face, 0.6 px on a talking one and 1.0 px on a fast one, over 3 seconds.
 - **In the installed app.** The self-test swaps a face through the app's own engine and the virtual camera link: 37 ms a swap, 26 a second, 0.9 ms on the frame thread. The first run of a model is slower, because Core ML compiles it once.
-- **Tests.** 35 in the Swift package and 44 in the core, all passing. The core's check also builds it for Android and Windows with the inference library linked.
+- **Tests.** 35 in the Swift package and 50 in the core, all passing. The core's check also builds it for Android and Windows with the inference library linked.
 
 ## On the tablet
 
