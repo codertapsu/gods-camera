@@ -80,6 +80,10 @@ struct ScannerScreen: View {
                     Hint(
                         String(localized: "macOS is not letting God's Camera use the local network, so devices cannot find this Mac. Allow it in System Settings › Privacy & Security › Local Network, then turn this switch off and on."),
                         symbol: "wifi.exclamationmark", tone: .orange)
+                } else if scan.networkWaiting {
+                    Hint(
+                        String(localized: "macOS is asking whether God's Camera may find devices on your local network. Choose Allow, so that your phone or tablet can find this Mac."),
+                        symbol: "wifi.exclamationmark", tone: .orange)
                 }
 
                 DisclosureGroup(String(localized: "For development")) {

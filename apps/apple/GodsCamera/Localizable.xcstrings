@@ -2572,6 +2572,16 @@
         }
       }
     },
+    "macOS is asking whether God's Camera may find devices on your local network. Choose Allow, so that your phone or tablet can find this Mac.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS đang hỏi có cho God's Camera tìm thiết bị trên mạng cục bộ của bạn hay không. Hãy chọn Cho phép để điện thoại hoặc máy tính bảng tìm thấy máy Mac này."
+          }
+        }
+      }
+    },
     "macOS is not letting God's Camera use the local network, so devices cannot find this Mac. Allow it in System Settings › Privacy & Security › Local Network, then turn this switch off and on.": {
       "localizations": {
         "vi": {

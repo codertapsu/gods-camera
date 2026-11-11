@@ -31,6 +31,10 @@ final class ScanModel: ObservableObject {
     @Published private(set) var networkReady = false
     /// macOS has not allowed the app to use the local network, so devices cannot find this Mac.
     @Published private(set) var networkRefused = false
+    /// macOS has not yet said whether the app may use the local network: its question is probably on screen.
+    @Published private(set) var networkWaiting = false
+    private var announcement = HubAdvertiser.State.off
+    private var announcementSince = Date()
     /// The name devices on the network see for this Mac.
     let networkName = Host.current().localizedName ?? "Mac"
 
@@ -87,6 +91,7 @@ final class ScanModel: ObservableObject {
         running = false
         networkReady = false
         networkRefused = false
+        networkWaiting = false
         deviceMessage = nil
     }
 
@@ -124,8 +129,16 @@ final class ScanModel: ObservableObject {
     private func refreshPairing() {
         let latest = hub.devices()
         if latest != devices { devices = latest }
-        let refused = hub.announcement == .refused
+        let state = hub.announcement
+        if state != announcement {
+            announcement = state
+            announcementSince = Date()
+            Log.app.info("hub announcement on the network: \(String(describing: state))")
+        }
+        let refused = state == .refused
         if refused != networkRefused { networkRefused = refused }
+        let waiting = state == .starting && Date().timeIntervalSince(announcementSince) > 4
+        if waiting != networkWaiting { networkWaiting = waiting }
         guard pairingCode != nil, let status = hub.pairingStatus() else { return }
         pairingSecondsLeft = status.secondsLeft
         if let name = status.pairedDevice {
