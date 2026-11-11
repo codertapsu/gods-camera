@@ -1,20 +1,57 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "NSCameraUsageDescription" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "God's Camera reads your camera to build the picture it sends to other apps." } },
-        "vi" : { "stringUnit" : { "state" : "translated", "value" : "God's Camera đọc camera của bạn để tạo hình ảnh gửi đến các ứng dụng khác." } }
+  "sourceLanguage": "en",
+  "strings": {
+    "NSCameraUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "God's Camera reads your camera to build the picture it sends to other apps."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "God's Camera đọc camera của bạn để tạo hình ảnh gửi đến các ứng dụng khác."
+          }
+        }
       }
     },
-    "NSMicrophoneUsageDescription" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "God's Camera listens for your voice so it can leave a loop when you start to speak. Nothing is recorded." } },
-        "vi" : { "stringUnit" : { "state" : "translated", "value" : "God's Camera lắng nghe giọng nói của bạn để thoát vòng lặp khi bạn bắt đầu nói. Không ghi âm gì cả." } }
+    "NSMicrophoneUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "God's Camera listens for your voice so it can leave a loop when you start to speak. Nothing is recorded."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "God's Camera lắng nghe giọng nói của bạn để thoát vòng lặp khi bạn bắt đầu nói. Không ghi âm gì cả."
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "God's Camera lets your phone or tablet find this Mac on your Wi-Fi network, so it can send scanned pages here."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "God's Camera cho phép điện thoại hoặc máy tính bảng của bạn tìm thấy máy Mac này trên mạng Wi-Fi để gửi các trang đã quét đến đây."
+          }
+        }
       }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

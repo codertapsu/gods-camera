@@ -243,6 +243,14 @@ public struct ClipSummary: Identifiable, Equatable, Sendable {
     public let duration: Double
     public let createdAt: Date
     public let meanLuma: Float
+
+    public init(id: UUID, name: String, duration: Double, createdAt: Date, meanLuma: Float) {
+        self.id = id
+        self.name = name
+        self.duration = duration
+        self.createdAt = createdAt
+        self.meanLuma = meanLuma
+    }
 }
 
 /// Named loops saved on disk.

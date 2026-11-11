@@ -12,24 +12,84 @@ public enum FaceConsent: String, Codable, CaseIterable, Sendable {
     case synthetic
 }
 
+/// One photo a saved face was made from. The photo itself is not kept: only
+/// what the face looked like in it, and a small picture for the list.
+public struct FacePhoto: Identifiable, Codable, Equatable, Sendable {
+    public let id: UUID
+    /// 512 numbers that stand for the face as this photo shows it.
+    public let identity: [Float]
+    /// A small picture of the face, as PNG.
+    public let thumbnail: Data
+
+    public init(id: UUID = UUID(), identity: [Float], thumbnail: Data) {
+        self.id = id
+        self.identity = identity
+        self.thumbnail = thumbnail
+    }
+}
+
 /// A face the user can swap in.
 public struct SavedFace: Identifiable, Codable, Equatable, Sendable {
+    /// The most photos one face is made from. More add little and cost space.
+    public static let maxPhotos = 20
+
     public let id: UUID
     public var name: String
     public let addedAt: Date
     public let consent: FaceConsent
-    /// 512 numbers that stand for the face. No photo is needed to use it.
-    public let identity: [Float]
+    /// 512 numbers that stand for the face: its photos' identities combined.
+    /// No photo is needed to use it.
+    public private(set) var identity: [Float]
     /// A small picture for the list, as PNG.
-    public let thumbnail: Data
+    public private(set) var thumbnail: Data
+    /// The photos the identity was made from, at least one.
+    public private(set) var photos: [FacePhoto]
 
+    /// A face made from one photo.
     public init(id: UUID = UUID(), name: String, addedAt: Date = Date(), consent: FaceConsent, identity: [Float], thumbnail: Data) {
+        self.init(
+            id: id, name: name, addedAt: addedAt, consent: consent,
+            photos: [FacePhoto(identity: identity, thumbnail: thumbnail)], identity: identity)
+    }
+
+    /// A face made from several photos. `identity` is what `FaceEnrolment.combine`
+    /// made of the photos' identities.
+    public init(
+        id: UUID = UUID(), name: String, addedAt: Date = Date(), consent: FaceConsent, photos: [FacePhoto],
+        identity: [Float]
+    ) {
         self.id = id
         self.name = name
         self.addedAt = addedAt
         self.consent = consent
+        self.photos = photos
         self.identity = identity
-        self.thumbnail = thumbnail
+        thumbnail = photos.first?.thumbnail ?? Data()
+    }
+
+    /// Replace the photos, and the identity made from them.
+    public mutating func setPhotos(_ photos: [FacePhoto], identity: [Float]) {
+        self.photos = photos
+        self.identity = identity
+        thumbnail = photos.first?.thumbnail ?? thumbnail
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, addedAt, consent, identity, thumbnail, photos
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        addedAt = try container.decode(Date.self, forKey: .addedAt)
+        consent = try container.decode(FaceConsent.self, forKey: .consent)
+        identity = try container.decode([Float].self, forKey: .identity)
+        thumbnail = try container.decode(Data.self, forKey: .thumbnail)
+        // Faces saved before a face could have several photos hold only the one.
+        photos =
+            try container.decodeIfPresent([FacePhoto].self, forKey: .photos)
+            ?? [FacePhoto(identity: identity, thumbnail: thumbnail)]
     }
 }
 

@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Started with --selftest, the app checks itself and quits instead of doing its usual work.
         if let path = SelfTest.requestedReportPath {
             SelfTest.run(reportPath: path)
+        } else if let folder = Snapshots.requestedFolder {
+            Snapshots.run(folder: folder)
         } else {
             AppModel.shared.start()
         }
@@ -24,17 +26,19 @@ struct GodsCameraApp: App {
 
     var body: some Scene {
         Window("God's Camera", id: "main") {
-            ContentView()
+            RootView()
                 .environmentObject(model)
                 .onAppear { model.windowAppeared() }
                 .onDisappear { model.windowDisappeared() }
         }
         .windowResizability(.contentMinSize)
+        .defaultSize(width: 1180, height: 760)
         // Show the window at every launch, also when the app reopens itself after a camera update.
-        .defaultLaunchBehavior(.presented)
+        // While pictures of the app are being made, no window comes on screen at all.
+        .defaultLaunchBehavior(Snapshots.requestedFolder == nil ? .presented : .suppressed)
         .restorationBehavior(.disabled)
 
-        MenuBarExtra {
+        MenuBarExtra(isInserted: .constant(Snapshots.requestedFolder == nil)) {
             MenuContent().environmentObject(model)
         } label: {
             Image(systemName: model.status.mode == .looping ? "repeat.circle.fill" : "camera.circle")
@@ -50,7 +54,7 @@ private struct MenuContent: View {
     var body: some View {
         switch model.status.mode {
         case .looping: Text("Looping")
-        case .live: Text("Live")
+        case .live: Text(model.status.swapping ? "Live, face swapped" : "Live")
         case .idle: Text("No picture")
         }
         Divider()
@@ -62,6 +66,9 @@ private struct MenuContent: View {
             model.toggleRecording()
         }
         .disabled(!model.canRecord)
+        if !model.face.faces.isEmpty {
+            Toggle("Swap my face", isOn: Binding(get: { model.face.wanted }, set: { model.face.setWanted($0) }))
+        }
         Divider()
         Button("Show God's Camera") {
             openWindow(id: "main")

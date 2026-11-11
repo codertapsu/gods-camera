@@ -17,6 +17,23 @@ final class ScanModel: ObservableObject {
     /// What the last attempt to connect a device came to.
     @Published private(set) var deviceMessage: String?
 
+    /// Phones and tablets that were connected with a code, and may send scans over the network.
+    @Published private(set) var devices: [PairedDevice] = []
+    /// The code a device must enter, while one is on offer.
+    @Published private(set) var pairingCode: String?
+    @Published private(set) var pairingSecondsLeft = 0
+    /// The code on offer was guessed wrongly too often, or ran out. A new one is needed.
+    @Published private(set) var pairingEnded = false
+    /// The device that connected with the code on offer.
+    @Published private(set) var justPaired: String?
+    @Published var showingPairing = false
+    /// The hub listens on the local network, so devices can connect with a code.
+    @Published private(set) var networkReady = false
+    /// macOS has not allowed the app to use the local network, so devices cannot find this Mac.
+    @Published private(set) var networkRefused = false
+    /// The name devices on the network see for this Mac.
+    let networkName = Host.current().localizedName ?? "Mac"
+
     private let hub: ScanHub
     private let defaults = UserDefaults.standard
 
@@ -43,9 +60,19 @@ final class ScanModel: ObservableObject {
         message = nil
         do {
             token = try ScanHub.token()
-            try hub.start(token: token)
+            // Without its certificate the hub still serves devices attached for debugging.
+            var network: ScanHub.Network?
+            do {
+                network = ScanHub.Network(name: networkName, identity: try ScanHub.identity(name: networkName))
+            } catch {
+                Log.app.error("hub identity unavailable: \(String(describing: error))")
+            }
+            try hub.start(token: token, network: network)
             address = hub.address ?? ""
             running = true
+            networkReady = hub.networkPort != nil
+            devices = hub.devices()
+            if let port = hub.networkPort { Log.app.info("hub listening on the network, port \(port)") }
             Log.app.info("hub listening at \(address)")
         } catch {
             running = false
@@ -55,9 +82,60 @@ final class ScanModel: ObservableObject {
     }
 
     private func turnOff() {
+        endPairing()
         hub.stop()
         running = false
+        networkReady = false
+        networkRefused = false
         deviceMessage = nil
+    }
+
+    // MARK: Devices connected with a code
+
+    /// Offer a new six-digit code and show it.
+    func beginPairing() {
+        guard running else { return }
+        justPaired = nil
+        pairingEnded = false
+        do {
+            pairingCode = try hub.openPairing()
+            pairingSecondsLeft = hub.pairingStatus()?.secondsLeft ?? 0
+            showingPairing = true
+        } catch {
+            message = String(localized: "A code could not be made. Turn the scanner off and on again.")
+            Log.app.error("pairing failed to open: \(String(describing: error))")
+        }
+    }
+
+    /// Withdraw the code on offer.
+    func endPairing() {
+        if pairingCode != nil { hub.closePairing() }
+        pairingCode = nil
+        showingPairing = false
+    }
+
+    func removeDevice(_ device: PairedDevice) {
+        hub.removeDevice(device.id)
+        devices = hub.devices()
+        Log.app.info("device removed: \(device.name)")
+    }
+
+    /// Follow the code on offer: how long it has left, and whether a device used it.
+    private func refreshPairing() {
+        let latest = hub.devices()
+        if latest != devices { devices = latest }
+        let refused = hub.announcement == .refused
+        if refused != networkRefused { networkRefused = refused }
+        guard pairingCode != nil, let status = hub.pairingStatus() else { return }
+        pairingSecondsLeft = status.secondsLeft
+        if let name = status.pairedDevice {
+            justPaired = name
+            pairingCode = nil
+            Log.app.info("device connected with a code: \(name)")
+        } else if !status.isOpen {
+            pairingCode = nil
+            pairingEnded = true
+        }
     }
 
     /// Connect the Android devices attached for debugging: lead their localhost
@@ -101,6 +179,12 @@ final class ScanModel: ObservableObject {
         guard running else { return }
         let latest = hub.documents()
         if latest != documents { documents = latest }
+        refreshPairing()
+    }
+
+    /// The text of a finished document, for showing it in the window.
+    func text(of document: ScannedDocument) -> String {
+        (try? String(contentsOf: document.text, encoding: .utf8)) ?? ""
     }
 
     func copyToken() {
@@ -131,81 +215,30 @@ final class ScanModel: ObservableObject {
     func deleteEverything() {
         for document in hub.documents() { hub.delete(document) }
         documents = []
-    }
-}
-
-/// The scanner's part of the window.
-struct ScannerSection: View {
-    @ObservedObject var scan: ScanModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Scanner").font(.headline)
-            Toggle("Receive scans from my phone or tablet", isOn: Binding(get: { scan.wanted }, set: { scan.setWanted($0) }))
-            if scan.running {
-                Text("Attach an Android device for debugging, by USB cable or Wi-Fi, then click Connect a device. The app on the device opens, already set up.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button("Connect a device") { scan.connectDevices() }.disabled(scan.connecting)
-                    if scan.connecting { ProgressView().controlSize(.small) }
-                }
-                if let result = scan.deviceMessage {
-                    Text(result).font(.caption)
-                }
-                HStack {
-                    Text(scan.token).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
-                    Spacer()
-                    Button("Copy") { scan.copyToken() }.buttonStyle(.borderless)
-                }
-            }
-            if let message = scan.message {
-                Text(message).font(.caption).foregroundStyle(.orange)
-            }
-            ForEach(scan.documents) { document in
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(title(of: document)).lineLimit(1)
-                        Text(document.receivedAt, format: .dateTime.day().month().hour().minute())
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if document.isDone {
-                        Button {
-                            scan.open(document)
-                        } label: {
-                            Image(systemName: "doc.text")
-                        }
-                        .buttonStyle(.borderless).help(String(localized: "Open the document"))
-                        Button {
-                            scan.copyText(document)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        .buttonStyle(.borderless).help(String(localized: "Copy the text"))
-                        Button {
-                            scan.reveal(document)
-                        } label: {
-                            Image(systemName: "folder")
-                        }
-                        .buttonStyle(.borderless).help(String(localized: "Show in Finder"))
-                    }
-                    Button(role: .destructive) {
-                        scan.delete(document)
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.borderless).help(String(localized: "Delete this document"))
-                }
-                .font(.callout)
-            }
-        }
+        for device in hub.devices() { hub.removeDevice(device.id) }
+        devices = []
+        // A new certificate too: nothing a removed device holds is of any use afterwards.
+        let wasRunning = running
+        if wasRunning { turnOff() }
+        ScanHub.deleteIdentity()
+        if wasRunning { turnOn() }
     }
 
-    private func title(of document: ScannedDocument) -> String {
-        switch document.status {
-        case "done": return document.title.isEmpty ? String(localized: "Document without text") : document.title
-        case "failed": return String(localized: "Could not be read")
-        default: return String(localized: "Reading \(Int(document.progress * 100)) %…")
-        }
+    // MARK: Sample content
+
+    /// Show the code sheet with a made-up code, for pictures of the app.
+    func showSamplePairing(code: String, secondsLeft: Int) {
+        pairingCode = code
+        pairingSecondsLeft = secondsLeft
+        showingPairing = true
+    }
+
+    /// Fill the model with made-up content, for pictures of the app. Nothing is saved or started.
+    func showSamples(documents: [ScannedDocument], devices: [PairedDevice]) {
+        running = true
+        wanted = true
+        networkReady = true
+        self.documents = documents
+        self.devices = devices
     }
 }

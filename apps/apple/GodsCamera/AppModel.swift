@@ -18,18 +18,52 @@ struct CameraReader: Identifiable, Equatable {
     var id: Int32 { pid }
 }
 
+/// An app that can use cameras but was opened before God's Camera was last
+/// installed or updated. Such an app does not list the camera until it is reopened.
+struct AppToReopen: Identifiable, Equatable {
+    /// The bundle identifier.
+    let id: String
+    let name: String
+    let pid: Int32
+}
+
+/// How a loop repeats, as the user chooses it.
+enum LoopStyle: String, CaseIterable, Identifiable {
+    /// Start to end when the loop ends as it began, otherwise back and forth.
+    case automatic
+    case forward
+    case pingPong
+
+    var id: String { rawValue }
+
+    func mode(for clip: Clip) -> LoopMode {
+        switch self {
+        case .automatic: return clip.suggestedMode
+        case .forward: return .forward
+        case .pingPong: return .pingPong
+        }
+    }
+}
+
 /// The app's state and the actions the windows and menus call.
 @MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
 
+    /// The screen the window shows.
+    @Published var screen: Screen {
+        didSet {
+            defaults.set(screen.rawValue, forKey: "screen")
+            updateDemand()
+        }
+    }
     @Published var sourceKind: SourceKind
     @Published var cameras: [CameraDevice] = []
     @Published var cameraID: String?
     @Published var fileURL: URL?
     @Published var mirror: Bool
     @Published var showLoopBadge: Bool
-    @Published var loopMode: LoopMode
+    @Published var loopStyle: LoopStyle
     /// Leave the loop when the microphone hears the user speak.
     @Published var returnOnVoice: Bool
     @Published private(set) var status = CameraEngine.Status()
@@ -42,6 +76,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var cameraStats: VirtualCameraStats?
     /// Apps reading the camera now.
     @Published private(set) var readers: [CameraReader] = []
+    /// Running apps that will not list the camera until they are reopened.
+    @Published private(set) var appsToReopen: [AppToReopen] = []
     /// Apps that may not read the camera, by `AppIdentity.id`.
     @Published private(set) var blockedApps: [String]
     /// A blocked app is reading the camera, so no pictures are sent to anyone.
@@ -80,12 +116,17 @@ final class AppModel: ObservableObject {
     /// The process numbers last sent to the extension, and the extension they were sent to.
     private var pushedBlocked: Set<Int32>?
     private var pushedToExtension: Int32 = 0
+    /// Whether an app, by its bundle identifier, declares that it uses cameras.
+    private var usesCamera: [String: Bool] = [:]
+    /// When the installed camera was put in place, and the extension process that answer is for.
+    private var cameraInPlaceSince: (pid: Int32, date: Date)?
 
     init() {
+        screen = Screen(rawValue: defaults.string(forKey: "screen") ?? "") ?? .camera
         sourceKind = SourceKind(rawValue: defaults.string(forKey: "sourceKind") ?? "") ?? .camera
         mirror = defaults.bool(forKey: "mirror")
         showLoopBadge = defaults.bool(forKey: "showLoopBadge")
-        loopMode = LoopMode(rawValue: defaults.string(forKey: "loopMode") ?? "") ?? .forward
+        loopStyle = LoopStyle(rawValue: defaults.string(forKey: "loopStyle") ?? "") ?? .automatic
         returnOnVoice = defaults.bool(forKey: "returnOnVoice")
         blockedApps = defaults.stringArray(forKey: "blockedApps") ?? []
         cameraID = defaults.string(forKey: "cameraID")
@@ -170,7 +211,7 @@ final class AppModel: ObservableObject {
         engine.onClip = { [weak self] clip in
             Task { @MainActor in
                 guard let self else { return }
-                clip.mode = self.loopMode
+                clip.mode = self.loopStyle.mode(for: clip)
                 self.currentClip = clip
                 self.currentClipIsSaved = false
             }
@@ -196,6 +237,7 @@ final class AppModel: ObservableObject {
         cameraStats = stats
         cameraAuthorized = CameraSource.isAuthorized
         applyBlocking(stats)
+        findAppsToReopen(stats)
 
         // Render at the size the reading apps asked for, so the camera does not have to scale.
         if let stats, stats.clients > 0 {
@@ -241,7 +283,7 @@ final class AppModel: ObservableObject {
     /// Pictures are needed while the window shows the preview, while an app
     /// reads the camera, or while a recording runs. Otherwise the real camera stays off.
     private var wantsPicture: Bool {
-        windowVisible || (cameraStats?.clients ?? 0) > 0 || status.isRecording
+        (windowVisible && screen.showsPreview) || (cameraStats?.clients ?? 0) > 0 || status.isRecording
     }
 
     private func updateDemand() {
@@ -327,15 +369,15 @@ final class AppModel: ObservableObject {
     func applySettings() {
         defaults.set(mirror, forKey: "mirror")
         defaults.set(showLoopBadge, forKey: "showLoopBadge")
-        defaults.set(loopMode.rawValue, forKey: "loopMode")
+        defaults.set(loopStyle.rawValue, forKey: "loopStyle")
         defaults.set(returnOnVoice, forKey: "returnOnVoice")
         let (mirror, badge) = (mirror, showLoopBadge)
         engine?.update {
             $0.mirror = mirror
             $0.showLoopBadge = badge
         }
-        // A new loop mode applies to the clip in hand; a loop already playing picks it up on its next start.
-        currentClip?.mode = loopMode
+        // A new way of repeating applies to the clip in hand; a loop already playing picks it up on its next start.
+        if let clip = currentClip { clip.mode = loopStyle.mode(for: clip) }
         if returnOnVoice, !VoiceTrigger.isAuthorized {
             AVCaptureDevice.requestAccess(for: .audio) { granted in
                 Task { @MainActor in
@@ -367,7 +409,7 @@ final class AppModel: ObservableObject {
         if status.mode == .looping {
             engine.stopLoop()
         } else if let clip = currentClip {
-            clip.mode = loopMode
+            clip.mode = loopStyle.mode(for: clip)
             engine.startLoop(clip)
         }
     }
@@ -414,9 +456,9 @@ final class AppModel: ObservableObject {
         guard let library else { return }
         do {
             let clip = try library.load(id)
+            clip.mode = loopStyle.mode(for: clip)
             currentClip = clip
             currentClipIsSaved = true
-            loopMode = clip.mode
         } catch {
             message = String(localized: "That loop could not be opened.")
             Log.app.error("load failed: \(String(describing: error))")
@@ -489,6 +531,53 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: Apps that need reopening
+
+    /// An app asks the system for its cameras when it starts. One that was
+    /// already running when God's Camera was installed or updated keeps its
+    /// old list, without the camera or with a dead entry for it, until it is
+    /// quit and opened again. Find those apps so the window can say so.
+    private func findAppsToReopen(_ stats: VirtualCameraStats?) {
+        guard let stats, stats.pid > 0, case .installed = extensionManager.state else {
+            if !appsToReopen.isEmpty { appsToReopen = [] }
+            return
+        }
+        if cameraInPlaceSince?.pid != stats.pid {
+            cameraInPlaceSince = Self.cameraInstallDate(extensionPid: stats.pid).map { (stats.pid, $0) }
+        }
+        guard let since = cameraInPlaceSince?.date else { return }
+        let reading = Set(readers.map(\.app.id))
+        let found = NSWorkspace.shared.runningApplications.compactMap { app -> AppToReopen? in
+            guard app.activationPolicy == .regular, let id = app.bundleIdentifier, id != Bundle.main.bundleIdentifier,
+                let launched = app.launchDate, launched < since, !reading.contains(id)
+            else { return nil }
+            if usesCamera[id] == nil {
+                usesCamera[id] = app.bundleURL.flatMap(Bundle.init(url:))?
+                    .object(forInfoDictionaryKey: "NSCameraUsageDescription") != nil
+            }
+            guard usesCamera[id] == true else { return nil }
+            return AppToReopen(id: id, name: app.localizedName ?? id, pid: app.processIdentifier)
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        if found != appsToReopen { appsToReopen = found }
+    }
+
+    /// When the running camera extension was installed: the time macOS put its
+    /// files in place. Apps opened before then have not seen this camera.
+    private static func cameraInstallDate(extensionPid: Int32) -> Date? {
+        var buffer = [CChar](repeating: 0, count: 4096)
+        guard proc_pidpath(extensionPid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        var url = URL(fileURLWithPath: String(cString: buffer))
+        while url.path != "/", url.pathExtension != "systemextension" { url.deleteLastPathComponent() }
+        guard url.pathExtension == "systemextension" else { return nil }
+        return (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+    }
+
+    /// Ask an app to quit, as its own Quit command does. It may ask the user about unsaved work.
+    func quit(_ app: AppToReopen) {
+        NSRunningApplication(processIdentifier: app.pid)?.terminate()
+    }
+
     // MARK: Everything the app keeps
 
     /// Remove saved faces, saved loops and the settings around them.
@@ -502,6 +591,33 @@ final class AppModel: ObservableObject {
         defaults.removeObject(forKey: "blockedApps")
         applyBlocking(cameraStats)
         Log.app.info("all saved data deleted")
+    }
+
+    // MARK: Sample content
+
+    /// Put made-up content on every screen, for pictures of the app. Nothing
+    /// is started, saved or sent: the camera, the hub and the extension are not touched.
+    func showSamples(readers: [CameraReader], reopen: [AppToReopen], clips: [ClipSummary], picture: CGImage?) {
+        var live = CameraEngine.Status()
+        live.mode = .live
+        live.swapping = true
+        live.faceFound = true
+        live.framesOut = 1
+        live.sourceFps = 30
+        live.swapMs = 37
+        live.swapAgeMs = 56
+        status = live
+        self.readers = readers
+        appsToReopen = reopen
+        extensionManager.showSample(.installed(version: "0.2.0"))
+        savedClips = clips
+        cameraAuthorized = true
+        var stats = VirtualCameraStats()
+        stats.clients = readers.count
+        stats.latencyMs = 6.3
+        cameraStats = stats
+        previewLayer.contents = picture
+        previewLayer.contentsGravity = .resizeAspectFill
     }
 
     // MARK: Diagnostics

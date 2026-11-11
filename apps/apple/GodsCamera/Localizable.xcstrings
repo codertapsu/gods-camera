@@ -1,12 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "%.0f fps · render %.1f ms": {
+    "": {},
+    "%.0f pictures a second": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%.0f khung hình/giây · dựng hình %.1f ms"
+            "value": "%.0f hình mỗi giây"
+          }
+        }
+      }
+    },
+    "%.1f ms from capture to camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.1f ms từ lúc quay đến camera"
           }
         }
       }
@@ -21,22 +32,100 @@
         }
       }
     },
-    "%@ · %.1f s, loops %.1f s": {
+    "%@ is connected": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ · %.1f giây, lặp %.1f giây"
+            "value": "%@ đã được kết nối"
           }
         }
       }
     },
-    "%lld app(s) reading · %.1f ms from capture to camera": {
+    "%@ · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ · %2$@"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@"
+          }
+        }
+      }
+    },
+    "%@ · %@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ · %2$@ %3$@"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@ %@"
+          }
+        }
+      }
+    },
+    "%lld": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld ứng dụng đang dùng · %.1f ms từ lúc quay đến camera"
+            "value": "%lld"
+          }
+        }
+      }
+    },
+    "%lld app(s) using the camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ứng dụng đang dùng camera"
+          }
+        }
+      }
+    },
+    "%lld of %lld photos will be used for this face.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$lld of %2$lld photos will be used for this face."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sẽ dùng %lld trong số %lld ảnh cho khuôn mặt này."
+          }
+        }
+      }
+    },
+    "%lld photos": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ảnh"
+          }
+        }
+      }
+    },
+    "1 photo": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 ảnh"
           }
         }
       }
@@ -51,6 +140,16 @@
         }
       }
     },
+    "A code could not be made. Turn the scanner off and on again.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không tạo được mã. Hãy tắt máy quét rồi bật lại."
+          }
+        }
+      }
+    },
     "A device is attached but not ready. Unlock it and allow debugging on its screen.": {
       "localizations": {
         "vi": {
@@ -61,42 +160,42 @@
         }
       }
     },
+    "A diagnostics report holds the app's state and its log. It contains no pictures and no faces.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Báo cáo chẩn đoán chứa trạng thái và nhật ký của ứng dụng. Trong đó không có hình ảnh hay khuôn mặt nào."
+          }
+        }
+      }
+    },
+    "A face can have up to %lld photos. The rest were not read.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mỗi khuôn mặt có tối đa %lld ảnh. Những ảnh còn lại không được đọc."
+          }
+        }
+      }
+    },
+    "A hand, a cup or a microphone in front of your face stays in front of the swapped face.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bàn tay, chiếc cốc hay micro ở trước mặt bạn vẫn nằm trước khuôn mặt thay thế."
+          }
+        }
+      }
+    },
     "A model file is not installed: %@": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Chưa cài đặt một tệp mô hình: %@"
-          }
-        }
-      }
-    },
-    "Add a face first, then turn the swap on.": {
-      "localizations": {
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hãy thêm một khuôn mặt trước, rồi bật tính năng thay mặt."
-          }
-        }
-      }
-    },
-    "Add a face…": {
-      "localizations": {
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Thêm khuôn mặt…"
-          }
-        }
-      }
-    },
-    "Add this face": {
-      "localizations": {
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Thêm khuôn mặt này"
           }
         }
       }
@@ -121,6 +220,96 @@
         }
       }
     },
+    "Active now": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang hoạt động"
+          }
+        }
+      }
+    },
+    "Add": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm"
+          }
+        }
+      }
+    },
+    "Add a face first, then turn the swap on.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hãy thêm một khuôn mặt trước, rồi bật tính năng thay mặt."
+          }
+        }
+      }
+    },
+    "Add a face first: click Add a face and choose photos of the person.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hãy thêm một khuôn mặt trước: bấm Thêm khuôn mặt và chọn ảnh của người đó."
+          }
+        }
+      }
+    },
+    "Add a face…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm khuôn mặt…"
+          }
+        }
+      }
+    },
+    "Add more photos of this person": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm ảnh khác của người này"
+          }
+        }
+      }
+    },
+    "Add photos to %@": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm ảnh cho %@"
+          }
+        }
+      }
+    },
+    "Add photos…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm ảnh…"
+          }
+        }
+      }
+    },
+    "Add this face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm khuôn mặt này"
+          }
+        }
+      }
+    },
     "Allow": {
       "localizations": {
         "vi": {
@@ -141,12 +330,42 @@
         }
       }
     },
-    "An older version is installed.": {
+    "An Android device attached for debugging, by USB cable or Wi-Fi, can be connected without a code.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Đang cài phiên bản cũ hơn."
+            "value": "Thiết bị Android đang gắn để gỡ lỗi, qua cáp USB hoặc Wi-Fi, có thể kết nối mà không cần mã."
+          }
+        }
+      }
+    },
+    "An app looks for cameras when it starts. If one does not list God's Camera, quit that app completely and open it again.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ứng dụng chỉ tìm camera khi khởi động. Nếu ứng dụng nào không liệt kê God's Camera, hãy thoát hẳn ứng dụng đó rồi mở lại."
+          }
+        }
+      }
+    },
+    "An older version is installed": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang cài phiên bản cũ hơn"
+          }
+        }
+      }
+    },
+    "An older version of the camera is installed.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera đang cài là phiên bản cũ hơn."
           }
         }
       }
@@ -161,12 +380,32 @@
         }
       }
     },
-    "Attach an Android device for debugging, by USB cable or Wi-Fi, then click Connect a device. The app on the device opens, already set up.": {
+    "Apps using the camera": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kết nối thiết bị Android ở chế độ gỡ lỗi, bằng cáp USB hoặc Wi-Fi, rồi bấm Kết nối thiết bị. Ứng dụng trên thiết bị sẽ mở ra, đã được thiết lập sẵn."
+            "value": "Ứng dụng đang dùng camera"
+          }
+        }
+      }
+    },
+    "Automatic": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tự động"
+          }
+        }
+      }
+    },
+    "BLURRED": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ĐÃ LÀM MỜ"
           }
         }
       }
@@ -221,12 +460,32 @@
         }
       }
     },
+    "Blur the picture when the swap is not on my face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Làm mờ hình khi khuôn mặt thay thế không nằm trên mặt tôi"
+          }
+        }
+      }
+    },
     "Camera": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Camera"
+          }
+        }
+      }
+    },
+    "Camera off": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera đang tắt"
           }
         }
       }
@@ -251,6 +510,46 @@
         }
       }
     },
+    "Choose a file to show.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hãy chọn một tệp để hiển thị."
+          }
+        }
+      }
+    },
+    "Choose more photos of %@.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chọn thêm ảnh của %@."
+          }
+        }
+      }
+    },
+    "Choose one or more photos of the same person. Several photos give a better likeness.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chọn một hoặc nhiều ảnh của cùng một người. Nhiều ảnh cho kết quả giống hơn."
+          }
+        }
+      }
+    },
+    "Choose several photos of the same person at once: different angles, expressions and light. Together they give a better likeness than one photo. You can also drop photos here.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hãy chọn cùng lúc nhiều ảnh của một người: góc mặt, biểu cảm và ánh sáng khác nhau. Nhiều ảnh gộp lại cho kết quả giống hơn một ảnh. Bạn cũng có thể kéo thả ảnh vào đây."
+          }
+        }
+      }
+    },
     "Choose…": {
       "localizations": {
         "vi": {
@@ -271,12 +570,42 @@
         }
       }
     },
-    "Connect a device": {
+    "Connect a phone or tablet": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kết nối thiết bị"
+            "value": "Kết nối điện thoại hoặc máy tính bảng"
+          }
+        }
+      }
+    },
+    "Connect a phone or tablet…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kết nối điện thoại hoặc máy tính bảng…"
+          }
+        }
+      }
+    },
+    "Connect over debugging": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kết nối qua chế độ gỡ lỗi"
+          }
+        }
+      }
+    },
+    "Connected, not used yet": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã kết nối, chưa sử dụng"
           }
         }
       }
@@ -311,12 +640,12 @@
         }
       }
     },
-    "Copy": {
+    "Control-click to remove this photo": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sao chép"
+            "value": "Giữ Control và bấm để gỡ ảnh này"
           }
         }
       }
@@ -337,6 +666,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Không đọc được"
+          }
+        }
+      }
+    },
+    "Delete": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xoá"
           }
         }
       }
@@ -381,16 +720,6 @@
         }
       }
     },
-    "Delete this face": {
-      "localizations": {
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Xoá khuôn mặt này"
-          }
-        }
-      }
-    },
     "Delete this loop": {
       "localizations": {
         "vi": {
@@ -421,6 +750,46 @@
         }
       }
     },
+    "Documents": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tài liệu"
+          }
+        }
+      }
+    },
+    "Documents you scan appear here.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tài liệu bạn quét sẽ hiện ở đây."
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xong"
+          }
+        }
+      }
+    },
+    "Enter this code there.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhập mã này trên thiết bị."
+          }
+        }
+      }
+    },
     "Face": {
       "localizations": {
         "vi": {
@@ -437,6 +806,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Khuôn mặt %lld"
+          }
+        }
+      }
+    },
+    "Faces": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khuôn mặt"
+          }
+        }
+      }
+    },
+    "For development": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dành cho phát triển"
           }
         }
       }
@@ -501,6 +890,56 @@
         }
       }
     },
+    "Help": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trợ giúp"
+          }
+        }
+      }
+    },
+    "Hide": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ẩn"
+          }
+        }
+      }
+    },
+    "How it looks": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hình thức"
+          }
+        }
+      }
+    },
+    "How it repeats": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cách lặp lại"
+          }
+        }
+      }
+    },
+    "How it works": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cách hoạt động"
+          }
+        }
+      }
+    },
     "I understand": {
       "localizations": {
         "vi": {
@@ -531,6 +970,16 @@
         }
       }
     },
+    "In your meeting app": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trong ứng dụng họp của bạn"
+          }
+        }
+      }
+    },
     "Install the camera": {
       "localizations": {
         "vi": {
@@ -541,12 +990,32 @@
         }
       }
     },
-    "Installed. Choose “God's Camera” in your meeting app.": {
+    "Installed": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Đã cài đặt. Hãy chọn “God's Camera” trong ứng dụng họp của bạn."
+            "value": "Đã cài đặt"
+          }
+        }
+      }
+    },
+    "Installed, waiting for a restart": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã cài đặt, đang chờ khởi động lại"
+          }
+        }
+      }
+    },
+    "It can send scans to this Mac whenever both are on the same Wi-Fi network.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thiết bị có thể gửi bản quét đến máy Mac này mỗi khi cả hai cùng dùng một mạng Wi-Fi."
           }
         }
       }
@@ -571,12 +1040,62 @@
         }
       }
     },
+    "It ran out, or a wrong code was entered too many times.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mã đã hết hạn, hoặc đã nhập sai quá nhiều lần."
+          }
+        }
+      }
+    },
+    "Keep hands and objects in front of the face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giữ bàn tay và đồ vật ở phía trước khuôn mặt"
+          }
+        }
+      }
+    },
     "LIVE": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "TRỰC TIẾP"
+          }
+        }
+      }
+    },
+    "LOOPING": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ĐANG LẶP"
+          }
+        }
+      }
+    },
+    "Last used %@": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dùng lần cuối %@"
+          }
+        }
+      }
+    },
+    "Left out": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bỏ qua"
           }
         }
       }
@@ -591,22 +1110,22 @@
         }
       }
     },
+    "Live, face swapped": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trực tiếp, đã thay khuôn mặt"
+          }
+        }
+      }
+    },
     "Loop": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Đoạn lặp"
-          }
-        }
-      }
-    },
-    "LOOPING": {
-      "localizations": {
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ĐANG LẶP"
           }
         }
       }
@@ -641,6 +1160,16 @@
         }
       }
     },
+    "More for this face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tuỳ chọn khác cho khuôn mặt này"
+          }
+        }
+      }
+    },
     "Move God's Camera to the Applications folder first. macOS only installs camera extensions from there.": {
       "localizations": {
         "vi": {
@@ -661,12 +1190,42 @@
         }
       }
     },
+    "NO PICTURE": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "KHÔNG CÓ HÌNH"
+          }
+        }
+      }
+    },
     "Name": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Tên"
+          }
+        }
+      }
+    },
+    "No app is using the camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không ứng dụng nào đang dùng camera"
+          }
+        }
+      }
+    },
+    "No app is using the camera right now.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện không có ứng dụng nào dùng camera."
           }
         }
       }
@@ -691,12 +1250,12 @@
         }
       }
     },
-    "No face in the picture.": {
+    "No face in the picture. Others see the picture as it is.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Không thấy khuôn mặt nào trong hình."
+            "value": "Không có khuôn mặt nào trong hình. Người khác thấy hình đúng như thật."
           }
         }
       }
@@ -711,6 +1270,26 @@
         }
       }
     },
+    "No face was found in those pictures.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không tìm thấy khuôn mặt nào trong các ảnh đó."
+          }
+        }
+      }
+    },
+    "No face was found in: %@": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không tìm thấy khuôn mặt trong: %@"
+          }
+        }
+      }
+    },
     "No file chosen": {
       "localizations": {
         "vi": {
@@ -721,12 +1300,22 @@
         }
       }
     },
-    "NO PICTURE": {
+    "No loop yet. Click Record a loop, wait a few seconds, and click Stop recording.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "KHÔNG CÓ HÌNH"
+            "value": "Chưa có đoạn lặp. Bấm Ghi một đoạn lặp, đợi vài giây rồi bấm Dừng ghi."
+          }
+        }
+      }
+    },
+    "No phone or tablet is connected yet.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chưa có điện thoại hay máy tính bảng nào được kết nối."
           }
         }
       }
@@ -741,12 +1330,62 @@
         }
       }
     },
+    "None of these photos shows the same person as the saved face.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không ảnh nào trong số này là của cùng người với khuôn mặt đã lưu."
+          }
+        }
+      }
+    },
+    "Not installed": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chưa cài đặt"
+          }
+        }
+      }
+    },
     "Not now": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Để sau"
+          }
+        }
+      }
+    },
+    "One photo will be used.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sẽ dùng một ảnh."
+          }
+        }
+      }
+    },
+    "Open God's Camera on the phone or tablet, on the same Wi-Fi network as this Mac.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mở God's Camera trên điện thoại hoặc máy tính bảng, cùng mạng Wi-Fi với máy Mac này."
+          }
+        }
+      }
+    },
+    "Open God's Camera on your phone or tablet and photograph the pages. Long pages can be taken in several overlapping photos.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mở God's Camera trên điện thoại hoặc máy tính bảng và chụp các trang. Trang dài có thể chụp thành nhiều ảnh chồng mép lên nhau."
           }
         }
       }
@@ -781,6 +1420,16 @@
         }
       }
     },
+    "Other apps no longer list God's Camera. macOS asks for an administrator's password.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Các ứng dụng khác sẽ không còn liệt kê God's Camera. macOS sẽ hỏi mật khẩu quản trị viên."
+          }
+        }
+      }
+    },
     "People in a call will see a face that is not the one in front of the camera. Please use this fairly.": {
       "localizations": {
         "vi": {
@@ -791,12 +1440,52 @@
         }
       }
     },
-    "Picture": {
+    "Phones and tablets": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hình ảnh"
+            "value": "Điện thoại và máy tính bảng"
+          }
+        }
+      }
+    },
+    "Photograph pages with your phone or tablet. The text arrives here.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chụp các trang bằng điện thoại hoặc máy tính bảng. Văn bản sẽ hiện ở đây."
+          }
+        }
+      }
+    },
+    "Photos that show a different person from most of the others are left out.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Những ảnh chụp người khác với phần lớn các ảnh còn lại sẽ bị bỏ qua."
+          }
+        }
+      }
+    },
+    "Photos that show a different person from the saved face are left out.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Những ảnh chụp người khác với khuôn mặt đã lưu sẽ bị bỏ qua."
+          }
+        }
+      }
+    },
+    "Picture from": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nguồn hình"
           }
         }
       }
@@ -811,12 +1500,72 @@
         }
       }
     },
+    "Play the loop or go back to live": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phát đoạn lặp hoặc trở về trực tiếp"
+          }
+        }
+      }
+    },
+    "Playing a loop": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang phát đoạn lặp"
+          }
+        }
+      }
+    },
+    "Plays to the end, then backwards to the start. There is no jump, but movement runs in reverse half the time.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phát đến cuối rồi phát ngược về đầu. Không bị giật, nhưng một nửa thời gian chuyển động chạy ngược."
+          }
+        }
+      }
+    },
+    "Plays to the end, then fades back to the start.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phát đến cuối rồi chuyển mờ dần về đầu."
+          }
+        }
+      }
+    },
+    "Privacy": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quyền riêng tư"
+          }
+        }
+      }
+    },
     "Quality": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Chất lượng"
+          }
+        }
+      }
+    },
+    "Quit": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thoát"
           }
         }
       }
@@ -831,12 +1580,12 @@
         }
       }
     },
-    "Reading %lld %…": {
+    "Quits the app, as its own Quit command does. Open it again afterwards.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Đang đọc %lld %…"
+            "value": "Thoát ứng dụng, giống như lệnh Thoát của chính nó. Sau đó hãy mở lại."
           }
         }
       }
@@ -851,22 +1600,62 @@
         }
       }
     },
-    "Receive scans from my phone or tablet": {
+    "Read": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nhận bản quét từ điện thoại hoặc máy tính bảng"
+            "value": "Đọc"
           }
         }
       }
     },
-    "Record a few seconds of yourself, then play them as your camera picture.": {
+    "Reading %lld %%…": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ghi vài giây hình của bạn, rồi phát lại làm hình camera."
+            "value": "Đang đọc %lld %%…"
+          }
+        }
+      }
+    },
+    "Reading the photos…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang đọc ảnh…"
+          }
+        }
+      }
+    },
+    "Ready. In Zoom, Teams, Meet or any other app, choose “God's Camera” as the camera.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sẵn sàng. Trong Zoom, Teams, Meet hay ứng dụng khác, hãy chọn “God's Camera” làm camera."
+          }
+        }
+      }
+    },
+    "Receive scans on this Mac": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhận bản quét trên máy Mac này"
+          }
+        }
+      }
+    },
+    "Record a few seconds of yourself and play them as your camera picture.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ghi vài giây hình của bạn rồi phát lại làm hình camera."
           }
         }
       }
@@ -881,12 +1670,88 @@
         }
       }
     },
-    "Remove the camera": {
+    "Record or stop a loop": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gỡ camera"
+            "value": "Ghi hoặc dừng ghi đoạn lặp"
+          }
+        }
+      }
+    },
+    "Recorded %.1f s · loops %.1f s": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Recorded %1$.1f s · loops %2$.1f s"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã ghi %.1f giây · lặp %.1f giây"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gỡ"
+          }
+        }
+      }
+    },
+    "Remove %@?": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gỡ %@?"
+          }
+        }
+      }
+    },
+    "Remove the camera…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gỡ camera…"
+          }
+        }
+      }
+    },
+    "Remove this photo": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gỡ ảnh này"
+          }
+        }
+      }
+    },
+    "Rename the face": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đổi tên khuôn mặt"
+          }
+        }
+      }
+    },
+    "Rename…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đổi tên…"
           }
         }
       }
@@ -907,6 +1772,56 @@
           "stringUnit": {
             "state": "translated",
             "value": "Khởi động lại máy Mac để hoàn tất."
+          }
+        }
+      }
+    },
+    "Sample document": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tài liệu mẫu"
+          }
+        }
+      }
+    },
+    "Sample document\n\nThis is where the text of a scanned page appears, joined from all its photos and ready to copy.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tài liệu mẫu\n\nVăn bản của trang đã quét sẽ hiện ở đây, được ghép từ tất cả các ảnh và sẵn sàng để sao chép."
+          }
+        }
+      }
+    },
+    "Sample: at my desk": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mẫu: tại bàn làm việc"
+          }
+        }
+      }
+    },
+    "Sample: character": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mẫu: nhân vật"
+          }
+        }
+      }
+    },
+    "Sample: me": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mẫu: tôi"
           }
         }
       }
@@ -951,12 +1866,22 @@
         }
       }
     },
-    "Saved faces, their encryption key, saved loops, scanned documents and the list of blocked apps are removed from this Mac. This cannot be undone.": {
+    "Saved faces, loops and scanned documents stay on this Mac. Saved faces are encrypted, with the key in your Keychain.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Các khuôn mặt đã lưu, khoá mã hoá của chúng, các vòng lặp đã lưu, tài liệu đã quét và danh sách ứng dụng bị chặn sẽ bị xoá khỏi máy Mac này. Không thể hoàn tác."
+            "value": "Khuôn mặt đã lưu, đoạn lặp và tài liệu đã quét đều nằm trên máy Mac này. Khuôn mặt đã lưu được mã hoá, khoá nằm trong Chuỗi khoá của bạn."
+          }
+        }
+      }
+    },
+    "Saved faces, their encryption key, saved loops, scanned documents, connected devices and the list of blocked apps are removed from this Mac. This cannot be undone.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khuôn mặt đã lưu, khoá mã hoá của chúng, đoạn lặp đã lưu, tài liệu đã quét, thiết bị đã kết nối và danh sách ứng dụng bị chặn sẽ bị xoá khỏi máy Mac này. Không thể hoàn tác."
           }
         }
       }
@@ -981,6 +1906,16 @@
         }
       }
     },
+    "Settings": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cài đặt"
+          }
+        }
+      }
+    },
     "Sharper": {
       "localizations": {
         "vi": {
@@ -991,22 +1926,12 @@
         }
       }
     },
-    "Show a LOOP badge to others": {
+    "Sharpness": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hiện nhãn LOOP cho người khác thấy"
-          }
-        }
-      }
-    },
-    "Show an AI badge to others": {
-      "localizations": {
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hiện nhãn AI cho người khác thấy"
+            "value": "Độ sắc nét"
           }
         }
       }
@@ -1021,6 +1946,46 @@
         }
       }
     },
+    "Show a LOOP badge to others": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện nhãn LOOP cho người khác thấy"
+          }
+        }
+      }
+    },
+    "Show a new code": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện mã mới"
+          }
+        }
+      }
+    },
+    "Show an AI badge to others": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện nhãn AI cho người khác thấy"
+          }
+        }
+      }
+    },
+    "Show another face in place of yours, live.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện một khuôn mặt khác thay cho mặt bạn, ngay trong lúc trực tiếp."
+          }
+        }
+      }
+    },
     "Show in Finder": {
       "localizations": {
         "vi": {
@@ -1031,12 +1996,22 @@
         }
       }
     },
-    "Source": {
+    "Show my real mouth": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nguồn"
+            "value": "Hiện miệng thật của tôi"
+          }
+        }
+      }
+    },
+    "Sit still for the first and the last second of a recording. The loop then ends as it began, and nobody sees it start again.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hãy ngồi yên trong giây đầu và giây cuối khi ghi. Khi đó đoạn lặp kết thúc giống lúc bắt đầu, và không ai thấy nó lặp lại."
           }
         }
       }
@@ -1061,6 +2036,26 @@
         }
       }
     },
+    "Start to end when a loop ends as it began. Otherwise back and forth, which has no jump.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phát từ đầu đến cuối nếu đoạn lặp kết thúc giống lúc bắt đầu. Nếu không thì tới rồi lui để không bị giật."
+          }
+        }
+      }
+    },
+    "State": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trạng thái"
+          }
+        }
+      }
+    },
     "Stop recording": {
       "localizations": {
         "vi": {
@@ -1081,12 +2076,38 @@
         }
       }
     },
-    "Swapping · %.0f ms a face, %.0f ms behind": {
+    "Swapping. A new face picture every %lld ms, %lld ms behind the camera.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Swapping. A new face picture every %1$lld ms, %2$lld ms behind the camera."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang thay khuôn mặt. Cứ %lld ms có một hình khuôn mặt mới, chậm hơn camera %lld ms."
+          }
+        }
+      }
+    },
+    "Tap Connect to a Mac and choose “%@”.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Đang thay mặt · %.0f ms mỗi lần, trễ %.0f ms"
+            "value": "Chạm Kết nối với máy Mac rồi chọn “%@”."
+          }
+        }
+      }
+    },
+    "Tap Send. The photos go to this Mac over your Wi-Fi network, not through the internet.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chạm Gửi. Ảnh được chuyển đến máy Mac này qua mạng Wi-Fi của bạn, không đi qua internet."
           }
         }
       }
@@ -1121,16 +2142,6 @@
         }
       }
     },
-    "That picture could not be read.": {
-      "localizations": {
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Không đọc được hình đó."
-          }
-        }
-      }
-    },
     "The Android debugging tool (adb) was not found on this Mac.": {
       "localizations": {
         "vi": {
@@ -1151,12 +2162,52 @@
         }
       }
     },
+    "The camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera"
+          }
+        }
+      }
+    },
     "The camera is installed, but macOS has not started it. Restart the Mac to finish.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Camera đã được cài đặt nhưng macOS chưa khởi động nó. Hãy khởi động lại máy Mac để hoàn tất."
+          }
+        }
+      }
+    },
+    "The camera, your data and help.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera, dữ liệu của bạn và trợ giúp."
+          }
+        }
+      }
+    },
+    "The code works for %@ more and for one device.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mã còn dùng được trong %@ và chỉ cho một thiết bị."
+          }
+        }
+      }
+    },
+    "The device can no longer send scans to this Mac. To use it again, connect it with a new code.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thiết bị sẽ không gửi được bản quét đến máy Mac này nữa. Muốn dùng lại, hãy kết nối bằng một mã mới."
           }
         }
       }
@@ -1181,16 +2232,6 @@
         }
       }
     },
-    "The picture shows %lld faces. The largest one was used.": {
-      "localizations": {
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Trong hình có %lld khuôn mặt. Đã dùng khuôn mặt lớn nhất."
-          }
-        }
-      }
-    },
     "The room looks brighter or darker than in this loop.": {
       "localizations": {
         "vi": {
@@ -1211,12 +2252,62 @@
         }
       }
     },
-    "This is me.": {
+    "The swap is not on your face, so the picture is blurred.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Đây là tôi."
+            "value": "Khuôn mặt thay thế không nằm trên mặt bạn nên hình đang được làm mờ."
+          }
+        }
+      }
+    },
+    "The swap is off. Others see your own face.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang tắt thay khuôn mặt. Người khác thấy khuôn mặt thật của bạn."
+          }
+        }
+      }
+    },
+    "The swap leaves your face when you turn far to the side, when something hides most of it, or when it is too dark. With this on, others then see a blurred picture and never your own face.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khuôn mặt thay thế sẽ rời khỏi mặt bạn khi bạn quay hẳn sang một bên, khi có vật che gần hết khuôn mặt, hoặc khi quá tối. Khi bật tuỳ chọn này, người khác sẽ thấy hình bị làm mờ và không bao giờ thấy mặt thật của bạn."
+          }
+        }
+      }
+    },
+    "These apps were opened before the camera was last installed or updated, so they do not list it yet. Quit them completely and open them again.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Các ứng dụng này được mở trước lần cài đặt hoặc cập nhật camera gần nhất nên chưa liệt kê camera. Hãy thoát hẳn rồi mở lại chúng."
+          }
+        }
+      }
+    },
+    "This Mac could not open its network port, so devices cannot connect with a code. Another program may be using port %@.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Máy Mac này không mở được cổng mạng nên thiết bị không thể kết nối bằng mã. Có thể chương trình khác đang dùng cổng %@."
+          }
+        }
+      }
+    },
+    "This Mac reads the text, joins the photos into one document, and shows it below.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Máy Mac này đọc văn bản, ghép các ảnh thành một tài liệu và hiển thị ở bên dưới."
           }
         }
       }
@@ -1231,12 +2322,62 @@
         }
       }
     },
+    "This code no longer works": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mã này không còn dùng được"
+          }
+        }
+      }
+    },
+    "This is me.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đây là tôi."
+          }
+        }
+      }
+    },
+    "This loop": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đoạn lặp này"
+          }
+        }
+      }
+    },
+    "This loop ends as it began, so it plays start to end.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đoạn lặp này kết thúc giống lúc bắt đầu nên được phát từ đầu đến cuối."
+          }
+        }
+      }
+    },
     "Try again": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Thử lại"
+          }
+        }
+      }
+    },
+    "Turn this on, then connect your phone or tablet with a six-digit code. Both must be on the same Wi-Fi network.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hãy bật mục này rồi kết nối điện thoại hoặc máy tính bảng bằng mã sáu chữ số. Cả hai phải dùng cùng một mạng Wi-Fi."
           }
         }
       }
@@ -1261,6 +2402,26 @@
         }
       }
     },
+    "Used": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Được dùng"
+          }
+        }
+      }
+    },
+    "Used by %@": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang được dùng bởi %@"
+          }
+        }
+      }
+    },
     "Used with permission": {
       "localizations": {
         "vi": {
@@ -1281,6 +2442,16 @@
         }
       }
     },
+    "Version": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phiên bản"
+          }
+        }
+      }
+    },
     "Video": {
       "localizations": {
         "vi": {
@@ -1291,12 +2462,22 @@
         }
       }
     },
-    "Virtual camera": {
+    "Waiting for the picture…": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Camera ảo"
+            "value": "Đang chờ hình…"
+          }
+        }
+      }
+    },
+    "Waiting for your approval": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang chờ bạn chấp thuận"
           }
         }
       }
@@ -1307,6 +2488,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Đang chờ bạn cho phép trong Cài đặt hệ thống › Cài đặt chung › Mục đăng nhập & Phần mở rộng › Phần mở rộng camera."
+          }
+        }
+      }
+    },
+    "What other apps see when they choose God's Camera.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Những gì ứng dụng khác thấy khi chọn God's Camera."
+          }
+        }
+      }
+    },
+    "Where a photo shows several faces, the largest one was used.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Với ảnh có nhiều khuôn mặt, khuôn mặt lớn nhất được dùng."
           }
         }
       }
@@ -1327,6 +2528,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nếu không có micrô, God's Camera không thể biết khi nào bạn bắt đầu nói."
+          }
+        }
+      }
+    },
+    "You moved between the start and the end of this loop, so it plays back and forth, without a jump.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bạn đã cử động giữa lúc đầu và lúc cuối của đoạn lặp này nên nó được phát tới rồi lui, không bị giật."
+          }
+        }
+      }
+    },
+    "Your data": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dữ liệu của bạn"
+          }
+        }
+      }
+    },
+    "Your own lips and teeth show through the swapped face. Speech looks more natural; the mouth is then yours, not the other face's.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Môi và răng thật của bạn hiện qua khuôn mặt thay thế. Lúc nói trông tự nhiên hơn; khi đó miệng là của bạn chứ không phải của khuôn mặt kia."
+          }
+        }
+      }
+    },
+    "camera build": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bản dựng camera"
+          }
+        }
+      }
+    },
+    "macOS is not letting God's Camera use the local network, so devices cannot find this Mac. Allow it in System Settings › Privacy & Security › Local Network, then turn this switch off and on.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS chưa cho phép God's Camera dùng mạng cục bộ nên thiết bị không tìm thấy máy Mac này. Hãy cho phép trong Cài đặt hệ thống › Quyền riêng tư & Bảo mật › Mạng cục bộ, rồi tắt và bật lại công tắc này."
+          }
+        }
+      }
+    },
+    "⌃⌥⌘L": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃⌥⌘L"
+          }
+        }
+      }
+    },
+    "⌃⌥⌘R": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃⌥⌘R"
           }
         }
       }

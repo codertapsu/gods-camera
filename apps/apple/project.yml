@@ -32,13 +32,18 @@ targets:
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSCameraUsageDescription: God's Camera reads your camera to build the picture it sends to other apps.
         NSMicrophoneUsageDescription: God's Camera listens for your voice so it can leave a loop when you start to speak. Nothing is recorded.
+        NSLocalNetworkUsageDescription: God's Camera lets your phone or tablet find this Mac on your Wi-Fi network, so it can send scanned pages here.
+        NSBonjourServices: [_godscamera._tcp]
         CFBundleLocalizations: [en, vi]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera
         CODE_SIGN_ENTITLEMENTS: GodsCamera/GodsCamera.entitlements
-        MARKETING_VERSION: "0.3.0"
-        CURRENT_PROJECT_VERSION: "7"
+        # The compiler lists every string the app shows, which is what
+        # tools/sync-mac-strings.sh checks the translations against.
+        SWIFT_EMIT_LOC_STRINGS: YES
+        MARKETING_VERSION: "0.4.0"
+        CURRENT_PROJECT_VERSION: "8"
     dependencies:
       - package: GodsCameraKit
       - target: CameraExtension
@@ -63,8 +68,8 @@ targets:
       base:
         PRODUCT_NAME: gc-ocr
         PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera.ocr
-        MARKETING_VERSION: "0.3.0"
-        CURRENT_PROJECT_VERSION: "7"
+        MARKETING_VERSION: "0.4.0"
+        CURRENT_PROJECT_VERSION: "8"
         SKIP_INSTALL: YES
   CameraExtension:
     type: system-extension

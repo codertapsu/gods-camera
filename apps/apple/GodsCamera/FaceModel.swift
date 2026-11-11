@@ -3,12 +3,29 @@ import GodsCameraKit
 import ImageIO
 import SwiftUI
 
-/// A face read from a photo, waiting for the user to name it and state their right to use it.
-struct PendingFace: Identifiable {
+/// One photo read for a face that is being added.
+struct PendingPhoto: Identifiable {
     let id = UUID()
+    let fileName: String
     let identity: [Float]
     let thumbnail: Data
     let facesInPhoto: Int
+    /// The photo shows the same person as the others, so it goes into the face.
+    var used = true
+}
+
+/// Photos that were read and now wait for the user: to become a new face, or
+/// to be added to a saved one.
+struct PendingFace: Identifiable {
+    let id = UUID()
+    var photos: [PendingPhoto]
+    /// Files in which no face was found, or that could not be read.
+    var skipped: [String]
+    /// The saved face the photos are for, or nil for a new face.
+    var target: SavedFace?
+
+    var usedCount: Int { photos.filter(\.used).count }
+    var leftOutCount: Int { photos.count - usedCount }
 }
 
 /// The face swap as the window sees it: the saved faces, the switch, and what the swap is doing.
@@ -68,6 +85,10 @@ final class FaceModel: ObservableObject {
         quality = FaceSwapConfig.Model(rawValue: defaults.string(forKey: "swapQuality") ?? "") ?? .inswapper128
         showAIBadge = defaults.object(forKey: "showAIBadge") as? Bool ?? true
         settings.colourMatch = defaults.object(forKey: "swapColourMatch") as? Bool ?? true
+        settings.sharpen = defaults.object(forKey: "swapSharpen") as? Float ?? settings.sharpen
+        settings.keepObjectsInFront = defaults.object(forKey: "swapKeepObjects") as? Bool ?? true
+        settings.realMouth = defaults.bool(forKey: "swapRealMouth")
+        settings.blurWhenUnswapped = defaults.bool(forKey: "swapBlurWhenOff")
         selectedID = defaults.string(forKey: "selectedFace").flatMap(UUID.init)
     }
 
@@ -78,6 +99,11 @@ final class FaceModel: ObservableObject {
             config.model = model
             return config.missingFile == nil
         }
+    }
+
+    /// The model that keeps a hand or an object in front of the face is installed.
+    let canKeepObjectsInFront = FaceModel.packFolders.contains {
+        FileManager.default.fileExists(atPath: $0.appendingPathComponent(FaceSwapConfig.occlusionFile).path)
     }
 
     var policyAccepted: Bool { defaults.object(forKey: "usePolicyAcceptedAt") != nil }
@@ -171,6 +197,10 @@ final class FaceModel: ObservableObject {
         defaults.set(quality.rawValue, forKey: "swapQuality")
         defaults.set(showAIBadge, forKey: "showAIBadge")
         defaults.set(settings.colourMatch, forKey: "swapColourMatch")
+        defaults.set(settings.sharpen, forKey: "swapSharpen")
+        defaults.set(settings.keepObjectsInFront, forKey: "swapKeepObjects")
+        defaults.set(settings.realMouth, forKey: "swapRealMouth")
+        defaults.set(settings.blurWhenUnswapped, forKey: "swapBlurWhenOff")
         engine?.update { [badge = showAIBadge] in $0.showAIBadge = badge }
         stage?.update(settings)
     }
@@ -191,48 +221,111 @@ final class FaceModel: ObservableObject {
 
     // MARK: Adding and removing faces
 
-    func chooseAndAddFace() {
+    /// Ask for photos: for a new face, or for more photos of a saved one.
+    func choosePhotos(for target: SavedFace? = nil) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        addFace(from: url)
+        panel.allowsMultipleSelection = true
+        panel.message =
+            target == nil
+            ? String(localized: "Choose one or more photos of the same person. Several photos give a better likeness.")
+            : String(localized: "Choose more photos of \(target?.name ?? "").")
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        addPhotos(panel.urls, to: target)
     }
 
-    func addFace(from url: URL) {
+    /// Read photos and show what was found in them, ready to be saved.
+    func addPhotos(_ urls: [URL], to target: SavedFace? = nil) {
+        guard !busyAdding else { return }
         message = nil
         busyAdding = true
+        let room = SavedFace.maxPhotos - (target?.photos.count ?? 0)
+        let taken = Array(urls.prefix(max(0, room)))
         let reader = photoReader
         let (folders, cache) = (Self.packFolders, Self.cacheFolder)
+        let existing = target?.photos.map(\.identity) ?? []
         work.async {
-            let outcome = Result { try reader.read(url, packFolders: folders, cacheFolder: cache) }
+            var photos: [PendingPhoto] = []
+            var skipped: [String] = []
+            var failure: Error?
+            for url in taken {
+                do {
+                    if let found = try reader.read(url, packFolders: folders, cacheFolder: cache) {
+                        photos.append(found)
+                    } else {
+                        skipped.append(url.lastPathComponent)
+                    }
+                } catch {
+                    skipped.append(url.lastPathComponent)
+                    failure = error
+                }
+            }
+            // The photos must show one person: the one in the saved face, or
+            // the one most of the new photos agree on.
+            let combined = FaceEnrolment.combine(existing + photos.map(\.identity))
+            for index in photos.indices { photos[index].used = combined.used[existing.count + index] }
+            let result = PendingFace(photos: photos, skipped: skipped, target: target)
             DispatchQueue.main.async {
                 self.busyAdding = false
-                switch outcome {
-                case .success(.some(let found)): self.pending = found
-                case .success(.none): self.message = String(localized: "No face was found in that picture.")
-                case .failure(let error):
-                    self.message = String(localized: "That picture could not be read.")
-                    Log.app.error("enrolment failed: \(String(describing: error))")
+                if let failure { Log.app.error("a photo could not be read: \(String(describing: failure))") }
+                if photos.isEmpty {
+                    self.message =
+                        urls.count == 1
+                        ? String(localized: "No face was found in that picture.")
+                        : String(localized: "No face was found in those pictures.")
+                } else {
+                    if urls.count > taken.count {
+                        self.message = String(localized: "A face can have up to \(SavedFace.maxPhotos) photos. The rest were not read.")
+                    }
+                    self.pending = result
                 }
             }
         }
     }
 
+    /// Save the photos in hand: as a new face, or into the saved face they were read for.
     func savePending(name: String, consent: FaceConsent) {
         guard let pending, let library else { return }
-        let face = SavedFace(
-            name: name.isEmpty ? String(localized: "Face \(faces.count + 1)") : name, consent: consent,
-            identity: pending.identity, thumbnail: pending.thumbnail)
+        let added = pending.photos.filter(\.used).map { FacePhoto(identity: $0.identity, thumbnail: $0.thumbnail) }
+        guard !added.isEmpty else { return }
+        var face: SavedFace
+        if let target = pending.target, let current = faces.first(where: { $0.id == target.id }) {
+            face = current
+            let photos = Array((current.photos + added).prefix(SavedFace.maxPhotos))
+            face.setPhotos(photos, identity: FaceEnrolment.combine(photos.map(\.identity)).identity)
+        } else {
+            face = SavedFace(
+                name: name.isEmpty ? String(localized: "Face \(faces.count + 1)") : name, consent: consent,
+                photos: added, identity: FaceEnrolment.combine(added.map(\.identity)).identity)
+        }
         do {
             try library.save(face)
             faces = library.list()
             self.pending = nil
             select(face.id)
+            Log.app.info("face saved with \(face.photos.count) photo(s)")
         } catch {
             message = String(localized: "The face could not be saved.")
             Log.app.error("face save failed: \(String(describing: error))")
         }
+    }
+
+    func rename(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var face = faces.first(where: { $0.id == id }), let library else { return }
+        face.name = trimmed
+        try? library.save(face)
+        faces = library.list()
+    }
+
+    /// Take one photo out of a face. The last photo cannot be removed; delete the face instead.
+    func removePhoto(_ photoID: UUID, from faceID: UUID) {
+        guard var face = faces.first(where: { $0.id == faceID }), face.photos.count > 1, let library else { return }
+        let photos = face.photos.filter { $0.id != photoID }
+        face.setPhotos(photos, identity: FaceEnrolment.combine(photos.map(\.identity)).identity)
+        try? library.save(face)
+        faces = library.list()
+        if selectedID == faceID, state == .on { stage?.setIdentity(face.identity) }
     }
 
     func delete(_ id: UUID) {
@@ -258,6 +351,26 @@ final class FaceModel: ObservableObject {
         // A fresh key and an empty library, ready for new faces.
         start()
     }
+
+    // MARK: Sample content
+
+    /// Show the sheet for new photos with made-up content, for pictures of the app.
+    func showSamplePending() {
+        guard let sample = faces.first else { return }
+        var photos = sample.photos.map {
+            PendingPhoto(fileName: "photo.jpg", identity: [], thumbnail: $0.thumbnail, facesInPhoto: 1)
+        }
+        if photos.count > 1 { photos[photos.count - 1].used = false }
+        pending = PendingFace(photos: photos, skipped: ["IMG_0412.jpg"], target: nil)
+    }
+
+    /// Fill the model with made-up faces, for pictures of the app. Nothing is saved.
+    func showSamples(_ samples: [SavedFace]) {
+        faces = samples
+        selectedID = samples.first?.id
+        wanted = true
+        state = .on
+    }
 }
 
 /// Reads photos for the face library. Used from one background queue only,
@@ -266,7 +379,7 @@ final class PhotoReader: @unchecked Sendable {
     private var enrolment: FaceEnrolment?
 
     /// Read a photo, find its largest face and cut a small picture of it.
-    func read(_ url: URL, packFolders: [URL], cacheFolder: URL) throws -> PendingFace? {
+    func read(_ url: URL, packFolders: [URL], cacheFolder: URL) throws -> PendingPhoto? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw SourceError.unreadable(url) }
         // Apply the photo's orientation and cap its size in one step.
         let options: [CFString: Any] = [
@@ -298,6 +411,8 @@ final class PhotoReader: @unchecked Sendable {
                 thumbnail = NSBitmapImageRep(cgImage: small).representation(using: .png, properties: [:]) ?? Data()
             }
         }
-        return PendingFace(identity: found.identity, thumbnail: thumbnail, facesInPhoto: found.facesInPhoto)
+        return PendingPhoto(
+            fileName: url.lastPathComponent, identity: found.identity, thumbnail: thumbnail,
+            facesInPhoto: found.facesInPhoto)
     }
 }

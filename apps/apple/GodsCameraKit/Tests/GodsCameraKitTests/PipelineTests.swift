@@ -739,6 +739,40 @@ final class FaceLibraryTests: XCTestCase {
         XCTAssertEqual(library.list(), [a])
     }
 
+    func testAFaceKeepsItsPhotosAndOlderFilesStillOpen() throws {
+        let folder = temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let key = SymmetricKey(size: .bits256)
+        let library = try FaceLibrary(directory: folder, key: key)
+
+        let photos = (0..<3).map { FacePhoto(identity: [Float](repeating: Float($0), count: 512), thumbnail: Data([UInt8($0)])) }
+        var face = SavedFace(name: "Three photos", consent: .myself, photos: photos, identity: [Float](repeating: 1, count: 512))
+        XCTAssertEqual(face.thumbnail, Data([0]), "the first photo is the face's picture")
+        try library.save(face)
+        XCTAssertEqual(try library.load(face.id).photos, photos)
+
+        face.setPhotos(Array(photos.dropFirst()), identity: [Float](repeating: 1.5, count: 512))
+        try library.save(face)
+        let reloaded = try library.load(face.id)
+        XCTAssertEqual(reloaded.photos.count, 2)
+        XCTAssertEqual(reloaded.identity.first, 1.5)
+        XCTAssertEqual(reloaded.thumbnail, Data([1]))
+
+        // A file written before faces had photos: the same fields without the list.
+        let id = UUID()
+        let old: [String: Any] = [
+            "id": id.uuidString, "name": "Older", "addedAt": 700_000_000.0, "consent": "myself",
+            "identity": [Double](repeating: 0.25, count: 512), "thumbnail": Data([7, 7]).base64EncodedString(),
+        ]
+        let plain = try JSONSerialization.data(withJSONObject: old)
+        let sealed = try ChaChaPoly.seal(plain, using: key, authenticating: Data(id.uuidString.utf8))
+        try sealed.combined.write(to: folder.appendingPathComponent("\(id.uuidString).face"))
+        let older = try library.load(id)
+        XCTAssertEqual(older.photos.count, 1)
+        XCTAssertEqual(older.photos.first?.identity, older.identity)
+        XCTAssertEqual(older.photos.first?.thumbnail, Data([7, 7]))
+    }
+
     func testDeleteAllRemovesEveryFace() throws {
         let folder = temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -780,6 +814,114 @@ final class ScanHubTests: XCTestCase {
         request.httpBody = body
         let (data, response) = try await URLSession.shared.data(for: request)
         return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+    }
+
+    /// The command-line tool, which can act as a device. Built by `cargo build --release -p gc-cli`.
+    private func deviceTool() throws -> URL {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let tool = repository.appendingPathComponent("core/target/release/gc")
+        guard FileManager.default.isExecutableFile(atPath: tool.path) else {
+            throw XCTSkip("the gc tool is not built at \(tool.path)")
+        }
+        return tool
+    }
+
+    /// Run the tool as a device that pairs with the hub. Returns its exit status.
+    private func pair(tool: URL, port: UInt16, code: String, name: String, saveTo file: URL) throws -> Int32 {
+        let process = Process()
+        process.executableURL = tool
+        process.arguments = ["pair", "--address", "127.0.0.1:\(port)", "--name", name, "--out", file.path]
+        // The code goes through the environment, as a person's code never should go on a command line.
+        process.environment = ["GC_PAIR_CODE": code]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
+    func testADeviceConnectsWithACodeAndCanBeRemoved() throws {
+        let tool = try deviceTool()
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("gc-pair-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let service = "godscamera.hub.test.\(UUID().uuidString)"
+        defer { ScanHub.deleteIdentity(service: service) }
+
+        // The hub's certificate is made once and stays the same.
+        let identity = try ScanHub.identity(service: service, name: "Test Mac")
+        XCTAssertEqual(try ScanHub.identity(service: service, name: "Test Mac"), identity)
+
+        let hub = ScanHub(dataFolder: folder.appendingPathComponent("hub"), reader: nil)
+        // Without the network side there is nothing to connect to with a code.
+        try hub.start(port: 0, token: "0123456789abcdef0123456789abcdef")
+        XCTAssertNil(hub.networkPort)
+        XCTAssertThrowsError(try hub.openPairing())
+        hub.stop()
+
+        try hub.start(
+            port: 0, token: "0123456789abcdef0123456789abcdef",
+            network: ScanHub.Network(port: 0, name: "Test Mac", identity: identity, announce: false))
+        defer { hub.stop() }
+        let port = try XCTUnwrap(hub.networkPort)
+        XCTAssertEqual(hub.fingerprint?.count, 64)
+        XCTAssertEqual(hub.devices(), [])
+        XCTAssertEqual(hub.pairingStatus()?.isOpen, false)
+
+        let code = try hub.openPairing()
+        XCTAssertEqual(code.filter(\.isNumber).count, 6)
+        var status = try XCTUnwrap(hub.pairingStatus())
+        XCTAssertTrue(status.isOpen)
+        XCTAssertTrue((290...300).contains(status.secondsLeft), "five minutes: \(status.secondsLeft)")
+        XCTAssertEqual(status.attemptsLeft, 5)
+        XCTAssertNil(status.pairedDevice)
+
+        // A wrong code is refused and uses up a try.
+        let wrong = code.filter(\.isNumber) == "000000" ? "000001" : "000000"
+        XCTAssertNotEqual(try pair(tool: tool, port: port, code: wrong, name: "Stranger", saveTo: folder.appendingPathComponent("no.json")), 0)
+        XCTAssertEqual(hub.pairingStatus()?.attemptsLeft, 4)
+        XCTAssertEqual(hub.devices(), [])
+
+        // The right code connects the device, and the code is then used up.
+        let saved = folder.appendingPathComponent("pairing.json")
+        XCTAssertEqual(try pair(tool: tool, port: port, code: code, name: "Test tablet", saveTo: saved), 0)
+        status = try XCTUnwrap(hub.pairingStatus())
+        XCTAssertFalse(status.isOpen)
+        XCTAssertEqual(status.pairedDevice, "Test tablet")
+        let devices = hub.devices()
+        XCTAssertEqual(devices.map(\.name), ["Test tablet"])
+        XCTAssertNotEqual(try pair(tool: tool, port: port, code: code, name: "Second", saveTo: folder.appendingPathComponent("no.json")), 0)
+
+        // A new code does not show the earlier device as its own.
+        _ = try hub.openPairing()
+        XCTAssertNil(hub.pairingStatus()?.pairedDevice)
+        hub.closePairing()
+        XCTAssertEqual(hub.pairingStatus()?.isOpen, false)
+
+        // The device stays connected over a restart of the hub, and is gone once removed.
+        hub.stop()
+        try hub.start(
+            port: 0, token: "0123456789abcdef0123456789abcdef",
+            network: ScanHub.Network(port: 0, name: "Test Mac", identity: identity, announce: false))
+        XCTAssertEqual(hub.devices().map(\.id), devices.map(\.id))
+        hub.removeDevice(devices[0].id)
+        XCTAssertEqual(hub.devices(), [])
+    }
+
+    func testAnnouncementCarriesTheNameAndTheStartOfTheFingerprint() {
+        let record = HubAdvertiser.textRecord(name: "Mac của Khánh", fingerprint: String(repeating: "ab", count: 32))
+        // Each entry: one byte of length, then key=value.
+        var entries: [String] = []
+        var index = record.startIndex
+        while index < record.endIndex {
+            let length = Int(record[index])
+            let start = record.index(after: index)
+            entries.append(String(decoding: record[start..<record.index(start, offsetBy: length)], as: UTF8.self))
+            index = record.index(start, offsetBy: length)
+        }
+        XCTAssertEqual(entries, ["v=1", "name=Mac của Khánh", "fp=abababababababab"])
     }
 
     func testHubTakesPicturesAndListsTheDocument() async throws {

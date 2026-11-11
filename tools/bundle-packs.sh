@@ -10,8 +10,9 @@ set -eu
 repo="${SRCROOT}/../.."
 store="${GC_PACK_STORE:-$repo/../packs}"
 destination="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Packs"
-# The base pack: detector, identity encoder, and the swap model for the Neural Engine.
-files="buffalo_l/det_10g.onnx buffalo_l/w600k_r50.onnx inswapper_128.reflectfree.fp16.onnx inswapper_128.emap.bin"
+# The base pack: detector, identity encoder, the swap model for the Neural Engine,
+# and the occlusion model that keeps hands and objects in front of the swapped face.
+files="buffalo_l/det_10g.onnx buffalo_l/w600k_r50.onnx inswapper_128.reflectfree.fp16.onnx inswapper_128.emap.bin xseg_3.onnx"
 
 if [ ! -d "$store" ]; then
   echo "warning: model store not found at $store; the app is built without models and face swap will be unavailable"

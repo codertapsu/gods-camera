@@ -43,6 +43,11 @@ final class ExtensionManager: NSObject, ObservableObject, OSSystemExtensionReque
         }
     }
 
+    /// Show a made-up state, for pictures of the app. macOS is not asked anything.
+    func showSample(_ sample: State) {
+        state = sample
+    }
+
     /// Ask macOS which version of the extension is installed.
     func refresh() {
         submit(.propertiesRequest(forExtensionWithIdentifier: Self.extensionID, queue: .main))

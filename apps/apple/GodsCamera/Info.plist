@@ -29,8 +29,14 @@
 	<string>public.app-category.video</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_godscamera._tcp</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>God's Camera reads your camera to build the picture it sends to other apps.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>God's Camera lets your phone or tablet find this Mac on your Wi-Fi network, so it can send scanned pages here.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>God's Camera listens for your voice so it can leave a loop when you start to speak. Nothing is recorded.</string>
 </dict>
