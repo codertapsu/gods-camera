@@ -14,7 +14,11 @@ async fn start(max_file_bytes: u64) -> (String, std::path::PathBuf) {
         max_file_bytes,
         allowed_origins: vec![],
         ocr_command: None,
+        lan: None,
     };
+    // The test client is built on the same TLS library as the hub, and wants
+    // it named even for plain HTTP.
+    gc_link::tls::install_crypto_provider();
     let listener = bind_dev("127.0.0.1:0".parse().unwrap(), &config).await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(serve(listener, config));
@@ -29,6 +33,7 @@ async fn refuses_non_loopback_and_weak_tokens() {
         max_file_bytes: 1,
         allowed_origins: vec![],
         ocr_command: None,
+        lan: None,
     };
     let public: SocketAddr = "0.0.0.0:0".parse().unwrap();
     assert!(matches!(bind_dev(public, &config).await, Err(HubError::NotLoopback(_))));
@@ -224,7 +229,9 @@ async fn hub_with_reader(reader: Option<Vec<String>>) -> (String, PathBuf) {
     let dir = std::env::temp_dir().join(format!("gc-hub-test-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let ocr_command = reader.or_else(|| Some(fake_reader(&dir, false)));
-    let config = HubConfig { token: TOKEN.into(), data_dir: dir.clone(), max_file_bytes: 1 << 20, allowed_origins: vec![], ocr_command };
+    let config =
+        HubConfig { token: TOKEN.into(), data_dir: dir.clone(), max_file_bytes: 1 << 20, allowed_origins: vec![], ocr_command, lan: None };
+    gc_link::tls::install_crypto_provider();
     let listener = bind_dev("127.0.0.1:0".parse().unwrap(), &config).await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(serve(listener, config));

@@ -1,0 +1,15 @@
+[package]
+name = "gc-mobile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# A shared library for the Android app to load, and a static one for iOS.
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+# The device's half only: no certificate generator and no device list.
+gc-pair = { version = "0.1.0", path = "../gc-pair", default-features = false }
+uniffi = "0.32.2"
