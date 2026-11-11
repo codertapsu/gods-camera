@@ -4,13 +4,17 @@ options:
   deploymentTarget:
     macOS: "27.0"
   createIntermediateGroups: true
+  developmentLanguage: en
+packages:
+  GodsCameraKit:
+    path: GodsCameraKit
 settings:
   base:
     DEVELOPMENT_TEAM: 4XVYLW8RXS
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "6"
     ENABLE_HARDENED_RUNTIME: YES
 targets:
   GodsCamera:
@@ -18,21 +22,32 @@ targets:
     platform: macOS
     sources:
       - GodsCamera
-      - CameraExtension/Shared.swift
+    info:
+      path: GodsCamera/Info.plist
+      properties:
+        CFBundleDisplayName: God's Camera
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.video
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSCameraUsageDescription: God's Camera reads your camera to build the picture it sends to other apps.
+        NSMicrophoneUsageDescription: God's Camera listens for your voice so it can leave a loop when you start to speak. Nothing is recorded.
+        CFBundleLocalizations: [en, vi]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera
         CODE_SIGN_ENTITLEMENTS: GodsCamera/GodsCamera.entitlements
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.video
-        INFOPLIST_KEY_NSCameraUsageDescription: God's Camera reads your camera to build the virtual camera feed.
     dependencies:
+      - package: GodsCameraKit
       - target: CameraExtension
         embed: true
   CameraExtension:
     type: system-extension
     platform: macOS
-    sources: [CameraExtension]
+    sources:
+      - CameraExtension
+      - path: GodsCameraKit/Sources/GodsCameraKit/CameraConfig.swift
+        group: CameraExtension
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera.CameraExtension

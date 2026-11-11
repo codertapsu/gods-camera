@@ -1,0 +1,716 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "%.0f fps · render %.1f ms": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.0f khung hình/giây · dựng hình %.1f ms"
+          }
+        }
+      }
+    },
+    "%.1f s": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.1f giây"
+          }
+        }
+      }
+    },
+    "%@ · %.1f s, loops %.1f s": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %.1f giây, lặp %.1f giây"
+          }
+        }
+      }
+    },
+    "%lld app(s) reading · %.1f ms from capture to camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ứng dụng đang dùng · %.1f ms từ lúc quay đến camera"
+          }
+        }
+      }
+    },
+    "A blocked app is reading the camera, so no picture is sent to any app.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Một ứng dụng bị chặn đang dùng camera, nên không gửi hình ảnh đến ứng dụng nào."
+          }
+        }
+      }
+    },
+    "Allow": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cho phép"
+          }
+        }
+      }
+    },
+    "Allow camera access": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cho phép dùng camera"
+          }
+        }
+      }
+    },
+    "An older version is installed.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang cài phiên bản cũ hơn."
+          }
+        }
+      }
+    },
+    "Back and forth": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tới rồi lui"
+          }
+        }
+      }
+    },
+    "Back to live": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trở về trực tiếp"
+          }
+        }
+      }
+    },
+    "Block": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chặn"
+          }
+        }
+      }
+    },
+    "Blocked apps": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ứng dụng bị chặn"
+          }
+        }
+      }
+    },
+    "Camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera"
+          }
+        }
+      }
+    },
+    "Check again": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kiểm tra lại"
+          }
+        }
+      }
+    },
+    "Choose…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chọn…"
+          }
+        }
+      }
+    },
+    "Colour bars with a moving block, for checking the camera in other apps.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Các dải màu với một khối di chuyển, dùng để kiểm tra camera trong ứng dụng khác."
+          }
+        }
+      }
+    },
+    "Control-Option-Command-L": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Control-Option-Command-L"
+          }
+        }
+      }
+    },
+    "Control-Option-Command-R": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Control-Option-Command-R"
+          }
+        }
+      }
+    },
+    "Delete this loop": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xoá đoạn lặp này"
+          }
+        }
+      }
+    },
+    "Go back to live when I start to speak": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quay lại trực tiếp khi tôi bắt đầu nói"
+          }
+        }
+      }
+    },
+    "God's Camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "God's Camera"
+          }
+        }
+      }
+    },
+    "God's Camera needs your permission to use the camera.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "God's Camera cần bạn cho phép dùng camera."
+          }
+        }
+      }
+    },
+    "Image": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ảnh"
+          }
+        }
+      }
+    },
+    "Install the camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cài đặt camera"
+          }
+        }
+      }
+    },
+    "Installed. Choose “God's Camera” in your meeting app.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã cài đặt. Hãy chọn “God's Camera” trong ứng dụng họp của bạn."
+          }
+        }
+      }
+    },
+    "LIVE": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TRỰC TIẾP"
+          }
+        }
+      }
+    },
+    "Live": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trực tiếp"
+          }
+        }
+      }
+    },
+    "Loop": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đoạn lặp"
+          }
+        }
+      }
+    },
+    "LOOPING": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ĐANG LẶP"
+          }
+        }
+      }
+    },
+    "Looping": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang lặp"
+          }
+        }
+      }
+    },
+    "Mirror the picture": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lật hình như gương"
+          }
+        }
+      }
+    },
+    "Move God's Camera to the Applications folder first. macOS only installs camera extensions from there.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hãy chuyển God's Camera vào thư mục Ứng dụng trước. macOS chỉ cài phần mở rộng camera từ đó."
+          }
+        }
+      }
+    },
+    "Name": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tên"
+          }
+        }
+      }
+    },
+    "No camera was found.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không tìm thấy camera nào."
+          }
+        }
+      }
+    },
+    "No file chosen": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chưa chọn tệp"
+          }
+        }
+      }
+    },
+    "NO PICTURE": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "KHÔNG CÓ HÌNH"
+          }
+        }
+      }
+    },
+    "No picture": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không có hình"
+          }
+        }
+      }
+    },
+    "Open System Settings": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mở Cài đặt hệ thống"
+          }
+        }
+      }
+    },
+    "Other apps cannot see God's Camera until it is installed.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Các ứng dụng khác chưa thấy God's Camera cho đến khi bạn cài đặt."
+          }
+        }
+      }
+    },
+    "Picture": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hình ảnh"
+          }
+        }
+      }
+    },
+    "Play the loop": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phát đoạn lặp"
+          }
+        }
+      }
+    },
+    "Quit God's Camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thoát God's Camera"
+          }
+        }
+      }
+    },
+    "REC %lld s": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GHI %lld giây"
+          }
+        }
+      }
+    },
+    "Record a few seconds of yourself, then play them as your camera picture.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ghi vài giây hình của bạn, rồi phát lại làm hình camera."
+          }
+        }
+      }
+    },
+    "Record a loop": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ghi một đoạn lặp"
+          }
+        }
+      }
+    },
+    "Remove the camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gỡ camera"
+          }
+        }
+      }
+    },
+    "Repeat": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cách lặp"
+          }
+        }
+      }
+    },
+    "Restart the Mac to finish.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khởi động lại máy Mac để hoàn tất."
+          }
+        }
+      }
+    },
+    "Save": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lưu"
+          }
+        }
+      }
+    },
+    "Save a diagnostics report…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lưu báo cáo chẩn đoán…"
+          }
+        }
+      }
+    },
+    "Saved loops": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đoạn lặp đã lưu"
+          }
+        }
+      }
+    },
+    "Show a LOOP badge to others": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện nhãn LOOP cho người khác thấy"
+          }
+        }
+      }
+    },
+    "Show God's Camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mở God's Camera"
+          }
+        }
+      }
+    },
+    "Source": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nguồn"
+          }
+        }
+      }
+    },
+    "Start to end": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Từ đầu đến cuối"
+          }
+        }
+      }
+    },
+    "Stop recording": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dừng ghi"
+          }
+        }
+      }
+    },
+    "Test pattern": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hình thử"
+          }
+        }
+      }
+    },
+    "That file could not be opened.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không mở được tệp đó."
+          }
+        }
+      }
+    },
+    "That loop could not be opened.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không mở được đoạn lặp đó."
+          }
+        }
+      }
+    },
+    "The app gets no picture from now on.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Từ giờ ứng dụng này sẽ không nhận được hình ảnh."
+          }
+        }
+      }
+    },
+    "The camera is installed, but macOS has not started it. Restart the Mac to finish.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera đã được cài đặt nhưng macOS chưa khởi động nó. Hãy khởi động lại máy Mac để hoàn tất."
+          }
+        }
+      }
+    },
+    "The loop could not be saved.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không lưu được đoạn lặp."
+          }
+        }
+      }
+    },
+    "The room looks brighter or darker than in this loop.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phòng đang sáng hơn hoặc tối hơn so với đoạn lặp này."
+          }
+        }
+      }
+    },
+    "This Mac's graphics could not be started, so the camera cannot run.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không khởi động được phần đồ hoạ của máy Mac này nên camera không chạy được."
+          }
+        }
+      }
+    },
+    "Try again": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thử lại"
+          }
+        }
+      }
+    },
+    "Update the camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cập nhật camera"
+          }
+        }
+      }
+    },
+    "Uses the microphone only while a loop plays. Nothing is recorded.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chỉ dùng micrô trong lúc phát vòng lặp. Không ghi âm gì cả."
+          }
+        }
+      }
+    },
+    "Video": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video"
+          }
+        }
+      }
+    },
+    "Virtual camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera ảo"
+          }
+        }
+      }
+    },
+    "Waiting for your approval in System Settings › General › Login Items & Extensions › Camera Extensions.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang chờ bạn cho phép trong Cài đặt hệ thống › Cài đặt chung › Mục đăng nhập & Phần mở rộng › Phần mở rộng camera."
+          }
+        }
+      }
+    },
+    "Without the microphone, God's Camera cannot tell when you start to speak.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nếu không có micrô, God's Camera không thể biết khi nào bạn bắt đầu nói."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

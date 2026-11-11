@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-11, revision 5 (Phase 0 complete; tablet and Mac as the development pair) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-11, revision 6 (Phase 1 built; its manual checks are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -292,9 +292,15 @@ Measured on the Mac in spike S3:
 **macOS**
 
 - A sandboxed Camera Extension with one device and two streams: a source stream that client apps read and a sink stream the app writes.
+- It offers 1280×720 and 1920×1080, at any rate from 30 to 60 frames a second. The app renders at the size the reading apps ask for.
 - Frames are IOSurface-backed, so nothing is copied.
 - The extension shows a placeholder slate when no frames arrive.
-- It can see which client is asking, so capture starts only while a client is streaming, and a per-client policy is possible.
+- The extension runs as a system user, not as you. It cannot share preferences or a folder with the app, so everything passes through three custom device properties: counters, blocked processes, and the update hand-over.
+- macOS keeps a copy of each property on the reading side. The extension therefore announces its counters about once a second, and at once when an app starts or stops reading.
+- The extension reports how many apps are reading, so the app opens the real camera only while something is watching.
+- macOS 27 does not tell the extension which app a client is; it gives a process number only. The app works out which app each process belongs to. It sends the extension the process numbers to refuse, and it sends no pictures at all while a blocked app is reading, because every reader receives the same pictures.
+- **Updates.** macOS starts a new build of the extension at the instant it stops the old one, and never starts it if the old one is still running. The app therefore asks the old build to stand down first, and the old build refuses to come back for 12 seconds. An app that was running during the update cannot see the new camera, so it reopens itself once. Measured: 0.66 seconds for the hand-over, about 14 seconds for the whole update, no restart of the Mac.
+- The extension cannot confirm that pictures come from the God's Camera app, for the same reason. This is a known gap, listed for the security review in Phase 12.
 
 **Windows**
 
@@ -470,33 +476,39 @@ Goal: a Mac app that replaces the camera in any meeting app with a live feed, an
 
 Driver
 
-- [ ] Camera Extension with source and sink streams; 720p and 1080p at 30 and 60 fps.
-- [ ] Activation flow: Applications-folder check, link to the approval pane, upgrade and replace handling, uninstall, diagnostics export.
-- [ ] Placeholder slate when no frames arrive.
-- [ ] Start capture only while a client is streaming; per-client policy hook.
+- [x] Camera Extension with source and sink streams; 720p and 1080p at 30 to 60 fps.
+- [x] Activation flow: Applications-folder check, button to the approval pane, upgrade and replace handling, uninstall, diagnostics export.
+- [x] Placeholder slate when no frames arrive.
+- [x] Start capture only while a client is streaming; per-client policy: block an app from the list of readers.
 
 Engine without ML
 
-- [ ] AVFoundation capture from built-in, external and Continuity cameras into GPU-backed buffers; measured frame rate.
-- [ ] Metal render graph: input, scale, crop, mirror, output pool, sink stream, no CPU copies.
-- [ ] Sources: live camera, still image, video file.
+- [x] AVFoundation capture from built-in, external and Continuity cameras into GPU-backed buffers; measured frame rate. Written; it has not run yet, because the app has no camera permission until you grant it.
+- [x] Metal render graph: input, scale, crop, mirror, output pool, sink stream, no CPU copies.
+- [x] Sources: live camera, still image, video file.
 
 Loop
 
-- [ ] Record the output into a bounded clip store, 3–30 seconds, hardware-encoded.
-- [ ] Playback modes: forward with a cross-fade at the seam, ping-pong, automatic loop-point finder that avoids blinks at the seam.
-- [ ] Controls: global hotkey and menu-bar toggle.
-- [ ] Return-to-live triggers: manual, optional voice activity, optional face returning to frame.
-- [ ] Local "looping" indicator; optional on-stream badge.
-- [ ] Named loop library with a hint when a saved loop's lighting no longer matches the room.
+- [x] Record the output into a bounded clip store, up to 30 seconds, hardware-encoded.
+- [x] Playback modes: forward with a cross-fade at the seam, ping-pong, automatic loop-point finder. Avoiding blinks at the seam needs eye landmarks and moves to Phase 2.
+- [x] Controls: global hotkey and menu-bar toggle.
+- [x] Return-to-live triggers: manual and optional voice activity. A face returning to the frame needs the detector and moves to Phase 2.
+- [x] Local "looping" indicator; optional on-stream badge.
+- [x] Named loop library with a hint when a saved loop's lighting no longer matches the room.
 
 App shell
 
-- [ ] Menu-bar app and main window, preview, device picker, settings, onboarding.
-- [ ] Interface text in Vietnamese and English from the start.
-- [ ] File logging and a diagnostics bundle.
+- [x] Menu-bar app and main window, preview, device picker, settings. Onboarding is the guidance in the window's Virtual camera section, not a separate screen.
+- [x] Interface text in Vietnamese and English from the start.
+- [x] File logging and a diagnostics report.
 
-Exit: passthrough and loop pass the 60-minute soak in the app matrix; added latency within target.
+Checks only you can do, listed in [phase-1-results.md](phase-1-results.md)
+
+- [ ] Grant camera access, and confirm the live camera in the preview.
+- [ ] Meeting apps: live picture, loop and return to live in Zoom and in Google Meet; the hot keys; the menu-bar menu with the window closed.
+- [ ] 60-minute soak with a meeting app reading the camera.
+
+Exit: passthrough and loop pass the 60-minute soak in the app matrix; added latency within target. The automated part is met; the three checks above are open.
 
 ### Phase 2 — Live face swap on macOS (5–8 weeks)
 
@@ -515,6 +527,7 @@ Perception, in the core
 - [ ] Detection on the adaptive schedule with forced triggers.
 - [ ] Pin the detector's input shape for each size, since Core ML rejects the stock models at anything but 640 px. Choose the detector and its size by keypoint stability on the corpus.
 - [ ] Tracker on the luma plane every frame, with smoothing and a hold-and-fade when the face is lost.
+- [ ] Loop extras that need the detector, moved from Phase 1: keep blinks away from the loop seam, and return to live when a face comes back into the frame.
 - [ ] Head pose on detection frames only, carried by the tracker between them; fade to the real face at extreme angles.
 
 Swap
@@ -717,6 +730,7 @@ Nothing here is needed for personal use. All of it is needed before anyone else 
 - [ ] Legal review against the primary texts: the AI law's marking and notice duties, its labelling decree, and the personal data law's rules for biometric data.
 - [ ] Confirm that no code in the repository derives from the AGPL or GPL references.
 - [ ] Security review of the hub: pairing, authentication, parsing, pack integrity.
+- [ ] Security review of the Camera Extension: it accepts pictures from any local process, because macOS 27 does not tell a sandboxed extension who its clients are. Find a way to authenticate the app, or accept the risk in writing.
 - [ ] Privacy review: data inventory, retention, deletion, consent records.
 - [ ] Device coverage for the Vietnamese market: revisit the floors in section 4 and test on popular phones.
 - [ ] Android store requirements: target API 37 with the local-network permission, and Google Play's policy on altered media.
@@ -764,6 +778,8 @@ Nothing here is needed for personal use. All of it is needed before anyone else 
 | Swap model too slow on the RTX 3050 or on the Samsung devices | Low face refresh rate | Spikes S3 and S6; late reprojection hides low rates; phones offload; HyperSwap; a distilled model later |
 | 8 GB of video memory on the Windows PC | Swap, a local LLM and try-on cannot share the GPU | Video-memory budget in the scheduler; one heavy job at a time; the Mac hosts the LLMs |
 | Camera Extension activation problems on macOS 27 | Driver fails to load | Spike S1 first; diagnostics and guided recovery |
+| macOS does not start an updated Camera Extension | Camera missing until the Mac restarts | Solved in Phase 1 by the hand-over in 6.6; the app shows restart advice if it ever fails |
+| macOS 27 hides client identity from the extension | The extension cannot check who reads or writes | The app identifies processes for blocking; the unverified writer is on the Phase 12 security list |
 | One developer, three platforms | Slow progress; platforms drift apart | Shared core and shaders; Windows cross-compile check from Phase 0; Windows begins only at its start point; renderer decision before Phase 4 |
 | The S22+ is below the Android floor | Only one Android device for testing until it is updated | The tablet covers development; the update steps are written out |
 | Disk space on the Mac | Builds and model downloads fail | Free 60 GB in Phase 0; keep packs on an external disk if needed |

@@ -1,0 +1,20 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "God's Camera reads your camera to build the picture it sends to other apps." } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "God's Camera đọc camera của bạn để tạo hình ảnh gửi đến các ứng dụng khác." } }
+      }
+    },
+    "NSMicrophoneUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "God's Camera listens for your voice so it can leave a loop when you start to speak. Nothing is recorded." } },
+        "vi" : { "stringUnit" : { "state" : "translated", "value" : "God's Camera lắng nghe giọng nói của bạn để thoát vòng lặp khi bạn bắt đầu nói. Không ghi âm gì cả." } }
+      }
+    }
+  },
+  "version" : "1.0"
+}
