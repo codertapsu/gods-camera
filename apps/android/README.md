@@ -37,7 +37,7 @@ A debug build takes these extras on its launch intent. A release build ignores a
 | `--ez forget_mac true` | Forget the connected Mac |
 | `--es debug_pages <folder>` | Take the pictures in `files/<folder>` of the app's own storage as pages |
 | `--ez debug_send true` | Send the pages as soon as a Mac is connected |
-| `--es hub_token <token>` | Use the hub through `adb reverse` on `127.0.0.1:47800`, for this run of the app |
+| `--es hub_token <token>` | Use the hub through `adb reverse` on `127.0.0.1:47800`, for this run of the app. The token is not kept |
 | `--es debug_screen <name>` | Show a screen for pictures: `home`, `connect`, `connect-sample`, `address`, `code`, `wrong-code`, `connected`, `settings` |
 
 Example, with the hub's code in `$CODE`:
@@ -48,4 +48,4 @@ adb shell am start -n dev.godscamera.android/.MainActivity \
   --es debug_pages e2e --ez debug_send true
 ```
 
-A Mac connected with a code comes before the debugging connection. The debugging connection is used when no Mac is connected, or after `hub_token` arrived, until the app is closed.
+The debugging connection is used only in a run of the app that received `hub_token`, until the app is closed or a Mac is connected with a code. Opened by hand, the app is an ordinary app: it connects with a code.

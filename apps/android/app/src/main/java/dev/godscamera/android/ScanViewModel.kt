@@ -98,21 +98,21 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     private val connectivity = app.getSystemService(ConnectivityManager::class.java)
 
     /**
-     * Debug builds: a token was handed over through the debugging connection
-     * while the app was running. Until the app is closed, that connection is
-     * used even if this device is connected to a Mac with a code.
+     * Debug builds: the token that was handed over through the debugging
+     * connection in this run of the app. It is not kept: the next time the app
+     * is opened by hand, it is an ordinary app that connects with a code.
      */
-    private var devOverride = false
+    private var devToken: String? = null
     private var devLink = Link.Unknown
 
     /**
      * Debug builds: the hub is reached through the debugging connection, not
-     * as a connected Mac. A Mac connected with a code comes first; the
-     * debugging connection serves when there is none, or when it was asked
-     * for in this run of the app.
+     * as a connected Mac. That happens only in a run of the app in which a
+     * token was handed over, until the app is closed or a Mac is connected
+     * with a code.
      */
     private val devMode: Boolean
-        get() = BuildConfig.DEBUG && !devSettings.getString("token", null).isNullOrEmpty() && (link.mac == null || devOverride)
+        get() = BuildConfig.DEBUG && devToken != null
 
     private val _state = MutableStateFlow(ScanState())
     val state: StateFlow<ScanState> = _state
@@ -129,10 +129,12 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        // Earlier versions kept the debugging token between runs, and then
+        // greeted their user with a failed debugging connection. It is gone now.
+        if (devSettings.contains("token")) devSettings.edit { remove("token") }
         link.begin()
         viewModelScope.launch { link.connection.collect { publishConnection() } }
         viewModelScope.launch { finder.found.collect { macs -> if (!showingSampleMacs) _state.update { it.copy(macs = macs) } } }
-        if (devMode) checkDevLink()
     }
 
     private fun publishConnection() {
@@ -256,7 +258,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             }
             when (val result = outcome) {
                 is PairOutcome.Paired -> {
-                    devOverride = false
+                    devToken = null
                     link.pairedWith(result.mac, result.token)
                     _state.update { it.copy(pairing = PairFlow.Done(result.mac.name)) }
                 }
@@ -297,8 +299,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     /** Debug builds: take the hub's token from the debugging connection and use the hub through it. */
     fun useDevelopmentHub(token: String) {
         if (!BuildConfig.DEBUG) return
-        devSettings.edit { putString("token", token.trim()) }
-        devOverride = true
+        devToken = token.trim()
         publishConnection()
         checkDevLink()
     }
@@ -306,7 +307,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     private fun devClient() = HubClient(
         // Through `adb reverse`, the Mac's hub is this device's own localhost.
         devSettings.getString("address", null) ?: "http://127.0.0.1:47800",
-        devSettings.getString("token", null) ?: "",
+        devToken ?: "",
         HubHttp.plain(),
     )
 
