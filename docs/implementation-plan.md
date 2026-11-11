@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-11, revision 6 (Phase 1 built; its manual checks are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-11, revision 7 (Phases 1 and 2 built; their manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -233,6 +233,8 @@ The split of responsibilities:
 | Module | Responsibility |
 |---|---|
 | `gc-infer` | ONNX Runtime sessions; detector pre-processing, decoding and suppression; identity encoder; swap models behind one contract |
+| `gc-live` | The live engine: tracking on the frame thread, detector and swap workers, late reprojection, fades; still-image swap |
+| `gc-ffi` | The interface the apps see, turned into Swift and Kotlin by UniFFI |
 | `gc-track` | Sparse optical-flow tracker, One Euro filter, detection scheduling, reprojection maths |
 | `gc-align` | Alignment templates, similarity transforms, mask parameters, head pose |
 | `gc-link` | The hub server and its clients: discovery, pairing, authenticated HTTP and WebSocket, resumable transfer, video streams |
@@ -250,7 +252,7 @@ The split of responsibilities:
 | 1. Capture | Every frame | Native camera into GPU-backed buffers; one-slot hand-off that drops the oldest frame |
 | 2. Track | Every frame, CPU, 1–2 ms | Optical flow on the half-resolution luma plane; smoothing; yields the current face transform |
 | 3. Detect | 4–12 times a second, plus forced | Detector with 5 keypoints. Forced on fast motion, tracker disagreement, dropped frames or a settings change |
-| 4. Swap | As fast as the model allows | Aligned crop rendered on the GPU, handed to the core, swapped; latest-wins queue |
+| 4. Swap | As fast as the model allows | Aligned crop cut by the core from the frame's memory, swapped; latest-wins queue |
 | 5. Masks | Every N frames | Occlusion and hair segmentation, cached |
 | 6. Composite | Every frame, GPU | Newest transform re-warps the latest patch; mask × occlusion × fade; colour match; optional sharpen |
 | 7. Output | Every frame | Virtual camera, preview, recorder, video stream, loop store |
@@ -258,7 +260,7 @@ The split of responsibilities:
 Two properties matter:
 
 - **Stage 7 never waits for stage 4.** A slow model lowers how often the face texture refreshes, not the frame rate or the head tracking.
-- **Only small images leave the GPU.** The detector sees a downscaled frame and the swap model sees a 128 or 256 px crop. Full frames stay on the GPU, so the runtime does not need a zero-copy path.
+- **The models only see small images.** The detector sees a downscaled frame and the swap model a 128 or 256 px crop. The core reads the frame's memory in place for the tracker, the crop and the detector's copy; the full frame is drawn only on the GPU.
 
 ### 6.5 Model stack
 
@@ -286,6 +288,13 @@ Measured on the Mac in spike S3:
 - HyperSwap takes 34 ms a swap on the GPU. `inswapper_128` takes 37 ms on the Neural Engine, once its reflect padding is rewritten and it is converted to half precision; without those two steps it takes 54 ms.
 - Both are slower than the camera's 33 ms frame, so late reprojection is required, not optional.
 - HyperSwap also returns its own face mask.
+
+Measured in Phase 2 with the whole engine running at 1280×720 and 30 frames a second:
+
+- 27 swaps a second with `inswapper_128` and 30 with HyperSwap. The swapped face on screen is 2 frames old at the median and 3 at the 95th percentile.
+- The frame thread needs about 1 ms a frame for tracking, smoothing and cutting the crop.
+- Both detectors are faster on the CPU than through Core ML: about 11 ms for the large one. They run there, which leaves the GPU and the Neural Engine to the swap model.
+- The tracker is the steady part and the detector the noisy part. A detection therefore only nudges the tracked keypoints, a tenth of the way, unless the two disagree clearly.
 
 ### 6.6 Virtual camera drivers
 
@@ -514,55 +523,62 @@ Exit: passthrough and loop pass the 60-minute soak in the app matrix; added late
 
 Goal: the pipeline of section 6.4 at target quality and speed, with the safety layer in place.
 
+State: the pipeline runs in the Mac app and meets its speed targets on a moving-face clip made from a photo. What is open needs your webcam clips, your eyes, or a later pack. Details are in [phase-2-results.md](phase-2-results.md).
+
 Start
 
-- [ ] Record the webcam clips with the app's own recorder from Phase 1: sitting still, fast head turns, a hand across the face, low light, glasses. I ask you for these when this phase begins.
-- [ ] Replay benchmark: run the pipeline over a recorded clip, unpaced and paced, reporting fps, latency percentiles, jitter and detection snap.
-- [ ] Run the tracker against the clips and compare with its synthetic results.
+- [ ] Record the webcam clips with the app's own recorder from Phase 1: sitting still, fast head turns, a hand across the face, low light, glasses. This is the next thing I need from you.
+- [x] Replay benchmark: `gc replay` runs the pipeline over a clip, paced or unpaced, and reports frame rate, latency percentiles, keypoint wobble and the largest keypoint step. So far it runs on a clip made from a photo.
+- [x] Run the tracker on real face texture and compare with its synthetic results. It stays within 1 px for 3 seconds with no detector. The run on your clips follows.
 - [ ] Add a recorded clip to the InsightFace reference run.
 
 Perception, in the core
 
-- [ ] SCRFD pre-processing, decoding and suppression ported from InsightFace; parity-tested against the golden outputs.
-- [ ] Detection on the adaptive schedule with forced triggers.
-- [ ] Pin the detector's input shape for each size, since Core ML rejects the stock models at anything but 640 px. Choose the detector and its size by keypoint stability on the corpus.
-- [ ] Tracker on the luma plane every frame, with smoothing and a hold-and-fade when the face is lost.
+- [x] SCRFD pre-processing, decoding and suppression ported from InsightFace; parity-tested against the golden outputs.
+- [x] Detection on the adaptive schedule with forced triggers.
+- [x] Pin the detector's input shape. Both detectors now run on the CPU, where they are faster than Core ML ran them. The large detector at 640 px is the default; the choice is confirmed on your clips.
+- [x] Tracker on the luma plane every frame, with smoothing and a hold-and-fade when the face is lost.
 - [ ] Loop extras that need the detector, moved from Phase 1: keep blinks away from the loop seam, and return to live when a face comes back into the frame.
-- [ ] Head pose on detection frames only, carried by the tracker between them; fade to the real face at extreme angles.
+- [x] Fade to the real face at extreme angles. The angle is judged from the five keypoints rather than from the head-pose model, which is not needed for this.
 
 Swap
 
-- [ ] Source face library: import photos, compute and cache the identity vector.
-- [ ] Aligned crop rendered on the GPU with InsightFace's template and transform.
-- [ ] Swap sessions behind the swapper contract: `inswapper_128` first, then HyperSwap 256.
-- [ ] Latest-wins queue with a face-jump guard.
+- [x] Source face library: import photos, compute and store the identity vector.
+- [x] Aligned crop with InsightFace's template and transform. It is cut on the CPU in the core, which takes 0.1 ms; a GPU path is not needed.
+- [x] Swap sessions behind the swapper contract: `inswapper_128` and HyperSwap 256.
+- [x] Latest-wins queue with a face-jump guard.
 
 Compositing
 
-- [ ] Inverse-warp paste with a cached soft mask in crop space.
-- [ ] Mask from an ellipse or landmark hull, multiplied by occlusion and by track and pose fades.
-- [ ] Colour match on the patch; optional sharpen.
+- [x] Inverse-warp paste with a soft mask in crop space, in the Metal shader.
+- [x] Oval mask multiplied by the model's own mask and by track and pose fades. The occlusion mask (a hand in front of the face) is open; it needs your clips to tune.
+- [x] Colour match on the patch. Sharpening is open.
 - [ ] Options to show the real mouth and eyes through the swap.
-- [ ] Late reprojection on every output frame.
+- [x] Late reprojection on every output frame.
 
 Quality and speed
 
 - [ ] Optional enhancer on every second frame, re-pasting the cached result.
-- [ ] Half precision only for models that pass the comparison in S3.
-- [ ] Try two swap sessions side by side, one on the Neural Engine and one on the GPU, to lift the swap rate above the camera's.
+- [x] Half precision only for models that pass the comparison in S3.
+- [x] Two swap sessions side by side: not needed. One session already delivers 27 to 30 swaps a second.
 - [ ] First-run check that measures the device and sets a preset: Smooth, Balanced or Quality.
-- [ ] Replay-benchmark thresholds kept in the repository and run before each merge.
-- [ ] The core's parity tests also pass on an Android device, and the core still cross-compiles for Windows.
+- [x] Benchmark thresholds kept in the repository and run before each merge, as tests on the moving-face clip.
+- [x] The core's parity tests also pass on an Android device, including the real models; the core cross-compiles for Windows with its inference library.
 
 Safety, required before daily use
 
-- [ ] First-run acknowledgement of the use policy.
-- [ ] Consent attestation per face; "this is me" self-enrolment.
-- [ ] A set of synthetic source faces generated for the app.
-- [ ] Visible AI indicator, invisible watermark, content credentials on exports.
-- [ ] Face data encrypted at rest; delete-everything control.
+- [x] First-use notice of the use policy.
+- [x] Consent statement per face. A liveness check for "this is me" is open.
+- [ ] A set of synthetic source faces generated for the app. It needs an image model, which arrives with Phase 5.
+- [x] Visible AI indicator, on by default. The invisible watermark is open; content credentials wait for the first export feature.
+- [x] Face data encrypted at rest; delete-everything control.
 
-Exit: the Mac meets its targets in section 7; the face region shows no visible lag during head motion; 30-minute soak in Zoom and Teams.
+Checks only you can do
+
+- [ ] Add your own face from a photo, turn the swap on, and judge the picture: lag during head motion, edges, colour.
+- [ ] 30-minute soak in Zoom and in Teams with the swap on.
+
+Exit: the Mac meets its targets in section 7; the face region shows no visible lag during head motion; 30-minute soak in Zoom and Teams. The measured targets are met; the two checks above are open.
 
 ### Phase 3 — Hub and Android companion (6–9 weeks)
 

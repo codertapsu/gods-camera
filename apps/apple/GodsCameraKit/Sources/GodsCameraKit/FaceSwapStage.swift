@@ -113,9 +113,11 @@ public final class FaceSwapStage: @unchecked Sendable {
         let height = CVPixelBufferGetHeight(frame)
         // The core reads the frame's memory in place for the length of this call.
         let output = engine.pushFrame(
-            address: UInt64(UInt(bitPattern: base)), length: UInt64(stride * height),
-            width: UInt32(CVPixelBufferGetWidth(frame)), height: UInt32(height), stride: UInt32(stride),
-            layout: .bgra, timeNs: hostTimeNs)
+            frame: FrameMemory(
+                address: UInt64(UInt(bitPattern: base)), length: UInt64(stride * height),
+                width: UInt32(CVPixelBufferGetWidth(frame)), height: UInt32(height), stride: UInt32(stride),
+                layout: .bgra),
+            timeNs: hostTimeNs)
         guard output.face, output.patchSequence > 0, output.opacity > 0 else { return nil }
 
         lock.lock()

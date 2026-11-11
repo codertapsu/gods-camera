@@ -20,9 +20,13 @@ fn packs() -> Option<PathBuf> {
     }
 }
 
+/// InsightFace's sample photo. On a device, where the build machine's paths
+/// do not exist, `GC_GOLDEN_DIR` points at a pushed copy.
 fn photo() -> (Vec<u8>, u32, u32) {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../gc-infer/tests/golden/input.png");
-    let picture = image::open(path).expect("sample photo").to_rgb8();
+    let folder = std::env::var_os("GC_GOLDEN_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../gc-infer/tests/golden"));
+    let picture = image::open(folder.join("input.png")).expect("sample photo").to_rgb8();
     let (width, height) = picture.dimensions();
     (picture.into_raw(), width, height)
 }

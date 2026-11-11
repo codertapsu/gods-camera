@@ -96,6 +96,23 @@ pub struct EngineSettings {
     pub score_threshold: f32,
 }
 
+/// One camera frame, described by where its bytes are.
+///
+/// `address` is the memory address of the frame's first byte and `length` the
+/// number of bytes readable from there. The caller keeps that memory alive
+/// and unchanged until the call it is passed to returns; nothing keeps the
+/// address afterwards.
+#[derive(Debug, Clone, Copy, uniffi::Record)]
+pub struct FrameMemory {
+    pub address: u64,
+    pub length: u64,
+    pub width: u32,
+    pub height: u32,
+    /// Bytes from the start of one row to the start of the next.
+    pub stride: u32,
+    pub layout: PixelLayout,
+}
+
 /// What to draw for one frame.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FrameOutput {
@@ -204,22 +221,9 @@ impl FaceEngine {
         });
     }
 
-    /// Take in one camera frame.
-    ///
-    /// `address` is the memory address of the frame's first byte and `length`
-    /// the number of bytes readable from there. The caller keeps that memory
-    /// alive and unchanged until this call returns; nothing keeps the address
-    /// afterwards.
-    pub fn push_frame(
-        &self,
-        address: u64,
-        length: u64,
-        width: u32,
-        height: u32,
-        stride: u32,
-        layout: PixelLayout,
-        time_ns: u64,
-    ) -> FrameOutput {
+    /// Take in one camera frame, captured at `time_ns` on any steady clock.
+    /// See `FrameMemory` for what the caller promises about the frame's memory.
+    pub fn push_frame(&self, frame: FrameMemory, time_ns: u64) -> FrameOutput {
         let none = FrameOutput {
             face: false,
             a: 1.0,
@@ -233,13 +237,15 @@ impl FaceEngine {
             patch_age_frames: 0,
             keypoints: Vec::new(),
         };
-        if address == 0 || length == 0 {
+        if frame.address == 0 || frame.length == 0 {
             return none;
         }
         // SAFETY: the caller promises `length` readable bytes at `address` for
-        // the length of this call, as the method's contract states.
-        let bytes = unsafe { std::slice::from_raw_parts(address as usize as *const u8, length as usize) };
-        let Some(frame) = ImageView::new(bytes, width, height, stride as usize, layout.into()) else {
+        // the length of this call, as `FrameMemory` states.
+        let bytes = unsafe { std::slice::from_raw_parts(frame.address as usize as *const u8, frame.length as usize) };
+        let Some(frame) =
+            ImageView::new(bytes, frame.width, frame.height, frame.stride as usize, frame.layout.into())
+        else {
             return none;
         };
         let result = self.inner.push_frame(&frame, time_ns);
