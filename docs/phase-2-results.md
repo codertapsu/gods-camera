@@ -31,7 +31,7 @@ The app is version 0.4.0 build 8. The Camera Extension is unchanged at build 6, 
 - It runs on its own thread beside the swap model, on the processor the swap model leaves free, so the swap does not wait for it.
 - Alone it takes 15 ms on the GPU, 30 ms on the Neural Engine and 36 ms on the CPU.
 - In the test a bar across the mouth drops out of the mask while the eyes stay swapped.
-- What it costs the swap rate is not measured yet: other builds were running whenever I measured, and the numbers were unusable. See Open.
+- Cost, measured back to back on a quiet Mac with `gc replay`: with `inswapper_128` the swap takes 38 ms instead of 37 and stays at 26 a second. With HyperSwap 256 it takes 35 to 36 ms instead of 33, 25 to 28 a second instead of 30. The age of the face on screen does not change.
 
 **Sharper.** The swapped crop is sharpened before it is drawn. The **Sharpness** slider sets how much; the middle is a mild default.
 
@@ -61,7 +61,7 @@ Other results:
 
 - **Match with InsightFace.** On its sample photo the Rust pipeline finds the same six faces, and the swapped crop differs by 1.1 levels out of 255 on average. The target was 2.
 - **Tracker alone.** Started once on the true keypoints and given no detections, it stays within 0.2 px on a still face, 0.6 px on a talking one and 1.0 px on a fast one, over 3 seconds.
-- **In the installed app.** The self-test swaps a face through the app's own engine and the virtual camera link: 37 ms a swap, 26 a second, 0.9 ms on the frame thread. The first run of a model is slower, because Core ML compiles it once.
+- **In the installed app.** The self-test swaps a face through the app's own engine and the virtual camera link. In version 0.4.0, with the occlusion mask on: 40 ms a swap, 25.5 a second, 1.3 ms on the frame thread, while an Android emulator was running on the same Mac. The first run of a model is slower, because Core ML compiles it once.
 - **Tests.** 47 in the Swift package and 141 in the core, all passing. The core's check also builds it for Android and Windows with the inference library linked.
 
 ## On the tablet
@@ -95,7 +95,6 @@ The tracker treated motion under 0.05 px a frame as none, so a face drifting ver
 
 - Record the webcam clips: sitting still, fast head turns, a hand across the face, low light, glasses.
 - Tune the detector choice, the smoothing, the pull and the occlusion mask on those clips.
-- Measure what the occlusion mask costs the swap rate on a quiet Mac: `gc replay` with and without `--no-occlusion`.
 - Judge the live picture again, and run the 30-minute soak in Zoom and Teams.
 
 **Not built yet**
