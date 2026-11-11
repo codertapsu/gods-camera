@@ -1,33 +1,107 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">God\'s Camera</string>
-    <string name="connection">Connection to the Mac</string>
-    <string name="hub_address">Address</string>
-    <string name="hub_token">Token</string>
-    <string name="check_connection">Check</string>
-    <string name="connected">Connected to the Mac.</string>
-    <string name="not_connected">Not connected.</string>
-    <string name="wrong_token">The Mac answered, but did not accept the token.</string>
-    <string name="cannot_reach">The Mac cannot be reached at that address.</string>
+    <string name="app_name" translatable="false">God\'s Camera</string>
+
+    <!-- General -->
+    <string name="settings">Settings</string>
+    <string name="back">Back</string>
+    <string name="done">Done</string>
+    <string name="cancel">Cancel</string>
+    <string name="try_again">Try again</string>
+    <string name="continue_action">Continue</string>
+
+    <!-- The connection to the Mac -->
+    <string name="not_paired_title">Not connected to a Mac</string>
+    <string name="not_paired_body">Connect once with the six-digit code the Mac shows. After that, this device finds the Mac by itself.</string>
+    <string name="connect_to_mac">Connect to a Mac</string>
+    <string name="searching_title">Looking for %s…</string>
+    <string name="searching_body">This takes a few seconds.</string>
+    <string name="connected_title">Connected to %s</string>
+    <string name="connected_body">Ready to send pages over Wi-Fi.</string>
+    <string name="not_found_title">%s was not found</string>
+    <string name="not_found_body">On the Mac, open God\'s Camera and, under Scanner, turn on “Receive scans on this Mac”. The Mac and this device must be on the same Wi-Fi network.</string>
+    <string name="refused_title">%s no longer accepts this device</string>
+    <string name="refused_body">This device was removed on the Mac. Connect again with a new code.</string>
+    <string name="connect_again">Connect again</string>
+    <string name="connect_another">Connect to another Mac</string>
+    <string name="dev_title">Debugging connection</string>
+    <string name="dev_connected">Connected to the Mac through the debugging connection.</string>
+    <string name="dev_wrong_token">The Mac answered, but did not accept the token.</string>
+    <string name="dev_unreachable">The Mac cannot be reached through the debugging connection.</string>
+    <string name="dev_unknown">Checking the debugging connection…</string>
+
+    <!-- Adding pages -->
+    <string name="add_pages">Add pages</string>
+    <string name="scan_document">Scan a document</string>
+    <string name="scan_document_hint">Photograph pages with the camera. Edges are found and straightened for you.</string>
+    <string name="choose_photos">Choose photos</string>
+    <string name="choose_photos_hint">Use photos or screenshots you already have.</string>
+    <string name="scanner_unavailable">The document scanner is not available on this device.</string>
+
+    <!-- The pages in hand -->
     <string name="pages">Pages</string>
-    <string name="no_pages">No pages yet. Scan a document or add pictures.</string>
     <plurals name="page_count">
         <item quantity="one">%d page</item>
         <item quantity="other">%d pages</item>
     </plurals>
-    <string name="scan_document">Scan a document</string>
-    <string name="add_pictures">Add pictures</string>
-    <string name="clear_pages">Remove all</string>
+    <string name="no_pages_title">No pages yet</string>
+    <string name="no_pages_body">Scan a document or choose photos. A long page can be taken in several photos that overlap; the Mac joins them into one text.</string>
+    <string name="page_number">Page %d</string>
+    <string name="remove_page">Remove page %d</string>
+    <string name="remove_all">Remove all</string>
     <string name="send_to_mac">Send to the Mac</string>
+    <string name="send_needs_mac">Connect to a Mac to send the pages.</string>
     <string name="uploading">Sending page %1$d of %2$d…</string>
     <string name="reading">The Mac is reading the text… %d %%</string>
-    <string name="result">Text</string>
+
+    <!-- The result -->
+    <string name="result_title">Your text</string>
+    <string name="result_summary">Pictures: %1$d · Lines read: %2$d · Repeated lines removed: %3$d</string>
+    <string name="result_empty">The Mac found no text in these pages.</string>
     <string name="copy">Copy</string>
     <string name="share">Share</string>
     <string name="copied">Copied.</string>
-    <string name="start_over">Start over</string>
-    <string name="failed">That did not work: %s</string>
-    <string name="scanner_unavailable">The document scanner is not available on this device.</string>
-    <string name="result_summary">%1$d pictures, %2$d lines read, %3$d repeated lines removed.</string>
-    <string name="core_version">Core %s</string>
+    <string name="scan_another">Scan another</string>
+
+    <!-- When sending does not work -->
+    <string name="failed_unreachable_title">The Mac could not be reached</string>
+    <string name="failed_unreachable_body">Check that God\'s Camera is open on the Mac and that both are on the same Wi-Fi network. Your pages are still here.</string>
+    <string name="failed_refused_title">The Mac did not accept this device</string>
+    <string name="failed_refused_body">This device was removed on the Mac. Connect again with a new code. Your pages are still here.</string>
+    <string name="failed_reading_title">The Mac could not read these pages</string>
+    <string name="failed_reading_body">Try again, or take the photos once more with more light. Your pages are still here.</string>
+    <string name="failed_detail">What the Mac said: %s</string>
+    <string name="back_to_pages">Back to the pages</string>
+
+    <!-- Connecting with a code -->
+    <string name="connect_step_1">On the Mac, open God\'s Camera and go to Scanner.</string>
+    <string name="connect_step_2">Click “Connect a phone or tablet”. The Mac shows a six-digit code.</string>
+    <string name="connect_step_3">Choose the Mac below and enter the code.</string>
+    <string name="macs_nearby">Macs on this Wi-Fi network</string>
+    <string name="looking_for_macs">Looking for Macs… The Mac and this device must be on the same Wi-Fi network, with God\'s Camera open on the Mac.</string>
+    <string name="enter_address_instead">Enter the Mac\'s address instead</string>
+    <string name="address_title">Enter the Mac\'s address</string>
+    <string name="address_label">Address</string>
+    <string name="address_hint">For example 192.168.1.20. You find it on the Mac under System Settings, Wi-Fi, Details.</string>
+    <string name="address_bad">That does not look like an address.</string>
+    <string name="address_unreachable">No Mac with God\'s Camera answered at that address.</string>
+    <string name="code_title">Enter the code shown on %s</string>
+    <string name="code_field">Six-digit code</string>
+    <string name="code_hint">The code is on the Mac\'s screen and works for a few minutes.</string>
+    <string name="connecting">Connecting…</string>
+    <string name="code_wrong">That code did not work. Check the six digits on the Mac and enter them again.</string>
+    <string name="code_not_offered">The Mac is not showing a code right now. On the Mac, click “Connect a phone or tablet” to get a new one.</string>
+    <string name="code_unreachable">The Mac could not be reached. Check that both are on the same Wi-Fi network.</string>
+    <string name="code_too_many">The Mac has as many devices connected as it takes. Remove one on the Mac first.</string>
+    <string name="paired_title">Connected to %s</string>
+    <string name="paired_body">From now on this device finds the Mac by itself whenever both are on the same Wi-Fi network.</string>
+
+    <!-- Settings -->
+    <string name="settings_mac">Connected Mac</string>
+    <string name="settings_no_mac">No Mac is connected.</string>
+    <string name="forget_mac">Forget this Mac</string>
+    <string name="forget_title">Forget %s?</string>
+    <string name="forget_body">This device will no longer send pages to it. To use it again, connect with a new code.</string>
+    <string name="forget_confirm">Forget</string>
+    <string name="about">God\'s Camera %1$s · core %2$s</string>
 </resources>

@@ -1,15 +1,22 @@
 package dev.godscamera.android
 
 import android.app.Application
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job as CoroutineJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType
@@ -19,64 +26,295 @@ import okio.BufferedSink
 import okio.source
 import java.io.IOException
 
-enum class Link { Unknown, Connected, WrongToken, Unreachable }
+/** Why pages could not be sent or read. */
+enum class SendProblem {
+    /** The Mac did not answer, or the connection broke on the way. */
+    MacUnreachable,
+
+    /** The Mac no longer accepts this device. */
+    MacRefused,
+
+    /** The Mac took the pages and could not make a document of them. */
+    ReadingFailed,
+}
 
 sealed interface Phase {
     data object Idle : Phase
     data class Uploading(val page: Int, val of: Int) : Phase
     data class Reading(val percent: Int) : Phase
     data class Done(val text: String, val pictures: Int, val lines: Int, val repeated: Int) : Phase
-    data class Failed(val reason: String) : Phase
+    data class Failed(val problem: SendProblem, val detail: String? = null) : Phase
+
+    val isBusy: Boolean get() = this is Uploading || this is Reading
+}
+
+/** Why connecting with a code did not work. */
+enum class PairProblem { WrongCode, NotOffering, Unreachable, TooManyDevices, BadAddress }
+
+/** The steps of connecting to a Mac. */
+sealed interface PairFlow {
+    /** Not connecting at the moment. */
+    data object Hidden : PairFlow
+
+    /** Choosing a Mac from the ones in sight, or typing where it is. */
+    data class Choosing(
+        val typing: Boolean = false,
+        val address: String = "",
+        /** The typed address is being tried. */
+        val checking: Boolean = false,
+        val problem: PairProblem? = null,
+    ) : PairFlow
+
+    /** Entering the code the Mac shows. */
+    data class Code(
+        val macName: String,
+        /** Where the Mac listens, the most usable address first. */
+        val addresses: List<String>,
+        val digits: String = "",
+        val working: Boolean = false,
+        val problem: PairProblem? = null,
+    ) : PairFlow
+
+    data class Done(val macName: String) : PairFlow
 }
 
 data class ScanState(
-    val address: String,
-    val token: String,
-    val link: Link = Link.Unknown,
+    val connection: Connection = Connection.NotPaired,
     val pages: List<Uri> = emptyList(),
     val phase: Phase = Phase.Idle,
+    val pairing: PairFlow = PairFlow.Hidden,
+    /** Macs in sight on the network, while the app is in front. */
+    val macs: List<FoundMac> = emptyList(),
+    val settingsOpen: Boolean = false,
 )
 
-/** The scanner screen's state and the work behind its buttons. */
+/** The app's state and the work behind its buttons. */
 class ScanViewModel(app: Application) : AndroidViewModel(app) {
-    private val settings = app.getSharedPreferences("hub", 0)
-    private val _state = MutableStateFlow(
-        ScanState(
-            // Through `adb reverse`, the Mac's hub is this device's own localhost.
-            address = settings.getString("address", null) ?: "http://127.0.0.1:47800",
-            token = settings.getString("token", null) ?: "",
-        )
-    )
+    /** The debugging connection's address and token. Used by debug builds only. */
+    private val devSettings = app.getSharedPreferences("hub", 0)
+    private val finder = MacFinder(app)
+    private val link = MacLink(viewModelScope, PairingStore(app.getSharedPreferences("pairing", 0), KeystoreBox()), finder.found)
+    private val exchange = PairingExchange()
+    private val connectivity = app.getSystemService(ConnectivityManager::class.java)
+
+    /**
+     * Debug builds: a token was handed over through the debugging connection
+     * while the app was running. Until the app is closed, that connection is
+     * used even if this device is connected to a Mac with a code.
+     */
+    private var devOverride = false
+    private var devLink = Link.Unknown
+
+    /**
+     * Debug builds: the hub is reached through the debugging connection, not
+     * as a connected Mac. A Mac connected with a code comes first; the
+     * debugging connection serves when there is none, or when it was asked
+     * for in this run of the app.
+     */
+    private val devMode: Boolean
+        get() = BuildConfig.DEBUG && !devSettings.getString("token", null).isNullOrEmpty() && (link.mac == null || devOverride)
+
+    private val _state = MutableStateFlow(ScanState())
     val state: StateFlow<ScanState> = _state
     private var work: CoroutineJob? = null
+    private var pairingWork: CoroutineJob? = null
+    private var inFront = false
 
-    private fun client() = HubClient(_state.value.address, _state.value.token)
+    /** Debug builds: the list of Macs holds made-up names, for pictures of the app. */
+    private var showingSampleMacs = false
 
-    fun setAddress(value: String) {
-        _state.update { it.copy(address = value, link = Link.Unknown) }
-        settings.edit().putString("address", value).apply()
+    private val networkWatch = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = networkChanged()
+        override fun onLost(network: Network) = networkChanged()
     }
 
-    fun setToken(value: String) {
-        _state.update { it.copy(token = value.trim(), link = Link.Unknown) }
-        settings.edit().putString("token", value.trim()).apply()
+    init {
+        link.begin()
+        viewModelScope.launch { link.connection.collect { publishConnection() } }
+        viewModelScope.launch { finder.found.collect { macs -> if (!showingSampleMacs) _state.update { it.copy(macs = macs) } } }
+        if (devMode) checkDevLink()
     }
 
-    fun addPages(uris: List<Uri>) {
-        if (uris.isEmpty()) return
-        _state.update { it.copy(pages = it.pages + uris, phase = Phase.Idle) }
+    private fun publishConnection() {
+        val connection = if (devMode) Connection.Development(devLink) else link.connection.value
+        _state.update { it.copy(connection = connection) }
     }
 
-    fun clearPages() {
-        work?.cancel()
-        _state.update { it.copy(pages = emptyList(), phase = Phase.Idle) }
+    private fun networkChanged() {
+        viewModelScope.launch { if (devMode) checkDevLink() else link.recheck() }
     }
+
+    /** The app came to the front or left it. Macs are looked for only while it is in front. */
+    fun setInFront(front: Boolean) {
+        if (front == inFront) return
+        inFront = front
+        if (front) {
+            finder.start()
+            runCatching { connectivity?.registerDefaultNetworkCallback(networkWatch) }
+            if (devMode) checkDevLink() else link.recheck()
+        } else {
+            finder.stop()
+            runCatching { connectivity?.unregisterNetworkCallback(networkWatch) }
+        }
+    }
+
+    override fun onCleared() {
+        setInFront(false)
+    }
+
+    /** Look for the Mac again, because the person asked. */
+    fun retryConnection() {
+        if (devMode) checkDevLink() else link.recheck()
+    }
+
+    // --- Connecting with a code ---
+
+    /** What the Mac lists this device as: the name its owner gave it, or its make and model. */
+    private fun deviceName(): String {
+        val app = getApplication<Application>()
+        val given = runCatching { Settings.Global.getString(app.contentResolver, Settings.Global.DEVICE_NAME) }.getOrNull()
+        return given?.takeIf { it.isNotBlank() }
+            ?: listOf(Build.MANUFACTURER.replaceFirstChar(Char::uppercase), Build.MODEL).joinToString(" ").trim().ifBlank { "Android" }
+    }
+
+    fun openConnect() {
+        _state.update { it.copy(pairing = PairFlow.Choosing(), settingsOpen = false) }
+    }
+
+    fun closeConnect() {
+        pairingWork?.cancel()
+        _state.update { it.copy(pairing = PairFlow.Hidden) }
+    }
+
+    /** One step back in the connect flow; from its first step, out of it. */
+    fun backInConnect() {
+        pairingWork?.cancel()
+        _state.update {
+            when (val flow = it.pairing) {
+                is PairFlow.Code -> it.copy(pairing = PairFlow.Choosing())
+                is PairFlow.Choosing -> if (flow.typing) it.copy(pairing = PairFlow.Choosing()) else it.copy(pairing = PairFlow.Hidden)
+                else -> it.copy(pairing = PairFlow.Hidden)
+            }
+        }
+    }
+
+    fun chooseMac(mac: FoundMac) {
+        _state.update { it.copy(pairing = PairFlow.Code(mac.name, mac.addresses)) }
+    }
+
+    fun typeAddressInstead() {
+        _state.update { it.copy(pairing = PairFlow.Choosing(typing = true)) }
+    }
+
+    fun setTypedAddress(text: String) {
+        _state.update {
+            val flow = it.pairing as? PairFlow.Choosing ?: return@update it
+            it.copy(pairing = flow.copy(address = text, problem = null))
+        }
+    }
+
+    /** Try the typed address: if a Mac answers there, go on to the code. */
+    fun submitTypedAddress() {
+        val flow = _state.value.pairing as? PairFlow.Choosing ?: return
+        val address = parseMacAddress(flow.address)
+        if (address == null) {
+            _state.update { it.copy(pairing = flow.copy(problem = PairProblem.BadAddress)) }
+            return
+        }
+        _state.update { it.copy(pairing = flow.copy(checking = true, problem = null)) }
+        pairingWork?.cancel()
+        pairingWork = viewModelScope.launch {
+            val hello = exchange.hello(address)
+            _state.update {
+                if (it.pairing !is PairFlow.Choosing) return@update it
+                if (hello == null) it.copy(pairing = flow.copy(checking = false, problem = PairProblem.Unreachable))
+                else it.copy(pairing = PairFlow.Code(hello.name.ifBlank { address }, listOf(address)))
+            }
+        }
+    }
+
+    /** The code field changed. Six digits are tried at once, without a button. */
+    fun setCode(typed: String) {
+        val flow = _state.value.pairing as? PairFlow.Code ?: return
+        if (flow.working) return
+        val digits = codeDigits(typed)
+        _state.update { it.copy(pairing = flow.copy(digits = digits, problem = if (digits == flow.digits) flow.problem else null)) }
+        if (isCompleteCode(digits) && digits != flow.digits) submitCode()
+    }
+
+    fun submitCode() {
+        val flow = _state.value.pairing as? PairFlow.Code ?: return
+        if (flow.working || !isCompleteCode(flow.digits)) return
+        _state.update { it.copy(pairing = flow.copy(working = true, problem = null)) }
+        pairingWork?.cancel()
+        pairingWork = viewModelScope.launch {
+            // A Mac may announce several addresses; the first one that answers decides.
+            var outcome: PairOutcome = PairOutcome.Unreachable
+            for (address in flow.addresses) {
+                outcome = exchange.pair(address, flow.macName, flow.digits, deviceName())
+                if (outcome != PairOutcome.Unreachable) break
+            }
+            when (val result = outcome) {
+                is PairOutcome.Paired -> {
+                    devOverride = false
+                    link.pairedWith(result.mac, result.token)
+                    _state.update { it.copy(pairing = PairFlow.Done(result.mac.name)) }
+                }
+                else -> {
+                    val problem = when (result) {
+                        PairOutcome.NotOffering -> PairProblem.NotOffering
+                        PairOutcome.TooManyDevices -> PairProblem.TooManyDevices
+                        PairOutcome.Unreachable -> PairProblem.Unreachable
+                        else -> PairProblem.WrongCode
+                    }
+                    // The digits are cleared: the same code will not work a second time.
+                    _state.update {
+                        if (it.pairing is PairFlow.Code) it.copy(pairing = flow.copy(digits = "", working = false, problem = problem)) else it
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Settings ---
+
+    fun openSettings() = _state.update { it.copy(settingsOpen = true) }
+
+    fun closeSettings() = _state.update { it.copy(settingsOpen = false) }
+
+    /** The Mac this device is connected to, for the settings sheet. */
+    val pairedMac: PairedMac? get() = link.mac
+
+    fun forgetMac() {
+        link.forget()
+        publishConnection()
+        if (devMode) checkDevLink()
+        _state.update { it.copy(settingsOpen = false) }
+    }
+
+    // --- The debugging connection (debug builds) ---
+
+    /** Debug builds: take the hub's token from the debugging connection and use the hub through it. */
+    fun useDevelopmentHub(token: String) {
+        if (!BuildConfig.DEBUG) return
+        devSettings.edit { putString("token", token.trim()) }
+        devOverride = true
+        publishConnection()
+        checkDevLink()
+    }
+
+    private fun devClient() = HubClient(
+        // Through `adb reverse`, the Mac's hub is this device's own localhost.
+        devSettings.getString("address", null) ?: "http://127.0.0.1:47800",
+        devSettings.getString("token", null) ?: "",
+        HubHttp.plain(),
+    )
 
     /** Is the hub there, and does it accept the token? */
-    fun checkConnection() {
+    private fun checkDevLink() {
         viewModelScope.launch {
-            val link = try {
-                val hub = client()
+            devLink = try {
+                val hub = devClient()
                 hub.health()
                 // An authorised call that changes nothing: asking for an upload that does not exist.
                 try {
@@ -88,20 +326,92 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: IOException) {
                 Link.Unreachable
             } catch (_: IllegalArgumentException) {
-                // The address is not a URL.
                 Link.Unreachable
             }
-            _state.update { it.copy(link = link) }
+            publishConnection()
         }
     }
 
-    /** Upload the pages, have the hub read and merge them, and fetch the text. */
+    /** Debug builds: connect with a code without the screens, as `adb` hands it over. */
+    fun debugPair(address: String, code: String) {
+        if (!BuildConfig.DEBUG) return
+        val parsed = parseMacAddress(address) ?: return
+        pairingWork?.cancel()
+        pairingWork = viewModelScope.launch {
+            val name = exchange.hello(parsed)?.name?.ifBlank { null } ?: parsed
+            _state.update { it.copy(pairing = PairFlow.Code(name, listOf(parsed), codeDigits(code))) }
+            submitCode()
+        }
+    }
+
+    /** Debug builds: send the pages as soon as there is a Mac to send them to. */
+    fun debugSendWhenReady() {
+        if (!BuildConfig.DEBUG) return
+        viewModelScope.launch {
+            withTimeoutOrNull(30_000) { state.first { it.connection.canSend && it.pages.isNotEmpty() && it.pairing !is PairFlow.Code } }
+                ?: return@launch
+            if (_state.value.pairing is PairFlow.Done) closeConnect()
+            send()
+        }
+    }
+
+    /** Debug builds: show one of the app's screens, for pictures of it. */
+    fun debugShow(screen: String) {
+        if (!BuildConfig.DEBUG) return
+        showingSampleMacs = screen == "connect-sample"
+        // One screen at a time: whatever was open before is closed.
+        _state.update { it.copy(pairing = PairFlow.Hidden, settingsOpen = false) }
+        when (screen) {
+            "connect" -> openConnect()
+            "connect-sample" -> _state.update {
+                it.copy(
+                    pairing = PairFlow.Choosing(),
+                    macs = listOf(FoundMac("MacBook Pro", emptyList(), null), FoundMac("Mac mini", emptyList(), null)),
+                )
+            }
+            "address" -> _state.update { it.copy(pairing = PairFlow.Choosing(typing = true)) }
+            "code" -> _state.update { it.copy(pairing = PairFlow.Code("MacBook Pro", emptyList(), digits = "482")) }
+            "wrong-code" -> _state.update { it.copy(pairing = PairFlow.Code("MacBook Pro", emptyList(), problem = PairProblem.WrongCode)) }
+            "connected" -> _state.update { it.copy(pairing = PairFlow.Done("MacBook Pro")) }
+            "settings" -> openSettings()
+        }
+    }
+
+    // --- Pages ---
+
+    fun addPages(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        _state.update { it.copy(pages = it.pages + uris, phase = if (it.phase.isBusy) it.phase else Phase.Idle) }
+    }
+
+    fun removePage(index: Int) {
+        if (_state.value.phase.isBusy) return
+        _state.update { it.copy(pages = it.pages.filterIndexed { at, _ -> at != index }, phase = Phase.Idle) }
+    }
+
+    fun clearPages() {
+        work?.cancel()
+        _state.update { it.copy(pages = emptyList(), phase = Phase.Idle) }
+    }
+
+    /** Leave a failure behind and show the pages again. */
+    fun dismissProblem() {
+        _state.update { if (it.phase is Phase.Failed) it.copy(phase = Phase.Idle) else it }
+    }
+
+    private fun client(): HubClient? = if (devMode) devClient() else link.client()
+
+    /** Upload the pages, have the Mac read and join them, and fetch the text. */
     fun send() {
         val pages = _state.value.pages
         if (pages.isEmpty() || work?.isActive == true) return
+        val hub = client()
+        if (hub == null) {
+            _state.update { it.copy(phase = Phase.Failed(SendProblem.MacUnreachable)) }
+            return
+        }
         work = viewModelScope.launch {
             try {
-                val hub = client()
                 val upload = hub.createUpload()
                 pages.forEachIndexed { index, uri ->
                     _state.update { it.copy(phase = Phase.Uploading(index + 1, pages.size)) }
@@ -113,16 +423,28 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                     delay(300)
                     job = hub.job(job.id)
                 }
-                if (job.status != "done") throw IOException(job.error ?: "the job failed")
+                if (job.status != "done") {
+                    _state.update { it.copy(phase = Phase.Failed(SendProblem.ReadingFailed, job.error)) }
+                    return@launch
+                }
                 val text = hub.jobFile(job.id, "document.txt")
                 fun count(key: String) = job.result?.get(key)?.jsonPrimitive?.int ?: 0
                 _state.update {
-                    it.copy(phase = Phase.Done(text, count("pictures"), count("lines_read"), count("repeated_lines_removed")), link = Link.Connected)
+                    it.copy(phase = Phase.Done(text, count("pictures"), count("lines_read"), count("repeated_lines_removed")))
                 }
-            } catch (failure: IOException) {
-                _state.update { it.copy(phase = Phase.Failed(failure.message ?: failure.javaClass.simpleName)) }
-            } catch (failure: IllegalArgumentException) {
-                _state.update { it.copy(phase = Phase.Failed(failure.message ?: "bad address")) }
+            } catch (refused: HubException) {
+                if (refused.status == 401) {
+                    // The Mac no longer knows this device: say so where the connection is shown, too.
+                    if (devMode) checkDevLink() else link.turnedDown()
+                    _state.update { it.copy(phase = Phase.Failed(SendProblem.MacRefused)) }
+                } else {
+                    _state.update { it.copy(phase = Phase.Failed(SendProblem.ReadingFailed, refused.message)) }
+                }
+            } catch (_: IOException) {
+                _state.update { it.copy(phase = Phase.Failed(SendProblem.MacUnreachable)) }
+                retryConnection()
+            } catch (_: IllegalArgumentException) {
+                _state.update { it.copy(phase = Phase.Failed(SendProblem.MacUnreachable)) }
             }
         }
     }

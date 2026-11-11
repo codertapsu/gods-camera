@@ -1,32 +1,104 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">God\'s Camera</string>
-    <string name="connection">Kết nối với máy Mac</string>
-    <string name="hub_address">Địa chỉ</string>
-    <string name="hub_token">Mã truy cập</string>
-    <string name="check_connection">Kiểm tra</string>
-    <string name="connected">Đã kết nối với máy Mac.</string>
-    <string name="not_connected">Chưa kết nối.</string>
-    <string name="wrong_token">Máy Mac có trả lời nhưng không chấp nhận mã truy cập.</string>
-    <string name="cannot_reach">Không liên lạc được với máy Mac ở địa chỉ đó.</string>
+    <!-- General -->
+    <string name="settings">Cài đặt</string>
+    <string name="back">Quay lại</string>
+    <string name="done">Xong</string>
+    <string name="cancel">Huỷ</string>
+    <string name="try_again">Thử lại</string>
+    <string name="continue_action">Tiếp tục</string>
+
+    <!-- The connection to the Mac -->
+    <string name="not_paired_title">Chưa kết nối với máy Mac</string>
+    <string name="not_paired_body">Kết nối một lần bằng mã sáu chữ số hiện trên máy Mac. Từ đó về sau, thiết bị này tự tìm máy Mac.</string>
+    <string name="connect_to_mac">Kết nối với máy Mac</string>
+    <string name="searching_title">Đang tìm %s…</string>
+    <string name="searching_body">Việc này mất vài giây.</string>
+    <string name="connected_title">Đã kết nối với %s</string>
+    <string name="connected_body">Sẵn sàng gửi các trang qua Wi-Fi.</string>
+    <string name="not_found_title">Không tìm thấy %s</string>
+    <string name="not_found_body">Trên máy Mac, hãy mở God\'s Camera và bật “Nhận bản quét trên máy Mac này” trong mục Máy quét. Máy Mac và thiết bị này phải dùng chung một mạng Wi-Fi.</string>
+    <string name="refused_title">%s không còn chấp nhận thiết bị này</string>
+    <string name="refused_body">Thiết bị này đã bị gỡ trên máy Mac. Hãy kết nối lại bằng mã mới.</string>
+    <string name="connect_again">Kết nối lại</string>
+    <string name="connect_another">Kết nối với máy Mac khác</string>
+    <string name="dev_title">Kết nối gỡ lỗi</string>
+    <string name="dev_connected">Đã kết nối với máy Mac qua kết nối gỡ lỗi.</string>
+    <string name="dev_wrong_token">Máy Mac có trả lời nhưng không chấp nhận mã truy cập.</string>
+    <string name="dev_unreachable">Không liên lạc được với máy Mac qua kết nối gỡ lỗi.</string>
+    <string name="dev_unknown">Đang kiểm tra kết nối gỡ lỗi…</string>
+
+    <!-- Adding pages -->
+    <string name="add_pages">Thêm trang</string>
+    <string name="scan_document">Quét tài liệu</string>
+    <string name="scan_document_hint">Chụp các trang bằng camera. Mép giấy được tìm và nắn thẳng giúp bạn.</string>
+    <string name="choose_photos">Chọn ảnh</string>
+    <string name="choose_photos_hint">Dùng ảnh hoặc ảnh chụp màn hình bạn đã có.</string>
+    <string name="scanner_unavailable">Thiết bị này không có trình quét tài liệu.</string>
+
+    <!-- The pages in hand -->
     <string name="pages">Các trang</string>
-    <string name="no_pages">Chưa có trang nào. Hãy quét tài liệu hoặc thêm hình.</string>
     <plurals name="page_count">
         <item quantity="other">%d trang</item>
     </plurals>
-    <string name="scan_document">Quét tài liệu</string>
-    <string name="add_pictures">Thêm hình</string>
-    <string name="clear_pages">Xoá tất cả</string>
+    <string name="no_pages_title">Chưa có trang nào</string>
+    <string name="no_pages_body">Hãy quét tài liệu hoặc chọn ảnh. Một trang dài có thể chụp thành nhiều ảnh gối lên nhau; máy Mac sẽ ghép chúng thành một văn bản.</string>
+    <string name="page_number">Trang %d</string>
+    <string name="remove_page">Bỏ trang %d</string>
+    <string name="remove_all">Bỏ tất cả</string>
     <string name="send_to_mac">Gửi sang máy Mac</string>
+    <string name="send_needs_mac">Hãy kết nối với máy Mac để gửi các trang.</string>
     <string name="uploading">Đang gửi trang %1$d trên %2$d…</string>
     <string name="reading">Máy Mac đang đọc chữ… %d %%</string>
-    <string name="result">Văn bản</string>
+
+    <!-- The result -->
+    <string name="result_title">Văn bản của bạn</string>
+    <string name="result_summary">Số ảnh: %1$d · Số dòng đọc được: %2$d · Số dòng lặp đã bỏ: %3$d</string>
+    <string name="result_empty">Máy Mac không tìm thấy chữ nào trong các trang này.</string>
     <string name="copy">Sao chép</string>
     <string name="share">Chia sẻ</string>
     <string name="copied">Đã sao chép.</string>
-    <string name="start_over">Làm lại từ đầu</string>
-    <string name="failed">Không thực hiện được: %s</string>
-    <string name="scanner_unavailable">Thiết bị này không có trình quét tài liệu.</string>
-    <string name="result_summary">%1$d hình, đọc được %2$d dòng, bỏ %3$d dòng lặp lại.</string>
-    <string name="core_version">Lõi %s</string>
+    <string name="scan_another">Quét tài liệu khác</string>
+
+    <!-- When sending does not work -->
+    <string name="failed_unreachable_title">Không liên lạc được với máy Mac</string>
+    <string name="failed_unreachable_body">Hãy kiểm tra xem God\'s Camera có đang mở trên máy Mac không và hai máy có dùng chung một mạng Wi-Fi không. Các trang của bạn vẫn còn ở đây.</string>
+    <string name="failed_refused_title">Máy Mac không chấp nhận thiết bị này</string>
+    <string name="failed_refused_body">Thiết bị này đã bị gỡ trên máy Mac. Hãy kết nối lại bằng mã mới. Các trang của bạn vẫn còn ở đây.</string>
+    <string name="failed_reading_title">Máy Mac không đọc được các trang này</string>
+    <string name="failed_reading_body">Hãy thử lại, hoặc chụp lại ảnh ở nơi sáng hơn. Các trang của bạn vẫn còn ở đây.</string>
+    <string name="failed_detail">Máy Mac báo: %s</string>
+    <string name="back_to_pages">Quay lại các trang</string>
+
+    <!-- Connecting with a code -->
+    <string name="connect_step_1">Trên máy Mac, mở God\'s Camera và vào mục Máy quét.</string>
+    <string name="connect_step_2">Bấm “Kết nối điện thoại hoặc máy tính bảng”. Máy Mac sẽ hiện một mã sáu chữ số.</string>
+    <string name="connect_step_3">Chọn máy Mac ở dưới rồi nhập mã.</string>
+    <string name="macs_nearby">Các máy Mac trong mạng Wi-Fi này</string>
+    <string name="looking_for_macs">Đang tìm máy Mac… Máy Mac và thiết bị này phải dùng chung một mạng Wi-Fi, và God\'s Camera phải đang mở trên máy Mac.</string>
+    <string name="enter_address_instead">Nhập địa chỉ của máy Mac</string>
+    <string name="address_title">Nhập địa chỉ của máy Mac</string>
+    <string name="address_label">Địa chỉ</string>
+    <string name="address_hint">Ví dụ 192.168.1.20. Trên máy Mac, địa chỉ nằm trong Cài đặt hệ thống, Wi-Fi, Chi tiết.</string>
+    <string name="address_bad">Đó không giống một địa chỉ.</string>
+    <string name="address_unreachable">Không có máy Mac nào chạy God\'s Camera trả lời ở địa chỉ đó.</string>
+    <string name="code_title">Nhập mã đang hiện trên %s</string>
+    <string name="code_field">Mã sáu chữ số</string>
+    <string name="code_hint">Mã hiện trên màn hình máy Mac và dùng được trong vài phút.</string>
+    <string name="connecting">Đang kết nối…</string>
+    <string name="code_wrong">Mã đó không đúng. Hãy xem lại sáu chữ số trên máy Mac rồi nhập lại.</string>
+    <string name="code_not_offered">Máy Mac hiện không đưa ra mã nào. Trên máy Mac, bấm “Kết nối điện thoại hoặc máy tính bảng” để lấy mã mới.</string>
+    <string name="code_unreachable">Không liên lạc được với máy Mac. Hãy kiểm tra xem hai máy có dùng chung một mạng Wi-Fi không.</string>
+    <string name="code_too_many">Máy Mac đã kết nối đủ số thiết bị cho phép. Hãy gỡ bớt một thiết bị trên máy Mac trước.</string>
+    <string name="paired_title">Đã kết nối với %s</string>
+    <string name="paired_body">Từ giờ, thiết bị này tự tìm máy Mac mỗi khi hai máy dùng chung một mạng Wi-Fi.</string>
+
+    <!-- Settings -->
+    <string name="settings_mac">Máy Mac đã kết nối</string>
+    <string name="settings_no_mac">Chưa kết nối với máy Mac nào.</string>
+    <string name="forget_mac">Quên máy Mac này</string>
+    <string name="forget_title">Quên %s?</string>
+    <string name="forget_body">Thiết bị này sẽ không gửi trang sang máy đó nữa. Muốn dùng lại, hãy kết nối bằng mã mới.</string>
+    <string name="forget_confirm">Quên</string>
+    <string name="about">God\'s Camera %1$s · lõi %2$s</string>
 </resources>

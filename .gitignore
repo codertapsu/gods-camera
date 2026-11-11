@@ -22,5 +22,7 @@ apps/android/.gradle/
 apps/android/local.properties
 apps/android/app/build/
 apps/android/build/
+# Built by tools/build-core-android.sh
 apps/android/app/src/main/jniLibs/
+apps/android/app/src/main/java/uniffi/
 apps/android/.kotlin/

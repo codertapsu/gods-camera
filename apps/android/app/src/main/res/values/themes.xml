@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- What the window looks like for the instant before the app draws: the
+         same quiet background as the app's first screen, so nothing flashes. -->
+    <style name="Theme.GodsCamera" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/launch_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+    <color name="launch_background">#FDF8FD</color>
+    <color name="icon_background">#3F51B5</color>
+</resources>

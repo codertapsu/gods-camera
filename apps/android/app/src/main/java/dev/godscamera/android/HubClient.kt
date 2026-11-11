@@ -40,15 +40,13 @@ class HubException(val status: Int, message: String) : IOException(message)
  * The hub on the desktop, as this app talks to it. Every call runs off the
  * main thread and throws [IOException] when the hub cannot be reached and
  * [HubException] when it refuses.
+ *
+ * [http] decides whom to trust: `HubHttp.pinned` for a Mac this device is
+ * connected to, `HubHttp.plain` for the debugging connection.
  */
-class HubClient(baseUrl: String, private val token: String) {
+class HubClient(baseUrl: String, private val token: String, private val http: OkHttpClient) {
     private val base = baseUrl.trim().trimEnd('/')
     private val json = Json { ignoreUnknownKeys = true }
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(4, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .build()
 
     private fun request(path: String) = Request.Builder().url("$base$path").header("Authorization", "Bearer $token")
 
@@ -60,8 +58,24 @@ class HubClient(baseUrl: String, private val token: String) {
         }
     }
 
-    /** Public: answers without a token, so it tells "reachable" apart from "allowed". */
-    suspend fun health(): Health = json.decodeFromString(send(Request.Builder().url("$base/v1/health").build()))
+    /**
+     * Is the hub there? Over the network it answers a device it knows and
+     * refuses, with 401, one it has removed. Over the debugging connection it
+     * answers anyone, so there the token is checked with a second call.
+     */
+    suspend fun health(): Health = json.decodeFromString(send(request("/v1/health").build()))
+
+    /** [health] with a short wait, for trying one place after another. */
+    suspend fun healthQuickly(): Health {
+        val quick = http.newBuilder().connectTimeout(2500, TimeUnit.MILLISECONDS).readTimeout(4, TimeUnit.SECONDS).build()
+        return withContext(Dispatchers.IO) {
+            quick.newCall(request("/v1/health").build()).execute().use { response ->
+                val body = response.body.string()
+                if (!response.isSuccessful) throw HubException(response.code, body.take(200))
+                json.decodeFromString(body)
+            }
+        }
+    }
 
     suspend fun createUpload(): UploadInfo =
         json.decodeFromString(send(request("/v1/uploads").post(ByteArray(0).toRequestBody()).build()))

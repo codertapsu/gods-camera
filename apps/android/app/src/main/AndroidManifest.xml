@@ -2,14 +2,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- To notice when the device joins or leaves a network, and look for the Mac again. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="@string/app_name"
-        android:icon="@android:drawable/ic_menu_camera"
+        android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.GodsCamera">
 
         <!-- One instance: pictures shared from other apps are added to the pages already in hand. -->
         <activity

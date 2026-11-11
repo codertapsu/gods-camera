@@ -1,0 +1,36 @@
+package dev.godscamera.android
+
+/**
+ * Two self-made certificates for the tests, of the kind a Mac makes for
+ * itself: ECDSA on P-256, named `godscamera-hub`. Their private keys were
+ * thrown away when they were made; nothing here is a secret.
+ */
+object TestCertificates {
+    val MAC = """
+-----BEGIN CERTIFICATE-----
+MIIBijCCAS+gAwIBAgIUZDun28Ri0ub/swqyHazfmjNIAGgwCgYIKoZIzj0EAwIw
+GTEXMBUGA1UEAwwOZ29kc2NhbWVyYS1odWIwIBcNMjYxMTExMTU1NTA2WhgPMjEy
+NjEwMTgxNTU1MDZaMBkxFzAVBgNVBAMMDmdvZHNjYW1lcmEtaHViMFkwEwYHKoZI
+zj0CAQYIKoZIzj0DAQcDQgAE3pH7u7577uYbz8rEnsPsC/95bD5YvICg71NM8Sa5
+M99HlGGNKZuvcLFwBRhpZ+UN/+lL2WdSLDdqTE+F0jBkY6NTMFEwHQYDVR0OBBYE
+FFFxDxjwUxajZ+HMfsCC/0WTiX9XMB8GA1UdIwQYMBaAFFFxDxjwUxajZ+HMfsCC
+/0WTiX9XMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSQAwRgIhAJQk2tHx
+4dz8dwhUKVZRbAQbGc+xupprIR8F6EXsyUYjAiEAxyzVSXtguJM80Dh5RateGFhV
+yskYWT2mwc55Xbel/Ms=
+-----END CERTIFICATE-----
+""".trimIndent()
+
+    val OTHER = """
+-----BEGIN CERTIFICATE-----
+MIIBiDCCAS+gAwIBAgIUYj91nIWW6+1Pguf0ma4XMuXHQOMwCgYIKoZIzj0EAwIw
+GTEXMBUGA1UEAwwOZ29kc2NhbWVyYS1odWIwIBcNMjYxMTExMTU1NTA2WhgPMjEy
+NjEwMTgxNTU1MDZaMBkxFzAVBgNVBAMMDmdvZHNjYW1lcmEtaHViMFkwEwYHKoZI
+zj0CAQYIKoZIzj0DAQcDQgAE8O7QmmIv/BH13Wub+qAtkkZcJDAwZxcDNI0rcSyd
+3FO1rbtLrvTd4JkidZeIhkXTZ9h3VWiRV7rp3QPn/mQx+aNTMFEwHQYDVR0OBBYE
+FKVzczL66eJu/3kVaY6DAs/8IPiaMB8GA1UdIwQYMBaAFKVzczL66eJu/3kVaY6D
+As/8IPiaMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAwRAIgYHHslbS1
+gcCMBrZbOkLJ/A9TMLYxLMTnA3yzXQAXHcsCICGR3ortjGCLJATVveUQQ3MuU9rw
+e74PHCJLMpHW5lfw
+-----END CERTIFICATE-----
+""".trimIndent()
+}
