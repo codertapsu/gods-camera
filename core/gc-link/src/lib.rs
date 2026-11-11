@@ -679,7 +679,7 @@ impl BoundHub {
             .with_graceful_shutdown(stopped(stopping.subscribe()));
         let lan = match self.lan {
             Some((listener, tls)) => Some(
-                axum::serve(tls::TlsListener::new(listener, tls, tls::MAX_CONNECTIONS)?, self.hub.state.router(Via::Lan))
+                axum::serve(tls::TlsListener::new(listener, tls, tls::MAX_CONNECTIONS, tls::IDLE_TIMEOUT)?, self.hub.state.router(Via::Lan))
                     .with_graceful_shutdown(stopped(stopping.subscribe())),
             ),
             None => None,

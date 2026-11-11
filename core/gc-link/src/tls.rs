@@ -27,6 +27,12 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 /// connections and says nothing cannot use up the app's file handles, which
 /// the camera and everything else in the app need too.
 pub(crate) const MAX_CONNECTIONS: usize = 64;
+/// How long a connection from the network may stay silent, with nothing read
+/// and nothing written, before it is closed. A device that is sending or
+/// receiving never comes near it, and one that kept a connection open for
+/// later simply opens a new one. Without this limit, someone on the network
+/// could take every place by connecting and saying nothing.
+pub(crate) const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
 fn tls_error(error: rustls::Error) -> HubError {
     HubError::Tls(error.to_string())
@@ -48,10 +54,34 @@ pub(crate) fn server_config(identity: &gc_pair::HubIdentity) -> Result<Arc<rustl
 }
 
 /// A connection from the network. While it lives it holds one of the
-/// listener's places.
+/// listener's places, and it closes itself after `idle` without traffic.
 pub(crate) struct Connection {
     stream: TlsStream<TcpStream>,
     _place: tokio::sync::OwnedSemaphorePermit,
+    idle: Duration,
+    /// When the connection is given up, unless something is read or written first.
+    deadline: std::pin::Pin<Box<tokio::time::Sleep>>,
+}
+
+impl Connection {
+    fn new(stream: TlsStream<TcpStream>, place: tokio::sync::OwnedSemaphorePermit, idle: Duration) -> Self {
+        Self { stream, _place: place, idle, deadline: Box::pin(tokio::time::sleep(idle)) }
+    }
+
+    /// Traffic passed: the silence starts over.
+    fn touched(&mut self) {
+        let next = tokio::time::Instant::now() + self.idle;
+        self.deadline.as_mut().reset(next);
+    }
+
+    /// While waiting for traffic: has the silence lasted too long?
+    fn silent_too_long(&mut self, cx: &mut std::task::Context<'_>) -> bool {
+        std::future::Future::poll(self.deadline.as_mut(), cx).is_ready()
+    }
+}
+
+fn idle_error() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::TimedOut, "the connection was silent for too long")
 }
 
 impl tokio::io::AsyncRead for Connection {
@@ -60,7 +90,17 @@ impl tokio::io::AsyncRead for Connection {
         cx: &mut std::task::Context<'_>,
         buffer: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        std::pin::Pin::new(&mut self.stream).poll_read(cx, buffer)
+        let before = buffer.filled().len();
+        match std::pin::Pin::new(&mut self.stream).poll_read(cx, buffer) {
+            std::task::Poll::Ready(result) => {
+                if buffer.filled().len() > before {
+                    self.touched();
+                }
+                std::task::Poll::Ready(result)
+            }
+            std::task::Poll::Pending if self.silent_too_long(cx) => std::task::Poll::Ready(Err(idle_error())),
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
     }
 }
 
@@ -70,7 +110,17 @@ impl tokio::io::AsyncWrite for Connection {
         cx: &mut std::task::Context<'_>,
         bytes: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        std::pin::Pin::new(&mut self.stream).poll_write(cx, bytes)
+        match std::pin::Pin::new(&mut self.stream).poll_write(cx, bytes) {
+            std::task::Poll::Ready(result) => {
+                if matches!(result, Ok(written) if written > 0) {
+                    self.touched();
+                }
+                std::task::Poll::Ready(result)
+            }
+            // A client that stops reading must not hold a place for ever either.
+            std::task::Poll::Pending if self.silent_too_long(cx) => std::task::Poll::Ready(Err(idle_error())),
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
     }
 
     fn poll_flush(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
@@ -86,7 +136,16 @@ impl tokio::io::AsyncWrite for Connection {
         cx: &mut std::task::Context<'_>,
         slices: &[std::io::IoSlice<'_>],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        std::pin::Pin::new(&mut self.stream).poll_write_vectored(cx, slices)
+        match std::pin::Pin::new(&mut self.stream).poll_write_vectored(cx, slices) {
+            std::task::Poll::Ready(result) => {
+                if matches!(result, Ok(written) if written > 0) {
+                    self.touched();
+                }
+                std::task::Poll::Ready(result)
+            }
+            std::task::Poll::Pending if self.silent_too_long(cx) => std::task::Poll::Ready(Err(idle_error())),
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
     }
 
     fn is_write_vectored(&self) -> bool {
@@ -105,8 +164,14 @@ pub(crate) struct TlsListener {
 }
 
 impl TlsListener {
-    /// `places` is how many connections may be held at once.
-    pub(crate) fn new(listener: TcpListener, config: Arc<rustls::ServerConfig>, places: usize) -> std::io::Result<Self> {
+    /// `places` is how many connections may be held at once, and `idle` how
+    /// long one may stay silent before it is closed.
+    pub(crate) fn new(
+        listener: TcpListener,
+        config: Arc<rustls::ServerConfig>,
+        places: usize,
+        idle: Duration,
+    ) -> std::io::Result<Self> {
         let local = listener.local_addr()?;
         let (sender, ready) = tokio::sync::mpsc::channel(32);
         let acceptor = tokio_rustls::TlsAcceptor::from(config);
@@ -128,7 +193,7 @@ impl TlsListener {
                 tokio::spawn(async move {
                     let _ = stream.set_nodelay(true);
                     if let Ok(Ok(stream)) = tokio::time::timeout(HANDSHAKE_TIMEOUT, acceptor.accept(stream)).await {
-                        let _ = sender.send((Connection { stream, _place: place }, peer)).await;
+                        let _ = sender.send((Connection::new(stream, place, idle), peer)).await;
                     }
                 });
             }
@@ -298,7 +363,7 @@ mod tests {
         let identity = gc_pair::HubIdentity::generate("test").unwrap();
         let fingerprint = identity.fingerprint();
         let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let mut listener = TlsListener::new(tcp, server_config(&identity).unwrap(), 2).unwrap();
+        let mut listener = TlsListener::new(tcp, server_config(&identity).unwrap(), 2, IDLE_TIMEOUT).unwrap();
         let address = listener.local_addr().unwrap();
 
         // Two connections take the two places. The server holds them, as it
@@ -349,7 +414,7 @@ mod tests {
     async fn a_client_that_never_finishes_its_handshake_holds_nobody_up() {
         let identity = gc_pair::HubIdentity::generate("test").unwrap();
         let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let mut listener = TlsListener::new(tcp, server_config(&identity).unwrap(), 4).unwrap();
+        let mut listener = TlsListener::new(tcp, server_config(&identity).unwrap(), 4, IDLE_TIMEOUT).unwrap();
         let address = listener.local_addr().unwrap();
         // Connected, and silent.
         let _silent = TcpStream::connect(address).await.unwrap();
@@ -361,11 +426,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_silent_connection_is_closed_and_gives_its_place_back() {
+        let identity = gc_pair::HubIdentity::generate("test").unwrap();
+        let fingerprint = identity.fingerprint();
+        let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        // One place, and a short patience.
+        let mut listener = TlsListener::new(tcp, server_config(&identity).unwrap(), 1, Duration::from_millis(300)).unwrap();
+        let address = listener.local_addr().unwrap();
+
+        let mut silent = connect(address, &fingerprint).await.unwrap();
+        let (mut served, _) = listener.accept().await;
+        // The server reads what there is, as it does while waiting for a request.
+        let serving = tokio::spawn(async move {
+            let mut buffer = [0u8; 16];
+            loop {
+                match served.read(&mut buffer).await {
+                    Ok(0) => return "closed by the client",
+                    Ok(_) => continue,
+                    Err(error) if error.kind() == std::io::ErrorKind::TimedOut => return "silent for too long",
+                    Err(_) => return "another error",
+                }
+            }
+        });
+        // A client that keeps talking is kept.
+        for _ in 0..4 {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            silent.write_all(b".").await.unwrap();
+        }
+        assert!(!serving.is_finished(), "a connection with traffic must stay");
+        // Then it says nothing, and the server lets it go.
+        let ended = tokio::time::timeout(Duration::from_secs(3), serving).await.expect("the server gave up").unwrap();
+        assert_eq!(ended, "silent for too long");
+
+        // The one place is free again for a device that has something to say.
+        let mut next = None;
+        for _ in 0..50 {
+            if let Ok(stream) = connect(address, &fingerprint).await {
+                next = Some(stream);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(next.is_some(), "the place of a closed connection can be taken again");
+        let accepted = tokio::time::timeout(Duration::from_secs(3), listener.accept()).await;
+        assert!(accepted.is_ok());
+    }
+
+    #[tokio::test]
     async fn a_client_accepts_only_the_certificate_it_expects() {
         let identity = gc_pair::HubIdentity::generate("test").unwrap();
         let other = gc_pair::HubIdentity::generate("test").unwrap();
         let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let mut listener = TlsListener::new(tcp, server_config(&identity).unwrap(), 8).unwrap();
+        let mut listener = TlsListener::new(tcp, server_config(&identity).unwrap(), 8, IDLE_TIMEOUT).unwrap();
         let address = listener.local_addr().unwrap();
         tokio::spawn(async move {
             loop {
@@ -392,7 +504,7 @@ mod tests {
 
         // The same settings against a hub with another certificate: refused.
         let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let mut elsewhere = TlsListener::new(tcp, server_config(&other).unwrap(), 8).unwrap();
+        let mut elsewhere = TlsListener::new(tcp, server_config(&other).unwrap(), 8, IDLE_TIMEOUT).unwrap();
         let elsewhere_address = elsewhere.local_addr().unwrap();
         tokio::spawn(async move {
             loop {
