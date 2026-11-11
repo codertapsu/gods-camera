@@ -79,6 +79,15 @@ class MainActivity : ComponentActivity() {
 
     /** Pictures shared to the app from another app become pages. */
     private fun takeShared(intent: Intent?) {
+        // Development only: the Mac's connection script hands the hub's token over
+        // through the USB cable, so it need not be typed. A release build ignores
+        // this, or any app on the device could point the scanner at a hub of its own.
+        if (BuildConfig.DEBUG) {
+            intent?.getStringExtra("hub_token")?.takeIf { it.length >= 16 }?.let {
+                model.setToken(it)
+                model.checkConnection()
+            }
+        }
         val shared: List<Uri> = when (intent?.action) {
             Intent.ACTION_SEND -> listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
             Intent.ACTION_SEND_MULTIPLE ->

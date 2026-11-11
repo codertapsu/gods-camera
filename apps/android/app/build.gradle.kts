@@ -34,6 +34,8 @@ android {
 
     buildFeatures {
         compose = true
+        // For BuildConfig.DEBUG, which gates the development-only token hand-over.
+        buildConfig = true
     }
 }
 

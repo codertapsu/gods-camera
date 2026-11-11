@@ -62,11 +62,11 @@ These pages are rendered, not photographed. Real newspaper photos will be harder
 
 ## Checks for you
 
-1. Connect the tablet by cable and unlock it. In a terminal on the Mac, run `tools/connect-android.sh`.
-2. On the Mac, open God's Camera. In **Scanner**, turn on **Receive scans from my phone or tablet** and click **Copy** beside the token.
-3. On the tablet, open God's Camera. The app is already installed. Type the token into **Token** and tap **Check**. It should say **Connected to the Mac**.
+1. On the Mac, open God's Camera. In **Scanner**, turn on **Receive scans from my phone or tablet**.
+2. Connect the tablet by cable and unlock it. In a terminal on the Mac, run `tools/connect-android.sh`. It sets up the connection, opens the app on the tablet and gives it the hub's token. macOS asks once for permission to read the token from the Keychain; click **Always Allow**.
+3. On the tablet, the app should say **Connected to the Mac**. The app is already installed.
 4. Tap **Scan a document** and photograph a printed page, or tap **Add pictures** and choose several overlapping photos of a newspaper page.
 5. Tap **Send to the Mac**. The text should appear on the tablet, and the document in the Mac app's **Scanner** list.
 6. Tell me how the text compares with the page, especially the reading order and the Vietnamese tone marks.
 
-Typing a 32-character token is tedious. Pairing by QR code replaces it in part 3c.
+The token hand-over in step 2 works in debug builds only. Pairing by QR code, in part 3c, replaces it.

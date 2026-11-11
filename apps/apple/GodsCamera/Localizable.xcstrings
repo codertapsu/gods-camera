@@ -251,12 +251,12 @@
         }
       }
     },
-    "Connect the device with a USB cable, run tools/connect-android.sh, and enter this token in the app on the device.": {
+    "Connect the device with a USB cable and run tools/connect-android.sh. It sets up the connection and gives the app this token.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nối thiết bị bằng cáp USB, chạy tools/connect-android.sh, rồi nhập mã này vào ứng dụng trên thiết bị."
+            "value": "Nối thiết bị bằng cáp USB rồi chạy tools/connect-android.sh. Lệnh này thiết lập kết nối và chuyển mã này cho ứng dụng."
           }
         }
       }
