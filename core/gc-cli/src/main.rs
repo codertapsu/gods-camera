@@ -7,6 +7,8 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+mod face;
+
 #[derive(Parser)]
 #[command(name = "gc", about = "God's Camera development tool")]
 struct Cli {
@@ -45,6 +47,74 @@ enum Command {
         #[arg(long)]
         store: PathBuf,
     },
+    /// Put the face from one picture onto the faces in another.
+    Swap {
+        /// Folder holding the model files.
+        #[arg(long)]
+        packs: PathBuf,
+        /// Picture of the face to swap in.
+        #[arg(long)]
+        source: PathBuf,
+        /// Picture whose faces are replaced.
+        #[arg(long)]
+        target: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// inswapper or hyperswap.
+        #[arg(long, default_value = "inswapper")]
+        model: String,
+        /// oval or box.
+        #[arg(long, default_value = "oval")]
+        mask: String,
+        /// Swap every face, not only the largest.
+        #[arg(long)]
+        all: bool,
+        /// Leave the swapped face's colours as the model made them.
+        #[arg(long)]
+        no_colour_match: bool,
+    },
+    /// Run the live engine over a moving-face clip made from a photo, and report how it kept up.
+    Replay {
+        #[arg(long)]
+        packs: PathBuf,
+        /// A photo with a face. Its leftmost face moves in the clip.
+        #[arg(long)]
+        photo: PathBuf,
+        /// Picture of the face to swap in. Defaults to the rightmost face in the photo.
+        #[arg(long)]
+        source: Option<PathBuf>,
+        #[arg(long, default_value = "inswapper")]
+        model: String,
+        /// large or small.
+        #[arg(long, default_value = "large")]
+        detector: String,
+        #[arg(long, default_value_t = 640)]
+        detector_size: u32,
+        /// still, talking or fast.
+        #[arg(long, default_value = "talking")]
+        motion: String,
+        #[arg(long, default_value_t = 10.0)]
+        seconds: f32,
+        #[arg(long, default_value_t = 1280)]
+        width: u32,
+        #[arg(long, default_value_t = 720)]
+        height: u32,
+        /// Feed frames as fast as they are taken, instead of 30 a second.
+        #[arg(long)]
+        unpaced: bool,
+        /// Run every model on the CPU.
+        #[arg(long)]
+        cpu: bool,
+        /// Folder for compiled models, so later runs start faster.
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+        /// Folder for every fifteenth output frame, as PNG.
+        #[arg(long)]
+        dump: Option<PathBuf>,
+        /// Also write the report to this file.
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
 }
 
 /// The hub token comes from the environment so it never appears in shell history.
@@ -68,6 +138,52 @@ async fn main() -> Result<()> {
         }
         Command::Upload { folder, hub, upload_id } => upload(&folder, &hub, upload_id).await?,
         Command::VerifyPacks { manifests, store } => verify_packs(&manifests, &store)?,
+        Command::Swap { packs, source, target, out, model, mask, all, no_colour_match } => {
+            // The models block the thread, so they stay off the async runtime's workers.
+            let args = face::SwapArgs {
+                packs,
+                source,
+                target,
+                out,
+                model: face::parse_model(&model)?,
+                mask: face::parse_mask(&mask)?,
+                all,
+                colour_match: !no_colour_match,
+            };
+            tokio::task::spawn_blocking(move || face::swap(args)).await??;
+        }
+        Command::Replay {
+            packs, photo, source, model, detector, detector_size, motion, seconds, width, height, unpaced, cpu,
+            cache_dir, dump, json,
+        } => {
+            let args = face::ReplayArgs {
+                packs,
+                photo,
+                source,
+                model: face::parse_model(&model)?,
+                detector: match detector.as_str() {
+                    "large" => gc_live::DetectorKind::Large,
+                    "small" => gc_live::DetectorKind::Small,
+                    other => bail!("unknown detector '{other}'; use large or small"),
+                },
+                detector_size,
+                motion: match motion.as_str() {
+                    "still" => gc_live::synthetic::Motion::Still,
+                    "talking" => gc_live::synthetic::Motion::Talking,
+                    "fast" => gc_live::synthetic::Motion::Fast,
+                    other => bail!("unknown motion '{other}'; use still, talking or fast"),
+                },
+                seconds,
+                width,
+                height,
+                unpaced,
+                cpu_only: cpu,
+                cache_dir,
+                dump,
+                json,
+            };
+            tokio::task::spawn_blocking(move || face::replay(args)).await??;
+        }
     }
     Ok(())
 }

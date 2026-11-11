@@ -1,0 +1,15 @@
+[package]
+name = "gc-live"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gc-align = { version = "0.1.0", path = "../gc-align" }
+gc-track = { version = "0.1.0", path = "../gc-track" }
+gc-infer = { version = "0.1.0", path = "../gc-infer", features = ["runtime"] }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde_json = "1.0.154"

@@ -1,0 +1,4 @@
+# The prebuilt ONNX Runtime is built for macOS 13.4 and later, and the app
+# itself needs macOS 27, so nothing here is built for older systems.
+[env]
+MACOSX_DEPLOYMENT_TARGET = "27.0"

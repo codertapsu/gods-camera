@@ -5,8 +5,26 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Model sessions on ONNX Runtime. Off by default so the decoding and image
+# code can be built and tested without the inference library.
+runtime = ["dep:ort"]
+
 [dependencies]
 gc-align = { version = "0.1.0", path = "../gc-align" }
+# Pinned exactly: the crate is a release candidate and its interface still moves.
+ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["std", "download-binaries", "tls-native", "api-31"] }
+
+# Each platform's accelerated provider. The prebuilt library is chosen by these.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["coreml"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["nnapi"] }
+
+[target.'cfg(windows)'.dependencies]
+ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["directml"] }
 
 [dev-dependencies]
 serde_json = "1.0.154"
+image = { version = "0.25", default-features = false, features = ["png"] }

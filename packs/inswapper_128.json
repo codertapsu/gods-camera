@@ -9,6 +9,20 @@
       "sha256": "e4a3f08c753cb72d04e10aa0f7dbe3deebbf39567d4ead6dce08e98aa49e16af",
       "bytes": 554253681,
       "role": "swap model, 128 px"
+    },
+    {
+      "path": "inswapper_128.emap.bin",
+      "source_url": "derived from inswapper_128.onnx by tools/modelkit/extract_emap.py",
+      "sha256": "370af5bf707dafdbea8a40448d697d9697610bd223ecf92887af9c9cc7055ac8",
+      "bytes": 1048576,
+      "role": "identity projection matrix, 512 x 512 float32"
+    },
+    {
+      "path": "inswapper_128.reflectfree.fp16.onnx",
+      "source_url": "derived from inswapper_128.onnx by tools/modelkit/rewrite_reflect_pad.py and convert_fp16.py",
+      "sha256": "c4862cfb1ecd51ff2fe125f7af866769f7cbd63830b436f700398ea5a8aac4e1",
+      "bytes": 277289795,
+      "role": "swap model, 128 px, half precision without reflect padding, for the Neural Engine"
     }
   ]
 }

@@ -510,7 +510,12 @@ impl FlowTracker {
         if self.support.len() < self.cfg.max_support / 2 {
             self.top_up_support(&cur.levels[0], cur.origin, &new_kps);
         }
-        self.store(frame);
+        // At rest the earlier frame stays the reference. A drift too slow to
+        // show between two frames then adds up against it until it is large
+        // enough to follow, instead of being lost one sliver at a time.
+        if !at_rest {
+            self.store(frame);
+        }
         TrackOutcome::Tracked { motion, kps: new_kps, inliers, tracked }
     }
 

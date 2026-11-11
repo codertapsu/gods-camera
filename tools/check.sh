@@ -12,7 +12,10 @@ cargo test -q --workspace
 echo "== lint =="
 cargo clippy -q --workspace --all-targets -- -D warnings
 echo "== Android arm64 =="
-cargo ndk -t arm64-v8a build -q --workspace
+# API level 35 is the newest this NDK carries; the app's minimum is 36 (Android 16).
+# The prebuilt ONNX Runtime
+# needs a level well above the tool's default.
+cargo ndk -t arm64-v8a --platform 35 build -q --workspace
 echo "== Windows x64 =="
 cargo xwin build -q --workspace --target x86_64-pc-windows-msvc
 echo "all checks passed"
