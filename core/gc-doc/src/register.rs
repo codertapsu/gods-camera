@@ -513,6 +513,11 @@ pub fn merge(pages: &[OcrPage], placement: &Placement, group: &[usize]) -> (Vec<
     let mut kept = Vec::with_capacity(readings.len());
     for (_, mut pieces) in readings {
         pieces.sort_by(|a, b| b.quality().total_cmp(&a.quality()));
+        // Whether the line is a title is put to the vote as well. The reader
+        // judges each photo by itself, and calls an ordinary line a title when
+        // a photo happens to begin with it; the other photos know better.
+        let said_title = pieces.iter().filter(|piece| piece.line.title).count();
+        let is_title = said_title * 2 > pieces.len();
         // A reading that shows the whole line settles it. Several such
         // readings are compared word by word, since each photo misreads a
         // letter here and there.
@@ -523,6 +528,7 @@ pub fn merge(pages: &[OcrPage], placement: &Placement, group: &[usize]) -> (Vec<
             if let Some(text) = text {
                 line.text = text;
             }
+            line.title = is_title;
             kept.push(line);
             continue;
         }
@@ -565,10 +571,10 @@ pub fn merge(pages: &[OcrPage], placement: &Placement, group: &[usize]) -> (Vec<
                     line.bbox[3].max(piece.line.bbox[3]),
                 ];
                 line.confidence = line.confidence.min(piece.line.confidence);
-                line.title = line.title || piece.line.title;
                 end_is_cut = piece.cut_right;
             }
         }
+        line.title = is_title;
         kept.push(line);
     }
     // The order is settled by the layout; a steady order here keeps results repeatable.
@@ -620,6 +626,42 @@ mod tests {
         let mut texts: Vec<(f32, String)> = lines.iter().map(|l| (l.bbox[1], l.text.clone())).collect();
         texts.sort_by(|a, b| a.0.total_cmp(&b.0));
         assert_eq!(texts.into_iter().map(|t| t.1).collect::<Vec<_>>(), rows);
+    }
+
+    #[test]
+    fn whether_a_line_is_a_title_is_decided_by_most_of_the_photos() {
+        // Three photos of the same column, each starting three lines further
+        // down. The reader calls the first line of every photo a title, as it
+        // tends to, and it calls the real headline a title in every photo
+        // that shows it.
+        let rows: Vec<String> = (0..12).map(|i| format!("dòng chữ số {i} của trang báo")).collect();
+        let shot = |name: &str, from: usize, to: usize| {
+            let mut lines: Vec<OcrLine> =
+                (from..to).map(|i| line(&rows[i], 50.0, 100.0 + 60.0 * (i - from) as f32, 600.0)).collect();
+            lines[0].title = true;
+            page(name, lines)
+        };
+        let mut a = shot("a", 0, 7);
+        let b = shot("b", 3, 10);
+        let c = shot("c", 5, 12);
+        // Row 6 is a real headline: every photo that shows it says so.
+        let mut pages = vec![a.clone(), b, c];
+        for photo in &mut pages {
+            for line in &mut photo.lines {
+                if line.text == rows[6] {
+                    line.title = true;
+                }
+            }
+        }
+        a = pages[0].clone();
+        let placement = register(&pages);
+        assert_eq!(placement.groups, vec![vec![0, 1, 2]]);
+        let (lines, _) = merge(&pages, &placement, &placement.groups[0]);
+        let titles: Vec<&str> = lines.iter().filter(|l| l.title).map(|l| l.text.as_str()).collect();
+        // Row 0 is seen by one photo only, which calls it a title: nothing says otherwise.
+        // Rows 3 and 5 begin a photo but are plain lines in the others: outvoted.
+        assert_eq!(titles, vec![rows[0].as_str(), rows[6].as_str()]);
+        assert!(a.lines[0].title);
     }
 
     #[test]

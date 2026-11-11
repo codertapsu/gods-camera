@@ -15,6 +15,11 @@ const BAND_GAP: f32 = 1.4;
 const COLUMN_GAP: f32 = 0.6;
 /// A line this many times taller than the typical one is a heading.
 const HEADING_SCALE: f32 = 1.35;
+/// A line the reader calls a title is taken as a heading only if it is at
+/// least this many times the usual line height. The reader's own judgement is
+/// not enough: it marks body lines as titles now and then, and a heading that
+/// was not there would cut a paragraph in two.
+const TITLE_SCALE: f32 = 1.15;
 
 fn median(mut values: Vec<f32>) -> f32 {
     if values.is_empty() {
@@ -119,7 +124,8 @@ pub fn layout(lines: Vec<PlacedLine>) -> Vec<Block> {
         let mut current_is_heading = false;
         for (position, &index) in region.iter().enumerate() {
             let line = &lines[index];
-            let is_heading = line.title || line.height() > HEADING_SCALE * line_height;
+            let is_heading = (line.title && line.height() > TITLE_SCALE * line_height)
+                || line.height() > HEADING_SCALE * line_height;
             let starts_new = match position.checked_sub(1).map(|p| &lines[region[p]]) {
                 None => false,
                 Some(previous) => {
@@ -182,6 +188,38 @@ mod tests {
         assert_eq!(blocks.len(), 2);
         assert_eq!(blocks[0].text, "Đoạn một, dòng một đoạn một, dòng hai.");
         assert_eq!(blocks[1].text, "Đoạn hai, dòng một đoạn hai, dòng hai.");
+    }
+
+    #[test]
+    fn a_body_line_called_a_title_does_not_cut_its_paragraph() {
+        let mut lines = vec![
+            line("Ở chợ nổi Cái Răng, ghe chở bông điên điển, rau nhút", 100.0, 100.0, 500.0, 44.0),
+            line("và cá linh non đã xuất hiện nhiều hơn. Giá cá linh đầu", 100.0, 160.0, 500.0, 44.0),
+            line("mùa dao động quanh một trăm nghìn đồng một ký.", 100.0, 220.0, 420.0, 44.0),
+        ];
+        // The reader's mistake: the middle line marked as a title, at the size of the others.
+        lines[1].title = true;
+        let blocks = layout(lines);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind, BlockKind::Paragraph);
+        assert!(blocks[0].text.starts_with("Ở chợ nổi") && blocks[0].text.ends_with("một ký."));
+    }
+
+    #[test]
+    fn a_larger_line_called_a_title_is_a_heading() {
+        let mut lines = vec![
+            line("Giá cá đầu mùa", 100.0, 100.0, 300.0, 54.0),
+            line("Ở chợ nổi Cái Răng, ghe chở bông điên điển, rau nhút", 100.0, 180.0, 500.0, 44.0),
+            line("và cá linh non đã xuất hiện nhiều hơn.", 100.0, 240.0, 380.0, 44.0),
+            line("Giá dao động quanh một trăm nghìn đồng một ký, tuỳ", 100.0, 300.0, 500.0, 44.0),
+            line("từng buổi chợ.", 100.0, 360.0, 150.0, 44.0),
+        ];
+        // 54 against 44 is under the size that makes a heading by itself, so the mark decides.
+        lines[0].title = true;
+        let blocks = layout(lines);
+        assert_eq!(blocks[0].kind, BlockKind::Heading);
+        assert_eq!(blocks[0].text, "Giá cá đầu mùa");
+        assert_eq!(blocks[1].kind, BlockKind::Paragraph);
     }
 
     #[test]
