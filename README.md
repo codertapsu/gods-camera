@@ -26,7 +26,7 @@ tools/check.sh                                   # tests, lint, Android and Wind
 cd core && cargo run -p gc-cli -- verify-packs --manifests ../packs --store ../../packs
 GC_HUB_TOKEN=<16+ characters> cargo run -p gc-cli -- hub
 tools/build-core-apple.sh                        # the core for the Mac app: static library and Swift bindings
-cd apps/apple && xcodegen generate && xcodebuild -scheme GodsCamera -derivedDataPath build -allowProvisioningUpdates build
+tools/install-mac-app.sh                         # build the Mac app and put it in /Applications; refuses while the app is running
 cd apps/apple/GodsCameraKit && swift test       # the Mac engine's tests
 open -a /Applications/GodsCamera.app --args --selftest /tmp/gc-selftest.json   # the app checks itself and writes a report
 ```
