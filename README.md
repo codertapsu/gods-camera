@@ -7,13 +7,15 @@ Personal-use virtual camera, face swap, scanner and capture tools for macOS, Win
 - Phase 0 results: [docs/phase-0-results.md](docs/phase-0-results.md)
 - Phase 1 results: [docs/phase-1-results.md](docs/phase-1-results.md)
 - Phase 2 results: [docs/phase-2-results.md](docs/phase-2-results.md)
+- Phase 3 results so far: [docs/phase-3-results.md](docs/phase-3-results.md)
 
 ## Layout
 
 | Path | What it holds |
 |---|---|
 | `core/` | Shared Rust core: alignment, tracking, model inference, the live face-swap engine, pack manifests, the hub, the `gc` command-line tool |
-| `apps/apple/` | macOS app and Camera Extension (generate the Xcode project with `xcodegen generate`) |
+| `apps/apple/` | macOS app, Camera Extension and the `gc-ocr` text reader (generate the Xcode project with `xcodegen generate`) |
+| `apps/android/` | Android companion app (`./gradlew :app:assembleDebug` with JDK 17) |
 | `tools/modelkit/` | Python reference runs and model benchmarks (`uv run python ...`) |
 | `packs/` | Model manifests with pinned SHA-256 hashes. Model files live outside the repository, in `../packs` |
 
@@ -35,6 +37,15 @@ Face swap from the command line, on a still and on a moving-face clip made from 
 cd core
 cargo run --release -p gc-cli -- swap --packs ../../packs --source face.jpg --target photo.jpg --out out.png
 cargo run --release -p gc-cli -- replay --packs ../../packs --photo gc-infer/tests/golden/input.png
+```
+
+The scanner, from a folder of photos to one document:
+
+```sh
+swift build -c release --package-path apps/apple/tools/gc-ocr
+GC_HUB_TOKEN=<16+ characters> core/target/release/gc hub --ocr apps/apple/tools/gc-ocr/.build/release/gc-ocr
+GC_HUB_TOKEN=<the same> core/target/release/gc scan <folder of photos> --out <folder>
+tools/connect-android.sh                         # let a device on a USB cable reach the hub
 ```
 
 The Mac app carries its base models inside the bundle; the build copies them from `../packs` and checks each against its manifest. Changing anything under `core/` means running `tools/build-core-apple.sh` again before building the app.

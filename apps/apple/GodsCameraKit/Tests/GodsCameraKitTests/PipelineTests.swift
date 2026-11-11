@@ -575,3 +575,81 @@ final class FaceLibraryTests: XCTestCase {
         XCTAssertTrue(library.list().isEmpty)
     }
 }
+
+final class ScanHubTests: XCTestCase {
+    /// A stand-in for the text reader: one page per picture, each with the same line.
+    private func fakeReader(in folder: URL) throws -> URL {
+        let script = folder.appendingPathComponent("reader.sh")
+        let body = """
+            #!/bin/sh
+            printf '['
+            first=1
+            for f in "$@"; do
+              [ $first = 1 ] || printf ','
+              first=0
+              printf '{"path":"%s","width":1000,"height":1000,"lines":[{"text":"Dòng chữ của trang báo","confidence":0.9,"quad":[100,100,600,100,600,140,100,140],"title":false}]}' "$f"
+            done
+            printf ']'
+            """
+        try body.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        return script
+    }
+
+    private func call(_ method: String, _ url: String, token: String, body: Data? = nil) async throws -> (Int, Data) {
+        var request = URLRequest(url: URL(string: url)!)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+    }
+
+    func testHubTakesPicturesAndListsTheDocument() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("gc-hub-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let hub = ScanHub(dataFolder: folder.appendingPathComponent("data"), reader: try fakeReader(in: folder))
+        let token = "test-token-0123456789"
+        try hub.start(port: 0, token: token)
+        defer { hub.stop() }
+        let base = try XCTUnwrap(hub.address)
+        XCTAssertTrue(base.hasPrefix("http://127.0.0.1:"))
+        XCTAssertTrue(hub.documents().isEmpty)
+
+        // What the phone does: make an upload, send two pictures, start a document job.
+        let (created, uploadData) = try await call("POST", "\(base)/v1/uploads", token: token)
+        XCTAssertEqual(created, 200)
+        let upload = try XCTUnwrap((try JSONSerialization.jsonObject(with: uploadData) as? [String: Any])?["id"] as? String)
+        for name in ["page-001.jpg", "page-002.jpg"] {
+            let (sent, _) = try await call(
+                "PUT", "\(base)/v1/uploads/\(upload)/files/\(name)?offset=0", token: token, body: Data("picture".utf8))
+            XCTAssertEqual(sent, 200)
+        }
+        let request = try JSONSerialization.data(withJSONObject: ["kind": "document", "upload_id": upload])
+        let (started, _) = try await call("POST", "\(base)/v1/jobs", token: token, body: request)
+        XCTAssertEqual(started, 200)
+
+        var document: ScannedDocument?
+        for _ in 0..<100 {
+            document = hub.documents().first
+            if document?.isDone == true || document?.status == "failed" { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        let done = try XCTUnwrap(document)
+        XCTAssertEqual(done.status, "done", done.error ?? "")
+        XCTAssertEqual(done.pictures, 2)
+        XCTAssertEqual(done.title, "Dòng chữ của trang báo")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: done.markdown.path))
+
+        // Without the token the hub answers nothing useful.
+        let (refused, _) = try await call("POST", "\(base)/v1/uploads", token: "wrong-token-000000000")
+        XCTAssertEqual(refused, 401)
+
+        hub.delete(done)
+        XCTAssertTrue(hub.documents().isEmpty)
+        hub.stop()
+        XCTAssertFalse(hub.isRunning)
+    }
+}

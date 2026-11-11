@@ -15,6 +15,9 @@ import UniformTypeIdentifiers
 /// `--swap-photo <path>` also runs the face swap: the photo is shown as the
 /// picture and one output frame is saved beside the report. The face swapped
 /// in is the largest one in `--swap-source <path>`, or in the photo itself.
+/// `--scan-folder <path>` also runs the scanner: a private hub is started, the
+/// pictures in the folder are sent to it as a device would, and the document
+/// that comes back is described.
 enum SelfTest {
     static var requestedReportPath: String? { argument(after: "--selftest") }
 
@@ -260,6 +263,10 @@ enum SelfTest {
                 runSwap(photo: URL(fileURLWithPath: photo), engine: engine, renderer: renderer)
             }
 
+            if let folder = SelfTest.argument(after: "--scan-folder") {
+                runScan(folder: URL(fileURLWithPath: folder))
+            }
+
             // 3. What the extension saw.
             wait(0.5)
             if let before = statsBefore, let after = VirtualCameraLink.readStats() {
@@ -341,6 +348,78 @@ enum SelfTest {
                 engine.sync()
             } catch {
                 report["swapError"] = "\(error)"
+            }
+        }
+
+        /// Send a folder of pictures through a hub of its own, using the text reader bundled with the app.
+        private func runScan(folder: URL) {
+            let data = FileManager.default.temporaryDirectory.appendingPathComponent("gc-selftest-hub-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: data) }
+            let reader = Bundle.main.url(forAuxiliaryExecutable: "gc-ocr")
+            report["scanReaderBundled"] = reader != nil
+            let hub = ScanHub(dataFolder: data, reader: reader)
+            let token = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            do {
+                try hub.start(port: 0, token: token)
+            } catch {
+                report["scanError"] = "hub did not start: \(error)"
+                return
+            }
+            defer { hub.stop() }
+            guard let base = hub.address else { return }
+
+            func call(_ method: String, _ path: String, body: Data? = nil, json: Bool = false) -> (Int, Data) {
+                var request = URLRequest(url: URL(string: base + path)!)
+                request.httpMethod = method
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                if json { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+                request.httpBody = body
+                let done = DispatchSemaphore(value: 0)
+                var result = (0, Data())
+                URLSession.shared.dataTask(with: request) { data, response, _ in
+                    result = ((response as? HTTPURLResponse)?.statusCode ?? 0, data ?? Data())
+                    done.signal()
+                }.resume()
+                done.wait()
+                return result
+            }
+
+            let started = Date()
+            let (_, created) = call("POST", "/v1/uploads")
+            guard let upload = (try? JSONSerialization.jsonObject(with: created) as? [String: Any])?["id"] as? String else {
+                report["scanError"] = "the hub did not make an upload"
+                return
+            }
+            let pictures = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+                .filter { ["jpg", "jpeg", "png", "heic"].contains($0.pathExtension.lowercased()) }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            for (index, picture) in pictures.enumerated() {
+                guard let bytes = try? Data(contentsOf: picture) else { continue }
+                let name = String(format: "page-%03d.%@", index + 1, picture.pathExtension.lowercased())
+                _ = call("PUT", "/v1/uploads/\(upload)/files/\(name)?offset=0", body: bytes)
+            }
+            let request = try? JSONSerialization.data(withJSONObject: ["kind": "document", "upload_id": upload])
+            let (status, _) = call("POST", "/v1/jobs", body: request, json: true)
+            report["scanJobAccepted"] = status == 200
+
+            var document: ScannedDocument?
+            for _ in 0..<600 {
+                document = hub.documents().first
+                if document?.isDone == true || document?.status == "failed" { break }
+                wait(0.1)
+            }
+            report["scanSeconds"] = (Date().timeIntervalSince(started) * 10).rounded() / 10
+            report["scanPictures"] = pictures.count
+            report["scanStatus"] = document?.status ?? "no document"
+            if let document, document.isDone, let text = try? String(contentsOf: document.text, encoding: .utf8) {
+                report["scanTitle"] = document.title
+                report["scanCharacters"] = text.count
+                report["scanParagraphs"] = text.components(separatedBy: "\n\n").count
+                let copy = URL(fileURLWithPath: reportPath).deletingPathExtension().appendingPathExtension("scan.txt")
+                try? text.write(to: copy, atomically: true, encoding: .utf8)
+                report["scanText"] = copy.path
+            } else if let error = document?.error {
+                report["scanError"] = error
             }
         }
 

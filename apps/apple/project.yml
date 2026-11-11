@@ -43,11 +43,29 @@ targets:
       - package: GodsCameraKit
       - target: CameraExtension
         embed: true
+      # The text reader the hub runs for document jobs, placed beside the app's own program.
+      - target: gc-ocr
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
     postBuildScripts:
       - name: Bundle the base models
         script: |
           "${SRCROOT}/../../tools/bundle-packs.sh"
         basedOnDependencyAnalysis: false
+  gc-ocr:
+    type: tool
+    platform: macOS
+    sources:
+      - path: tools/gc-ocr/Sources/gc-ocr
+    settings:
+      base:
+        PRODUCT_NAME: gc-ocr
+        PRODUCT_BUNDLE_IDENTIFIER: dev.godscamera.GodsCamera.ocr
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "7"
+        SKIP_INSTALL: YES
   CameraExtension:
     type: system-extension
     platform: macOS

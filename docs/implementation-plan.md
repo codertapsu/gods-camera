@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-11, revision 7 (Phases 1 and 2 built; their manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-11, revision 8 (Phases 1 and 2 built, Phase 3 under way; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -584,29 +584,35 @@ Exit: the Mac meets its targets in section 7; the face region shows no visible l
 
 Goal: scan documents into consolidated Vietnamese or English text, and use the phone as a camera and a remote.
 
+State: the scanner works from end to end. Pictures sent from the Android app are read on the Mac and merged into one document. The rest of this phase is open. Details are in [phase-3-results.md](phase-3-results.md).
+
 3a. On localhost, no phone needed
 
-- [ ] Hub API in development mode: HTTP, WebSocket, resumable uploads, OpenAPI description.
-- [ ] Token, origin check, size and dimension caps, timeouts and generic errors on every route.
-- [ ] Job orchestrator with persistence and priority for live video.
-- [ ] Command-line client covering every hub operation.
-- [ ] Document pipeline: deskew, dewarp, contrast; OCR with Vision at the accurate level; layout and reading order; overlap removal by text alignment.
-- [ ] Review screen on the Mac: image region beside text, confidence highlighting, quick fixes.
-- [ ] Export to Markdown, plain text, DOCX, searchable PDF and JSON with geometry.
-- [ ] Golden document corpus with character-error and reading-order metrics.
-- [ ] Android app skeleton in the emulator: Compose shell, bindings to the Rust core, hub client. It uploads images and follows a job.
+- [x] Hub in development mode: HTTP and resumable uploads. The WebSocket for events and the OpenAPI description are open; clients poll for now.
+- [x] Token, origin check, file-size cap, a time limit on the text reader, and generic errors on every route. The pixel-dimension cap is open.
+- [x] Jobs run in the background with progress, are kept on disk, and run one heavy job at a time. Real priority for live video arrives with the video stream.
+- [x] Command-line client covering every hub operation so far: `gc upload`, `gc scan`.
+- [x] Document pipeline: OCR with Vision at the accurate level; layout and reading order; overlap removal by text alignment. Deskew, dewarp and contrast are left to Vision and to the phone's scanner for now.
+- [ ] Review screen on the Mac: image region beside text, confidence highlighting, quick fixes. The app lists received documents and opens, copies or reveals them; the review screen itself is open.
+- [x] Export to Markdown, plain text and JSON with geometry. DOCX and searchable PDF are open.
+- [x] Test documents with a character-error measure: `make_document.py` renders a page with known text and overlapping, skewed shots of it. Photos of real newspapers are still to be added.
+- [x] Android app in the emulator: Compose shell and hub client. It uploads pictures and follows a job. Loading the Rust core in the app waits for Phase 6, which is the first to need it; the core already builds for Android.
 
 3b. With the Tab S9+ on a USB cable
 
-- [ ] A script that sets up `adb reverse`; a debug-only setting that allows unencrypted traffic to localhost.
-- [ ] Single documents with the ML Kit document scanner: edge detection, clean-up, gallery import.
+- [x] A script that sets up `adb reverse`; a debug-only setting that allows unencrypted traffic to localhost.
+- [x] Single documents with the ML Kit document scanner: edge detection, clean-up, gallery import. Written; it needs the unlocked tablet to try.
 - [ ] Long-document mode with CameraX: guided overlapping shots for newspapers and scrolls.
-- [ ] Batch auto-capture; import through the system photo picker; a share target so screenshots can be sent from any app.
+- [x] Import through the system photo picker; a share target so screenshots can be sent from any app. Batch auto-capture is open.
 - [ ] On-device OCR preview with ML Kit, whose Latin model covers Vietnamese, so a page can be checked before moving on.
-- [ ] Uploads that resume in the background.
+- [x] Uploads that resume after a dropped connection. Carrying on in the background is open.
 - [ ] Phone as camera: CameraX into the hardware encoder into the hub stream, with lens, zoom and exposure controls. A camera foreground service keeps it running. The desktop lists it as an input source.
 - [ ] Remote control screen: loop on and off, source face, preset.
-- [ ] Adaptive layout for the tablet.
+- [x] Adaptive layout for the tablet.
+
+Checks only you can do
+
+- [ ] Unlock the tablet and run the scanner on it: the document scanner, the photo picker, and a share from another app.
 
 3c. Paired mode over Wi-Fi (spike S7 first)
 

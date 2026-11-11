@@ -410,3 +410,13 @@ pub async fn serve(listener: tokio::net::TcpListener, config: HubConfig) -> Resu
     axum::serve(listener, router(config)).await?;
     Ok(())
 }
+
+/// Serve until `stop` completes, then finish the requests in hand and return.
+pub async fn serve_until(
+    listener: tokio::net::TcpListener,
+    config: HubConfig,
+    stop: impl std::future::Future<Output = ()> + Send + 'static,
+) -> Result<(), HubError> {
+    axum::serve(listener, router(config)).with_graceful_shutdown(stop).await?;
+    Ok(())
+}

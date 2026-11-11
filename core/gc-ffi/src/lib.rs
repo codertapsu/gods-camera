@@ -325,6 +325,68 @@ impl FaceEnroller {
     }
 }
 
+/// The hub: the local server that phones and tablets send their work to.
+///
+/// This is development mode. It listens only on this computer's own loopback
+/// address, so a device reaches it through a USB cable with `adb reverse`.
+#[derive(uniffi::Object)]
+pub struct HubServer {
+    // Dropping the runtime stops the server's threads.
+    _runtime: tokio::runtime::Runtime,
+    stop: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    address: String,
+}
+
+#[uniffi::export]
+impl HubServer {
+    /// Start the hub on `port` of the loopback address.
+    ///
+    /// `token` is what clients must present, at least 16 characters. Uploads
+    /// and results are kept under `data_dir`. `ocr_command` is the program
+    /// that reads text from pictures, with any leading arguments; when it is
+    /// empty the hub refuses document jobs.
+    #[uniffi::constructor]
+    pub fn start(port: u16, token: String, data_dir: String, ocr_command: Vec<String>) -> Result<Arc<Self>, CoreError> {
+        let failed = |message: String| CoreError::Failed { message };
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("gc-hub")
+            .enable_all()
+            .build()
+            .map_err(|e| failed(e.to_string()))?;
+        let config = gc_link::HubConfig {
+            token,
+            data_dir: PathBuf::from(data_dir),
+            max_file_bytes: 64 << 20,
+            allowed_origins: Vec::new(),
+            ocr_command: (!ocr_command.is_empty()).then_some(ocr_command),
+        };
+        let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        let listener = runtime.block_on(gc_link::bind_dev(address, &config)).map_err(|e| failed(e.to_string()))?;
+        let bound = listener.local_addr().map_err(|e| failed(e.to_string()))?;
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        runtime.spawn(async move {
+            let _ = gc_link::serve_until(listener, config, async {
+                let _ = stopped.await;
+            })
+            .await;
+        });
+        Ok(Arc::new(Self { _runtime: runtime, stop: Mutex::new(Some(stop)), address: format!("http://{bound}") }))
+    }
+
+    /// Where the hub listens, as a URL.
+    pub fn address(&self) -> String {
+        self.address.clone()
+    }
+
+    /// Stop taking requests. Requests in hand are finished first.
+    pub fn stop(&self) {
+        if let Some(stop) = self.stop.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            let _ = stop.send(());
+        }
+    }
+}
+
 /// The version of the core, for diagnostics.
 #[uniffi::export]
 pub fn core_version() -> String {

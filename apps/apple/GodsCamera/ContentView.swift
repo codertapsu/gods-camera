@@ -47,6 +47,7 @@ struct ContentView: View {
                     virtualCameraSection
                     sourceSection
                     FaceSection(face: model.face, status: model.status)
+                    ScannerSection(scan: model.scan)
                     loopSection
                     savedLoopsSection
                     Button("Save a diagnostics report…") { model.exportDiagnostics() }
@@ -58,7 +59,7 @@ struct ContentView: View {
                         ) {
                             Button("Delete everything", role: .destructive) { model.deleteAllData() }
                         } message: {
-                            Text("Saved faces, their encryption key, saved loops and the list of blocked apps are removed from this Mac. This cannot be undone.")
+                            Text("Saved faces, their encryption key, saved loops, scanned documents and the list of blocked apps are removed from this Mac. This cannot be undone.")
                         }
                 }
                 .padding(16)

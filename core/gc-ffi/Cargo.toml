@@ -11,7 +11,9 @@ publish.workspace = true
 crate-type = ["staticlib", "cdylib", "lib"]
 
 [dependencies]
+gc-link = { version = "0.1.0", path = "../gc-link" }
 gc-live = { version = "0.1.0", path = "../gc-live" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync"] }
 uniffi = { version = "0.32.2", features = ["cli"] }
 
 [[bin]]

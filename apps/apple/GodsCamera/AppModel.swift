@@ -53,6 +53,8 @@ final class AppModel: ObservableObject {
     let extensionManager = ExtensionManager()
     /// The face swap: saved faces, the switch and its options.
     let face: FaceModel
+    /// The scanner: the hub that devices send pictures to, and the documents received.
+    let scan = ScanModel()
     /// Shows the engine's output. Each frame's surface is handed to the layer as it is, without a copy.
     let previewLayer = CALayer()
 
@@ -104,6 +106,7 @@ final class AppModel: ObservableObject {
         wireEngine()
         extensionManager.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &bag)
         face.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &bag)
+        scan.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &bag)
     }
 
     // MARK: Start-up
@@ -120,6 +123,7 @@ final class AppModel: ObservableObject {
         applySettings()
         registerHotKeys()
         face.start()
+        scan.start()
         voice.onVoice = { [weak self] in Task { @MainActor in self?.voiceHeard() } }
         // The camera reports when an app starts or stops reading it; the timer covers everything else.
         watcher = VirtualCameraWatcher { [weak self] in Task { @MainActor in self?.tick() } }
@@ -172,6 +176,7 @@ final class AppModel: ObservableObject {
 
     /// Keep the link to the virtual camera open, read its counters and follow what its readers ask for.
     private func tick() {
+        scan.refresh()
         link.closeIfStale()
         watcher?.attach()
         let stats = VirtualCameraLink.readStats()
@@ -486,6 +491,7 @@ final class AppModel: ObservableObject {
     /// Remove saved faces, saved loops and the settings around them.
     func deleteAllData() {
         face.deleteEverything()
+        scan.deleteEverything()
         for clip in savedClips { library?.delete(clip.id) }
         savedClips = []
         currentClip = nil
@@ -509,6 +515,7 @@ final class AppModel: ObservableObject {
             "readers: \(readers.map { "\($0.app.name) (\($0.pid))" }), blocked apps: \(blockedApps), withholding: \(withholding)",
             "engine: \(status)",
             "face swap: \(face.state), \(face.faces.count) saved face(s), quality \(face.quality.rawValue)",
+            "scanner: hub \(scan.running ? "on" : "off"), \(scan.documents.count) document(s)",
             "camera access: \(cameraAuthorized), cameras: \(cameras.map(\.name))",
             "", "--- log ---",
         ]

@@ -251,6 +251,16 @@
         }
       }
     },
+    "Connect the device with a USB cable, run tools/connect-android.sh, and enter this token in the app on the device.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nối thiết bị bằng cáp USB, chạy tools/connect-android.sh, rồi nhập mã này vào ứng dụng trên thiết bị."
+          }
+        }
+      }
+    },
     "Control-Option-Command-L": {
       "localizations": {
         "vi": {
@@ -267,6 +277,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Control-Option-Command-R"
+          }
+        }
+      }
+    },
+    "Copy": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sao chép"
+          }
+        }
+      }
+    },
+    "Copy the text": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sao chép văn bản"
+          }
+        }
+      }
+    },
+    "Could not be read": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không đọc được"
           }
         }
       }
@@ -301,6 +341,16 @@
         }
       }
     },
+    "Delete this document": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xoá tài liệu này"
+          }
+        }
+      }
+    },
     "Delete this face": {
       "localizations": {
         "vi": {
@@ -327,6 +377,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Không dùng để mạo danh người khác, lừa dối hay quấy rối."
+          }
+        }
+      }
+    },
+    "Document without text": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tài liệu không có chữ"
           }
         }
       }
@@ -651,6 +711,16 @@
         }
       }
     },
+    "Open the document": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mở tài liệu"
+          }
+        }
+      }
+    },
     "Other apps cannot see God's Camera until it is installed.": {
       "localizations": {
         "vi": {
@@ -711,12 +781,32 @@
         }
       }
     },
+    "Reading %lld %…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang đọc %lld %…"
+          }
+        }
+      }
+    },
     "REC %lld s": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "GHI %lld giây"
+          }
+        }
+      }
+    },
+    "Receive scans from my phone or tablet": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhận bản quét từ điện thoại hoặc máy tính bảng"
           }
         }
       }
@@ -811,12 +901,12 @@
         }
       }
     },
-    "Saved faces, their encryption key, saved loops and the list of blocked apps are removed from this Mac. This cannot be undone.": {
+    "Saved faces, their encryption key, saved loops, scanned documents and the list of blocked apps are removed from this Mac. This cannot be undone.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Các khuôn mặt đã lưu, khoá mã hoá của chúng, các vòng lặp đã lưu và danh sách ứng dụng bị chặn sẽ bị xoá khỏi máy Mac này. Không thể hoàn tác."
+            "value": "Các khuôn mặt đã lưu, khoá mã hoá của chúng, các vòng lặp đã lưu, tài liệu đã quét và danh sách ứng dụng bị chặn sẽ bị xoá khỏi máy Mac này. Không thể hoàn tác."
           }
         }
       }
@@ -827,6 +917,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Đoạn lặp đã lưu"
+          }
+        }
+      }
+    },
+    "Scanner": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Máy quét"
           }
         }
       }
@@ -867,6 +967,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mở God's Camera"
+          }
+        }
+      }
+    },
+    "Show in Finder": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện trong Finder"
           }
         }
       }
@@ -1027,6 +1137,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Phòng đang sáng hơn hoặc tối hơn so với đoạn lặp này."
+          }
+        }
+      }
+    },
+    "The scanner could not start. Another program may be using its port.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không khởi động được máy quét. Có thể một chương trình khác đang dùng cổng của nó."
           }
         }
       }

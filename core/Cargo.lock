@@ -656,7 +656,9 @@ dependencies = [
 name = "gc-ffi"
 version = "0.1.0"
 dependencies = [
+ "gc-link",
  "gc-live",
+ "tokio",
  "uniffi",
 ]
 
