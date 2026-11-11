@@ -562,15 +562,18 @@ final class AppModel: ObservableObject {
         if found != appsToReopen { appsToReopen = found }
     }
 
-    /// When the running camera extension was installed: the time macOS put its
-    /// files in place. Apps opened before then have not seen this camera.
+    /// When the running camera extension was installed. Apps opened before then have not seen this camera.
+    ///
+    /// macOS keeps each installed version in a folder of its own, made at the
+    /// moment of installing. The extension's bundle inside it keeps the date it
+    /// was built, which says nothing, so the folder's date is the one to read.
     private static func cameraInstallDate(extensionPid: Int32) -> Date? {
         var buffer = [CChar](repeating: 0, count: 4096)
         guard proc_pidpath(extensionPid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
         var url = URL(fileURLWithPath: String(cString: buffer))
         while url.path != "/", url.pathExtension != "systemextension" { url.deleteLastPathComponent() }
         guard url.pathExtension == "systemextension" else { return nil }
-        return (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+        return (try? url.deletingLastPathComponent().resourceValues(forKeys: [.creationDateKey]))?.creationDate
     }
 
     /// Ask an app to quit, as its own Quit command does. It may ask the user about unsaved work.

@@ -118,6 +118,10 @@ final class ExtensionManager: NSObject, ObservableObject, OSSystemExtensionReque
         // A properties request fails this way when nothing is installed yet.
         if ns.domain == OSSystemExtensionErrorDomain, ns.code == OSSystemExtensionError.extensionNotFound.rawValue {
             set(.notInstalled)
+        } else if ns.domain == OSSystemExtensionErrorDomain, ns.code == OSSystemExtensionError.authorizationRequired.rawValue {
+            // macOS asked for an administrator's approval and did not get it.
+            // Nothing was changed, so show what is installed, not an error.
+            refresh()
         } else {
             set(.failed("\(ns.localizedDescription) (\(ns.code))"))
         }
