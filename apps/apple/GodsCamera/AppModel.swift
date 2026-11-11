@@ -124,6 +124,9 @@ final class AppModel: ObservableObject {
         registerHotKeys()
         face.start()
         scan.start()
+        // For setting up a test session from the command line: do what the
+        // Scanner section's Connect a device button does, once.
+        if CommandLine.arguments.contains("--connect-devices") { scan.connectDevices() }
         voice.onVoice = { [weak self] in Task { @MainActor in self?.voiceHeard() } }
         // The camera reports when an app starts or stops reading it; the timer covers everything else.
         watcher = VirtualCameraWatcher { [weak self] in Task { @MainActor in self?.tick() } }

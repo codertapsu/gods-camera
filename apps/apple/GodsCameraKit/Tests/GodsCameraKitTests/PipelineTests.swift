@@ -653,3 +653,20 @@ final class ScanHubTests: XCTestCase {
         XCTAssertFalse(hub.isRunning)
     }
 }
+
+final class DeviceConnectorTests: XCTestCase {
+    func testDeviceListIsReadWithItsStates() {
+        let listing = """
+            List of devices attached
+            R52W70ABCDE\tdevice
+            adb-R52W70ABCDE-t9yuQe._adb-tls-connect._tcp\tdevice
+            emulator-5554\toffline
+            0123456789\tunauthorized
+
+            """
+        let (ready, waiting) = DeviceConnector.parseDevices(listing)
+        XCTAssertEqual(ready, ["R52W70ABCDE", "adb-R52W70ABCDE-t9yuQe._adb-tls-connect._tcp"])
+        XCTAssertEqual(waiting, 2)
+        XCTAssertEqual(DeviceConnector.parseDevices("List of devices attached\n").ready, [])
+    }
+}

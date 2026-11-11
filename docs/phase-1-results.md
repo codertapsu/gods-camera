@@ -31,10 +31,12 @@ All from the app's self-test, which sends the test pattern through the real engi
 | Memory after 3 seconds, and after 10 minutes | 158 MB, 160 MB |
 | Update from one extension build to the next | 14 seconds in total, no restart of the Mac |
 | Old extension standing down during an update | 0.66 seconds |
+| From the engine's output to an app reading the camera, median and 95th percentile | 6.3 ms and 8.8 ms. Targets: 12 and 25 ms |
+| From capture to the extension handing the frame on | 2.9 ms, at most 4.8 ms |
 
 Tests: 30 in the Swift package, all passing. They cover the renderer, the sources, clips, loop points, the counters, app identification and the voice detector.
 
-Not measured yet: the delay from capture to the meeting app, and frames delivered to a reader. Both need an app that reads the camera, which needs camera access for God's Camera or a meeting app in use.
+The last two rows were measured on 2026-11-11, after you granted camera access: the app read its own virtual camera back at 1920 pixels wide, the way a meeting app does, and received 598 of 598 frames.
 
 ## Three things macOS 27 does differently from what the plan assumed
 

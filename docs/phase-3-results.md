@@ -14,7 +14,7 @@ Phase 3 is under way, not finished. The scanner, the second idea on your list, w
 | Text reader | `gc-ocr`, a small tool that reads text with Apple's Vision at the accurate level, in Vietnamese and English. It is bundled inside the Mac app |
 | Merging | `gc-doc` in the core: places overlapping photos in one frame, joins cut lines, removes repeats, finds columns and reading order |
 | Output | Markdown, plain text, and JSON with every line's position |
-| Mac app | **Scanner** section: a switch for the hub, the token for the device, and the documents received, each with open, copy, show in Finder and delete |
+| Mac app | **Scanner** section: a switch for the hub, **Connect a device** for Android devices attached for debugging, and the documents received, each with open, copy, show in Finder and delete |
 | Android app | Connects to the hub, takes pages from the document scanner, the photo picker or another app's share sheet, sends them, follows the job and shows the text with copy and share. English and Vietnamese |
 | Tools | `gc scan <folder>`, `gc merge-ocr`, `tools/connect-android.sh`, `tools/modelkit/make_document.py` |
 
@@ -55,9 +55,9 @@ The six-shot Vietnamese document was also sent along each path. The merger was i
 | The Android app on the Galaxy Tab S9+, over Wi-Fi debugging, through the hub | Current | 1 word wrong, in 2 seconds; the app showed the text in Vietnamese |
 | `gc scan` through the hub | Earlier | 3 words wrong |
 | The Android app in the emulator | Earlier | 3 words wrong |
-| The installed Mac app's own hub and bundled reader | Earlier | 3 words wrong. Not run again, because you were using the app |
+| The installed Mac app's own hub and bundled reader, nine shots in a 3 × 3 grid | Current | 5 words wrong, as in the table above, in 1.3 seconds |
 
-Tests: 72 in the core and 36 in the Swift package. The core's check also builds for Android and Windows.
+Tests: 72 in the core and 37 in the Swift package. The core's check also builds for Android and Windows.
 
 These pages are rendered, not photographed. Real newspaper photos will be harder: curved paper, shadows, smaller print. The measure on real photos is still to come.
 
@@ -84,10 +84,10 @@ Still unchecked: a real page photographed with the scanner, the photo picker wit
 ## Checks for you
 
 1. On the Mac, open God's Camera. In **Scanner**, turn on **Receive scans from my phone or tablet**.
-2. With the tablet unlocked and connected for debugging, by cable or Wi-Fi, run `tools/connect-android.sh` in a terminal on the Mac. It sets up the connection, opens the app on the tablet and gives it the hub's token. macOS asks once for permission to read the token from the Keychain; click **Always Allow**.
+2. With the tablet unlocked and attached for debugging, by cable or Wi-Fi, click **Connect a device** in the same section. It should answer **Connected: SM-X816B**, and the app opens on the tablet.
 3. On the tablet, the app should say **Connected to the Mac** (**Đã kết nối với máy Mac**).
 4. Tap **Scan a document** and photograph a printed page, or tap **Add pictures** and choose several overlapping photos of a newspaper page.
 5. Tap **Send to the Mac**. The text should appear on the tablet, and the document in the Mac app's **Scanner** list.
 6. Tell me how the text compares with the page, especially the reading order and the Vietnamese tone marks.
 
-The token hand-over in step 2 works in debug builds only. Pairing by QR code, in part 3c, replaces it.
+**Connect a device** hands the hub's token to the app, which only the debug build accepts. Pairing by QR code, in part 3c, replaces it. `tools/connect-android.sh` does the same from a terminal, for a hub started with `gc hub`.

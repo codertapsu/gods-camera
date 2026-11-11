@@ -51,6 +51,16 @@
         }
       }
     },
+    "A device is attached but not ready. Unlock it and allow debugging on its screen.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Có thiết bị đang nối nhưng chưa sẵn sàng. Hãy mở khoá thiết bị và cho phép gỡ lỗi trên màn hình của nó."
+          }
+        }
+      }
+    },
     "A model file is not installed: %@": {
       "localizations": {
         "vi": {
@@ -147,6 +157,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Một nhãn “AI” được vẽ lên hình của bạn. Bạn có thể tắt nó; khi đó hãy cân nhắc nói cho mọi người biết."
+          }
+        }
+      }
+    },
+    "Attach an Android device for debugging, by USB cable or Wi-Fi, then click Connect a device. The app on the device opens, already set up.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kết nối thiết bị Android ở chế độ gỡ lỗi, bằng cáp USB hoặc Wi-Fi, rồi bấm Kết nối thiết bị. Ứng dụng trên thiết bị sẽ mở ra, đã được thiết lập sẵn."
           }
         }
       }
@@ -251,12 +271,22 @@
         }
       }
     },
-    "Connect the device for debugging, by USB cable or Wi-Fi, and run tools/connect-android.sh. It sets up the connection and gives the app this token.": {
+    "Connect a device": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kết nối thiết bị ở chế độ gỡ lỗi, bằng cáp USB hoặc Wi-Fi, rồi chạy tools/connect-android.sh. Lệnh này thiết lập kết nối và chuyển mã này cho ứng dụng."
+            "value": "Kết nối thiết bị"
+          }
+        }
+      }
+    },
+    "Connected: %@.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã kết nối: %@."
           }
         }
       }
@@ -451,6 +481,16 @@
         }
       }
     },
+    "God's Camera could not be opened on %@. Install it there first.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không mở được God's Camera trên %@. Hãy cài ứng dụng lên thiết bị đó trước."
+          }
+        }
+      }
+    },
     "God's Camera needs your permission to use the camera.": {
       "localizations": {
         "vi": {
@@ -637,6 +677,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Không tìm thấy camera nào."
+          }
+        }
+      }
+    },
+    "No device found. Connect it by USB cable, or turn on Wi-Fi debugging.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không tìm thấy thiết bị. Hãy nối bằng cáp USB hoặc bật gỡ lỗi qua Wi-Fi."
           }
         }
       }
@@ -1077,6 +1127,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Không đọc được hình đó."
+          }
+        }
+      }
+    },
+    "The Android debugging tool (adb) was not found on this Mac.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không tìm thấy công cụ gỡ lỗi Android (adb) trên máy Mac này."
           }
         }
       }

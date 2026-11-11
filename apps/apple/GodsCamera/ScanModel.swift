@@ -12,6 +12,10 @@ final class ScanModel: ObservableObject {
     @Published private(set) var token = ""
     @Published private(set) var documents: [ScannedDocument] = []
     @Published var message: String?
+    /// The adb steps are running.
+    @Published private(set) var connecting = false
+    /// What the last attempt to connect a device came to.
+    @Published private(set) var deviceMessage: String?
 
     private let hub: ScanHub
     private let defaults = UserDefaults.standard
@@ -53,6 +57,43 @@ final class ScanModel: ObservableObject {
     private func turnOff() {
         hub.stop()
         running = false
+        deviceMessage = nil
+    }
+
+    /// Connect the Android devices attached for debugging: lead their localhost
+    /// to this hub and open the app on them with the hub's token.
+    func connectDevices() {
+        guard running, !connecting else { return }
+        connecting = true
+        deviceMessage = nil
+        let token = token
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outcome = DeviceConnector.connect(port: ScanHub.defaultPort, token: token)
+            DispatchQueue.main.async {
+                self.connecting = false
+                switch outcome {
+                case .noTool:
+                    self.deviceMessage = String(localized: "The Android debugging tool (adb) was not found on this Mac.")
+                case .noDevices(let waiting):
+                    self.deviceMessage =
+                        waiting > 0
+                        ? String(localized: "A device is attached but not ready. Unlock it and allow debugging on its screen.")
+                        : String(localized: "No device found. Connect it by USB cable, or turn on Wi-Fi debugging.")
+                case .connected(let devices):
+                    let opened = devices.filter(\.appOpened).map(\.model)
+                    let missing = devices.filter { !$0.appOpened }.map(\.model)
+                    var parts: [String] = []
+                    if !opened.isEmpty {
+                        parts.append(String(localized: "Connected: \(opened.joined(separator: ", "))."))
+                    }
+                    if !missing.isEmpty {
+                        parts.append(String(localized: "God's Camera could not be opened on \(missing.joined(separator: ", ")). Install it there first."))
+                    }
+                    self.deviceMessage = parts.joined(separator: " ")
+                }
+                Log.app.info("connect devices: \(String(describing: outcome))")
+            }
+        }
     }
 
     /// Called once a second while the hub runs.
@@ -102,8 +143,15 @@ struct ScannerSection: View {
             Text("Scanner").font(.headline)
             Toggle("Receive scans from my phone or tablet", isOn: Binding(get: { scan.wanted }, set: { scan.setWanted($0) }))
             if scan.running {
-                Text("Connect the device for debugging, by USB cable or Wi-Fi, and run tools/connect-android.sh. It sets up the connection and gives the app this token.")
+                Text("Attach an Android device for debugging, by USB cable or Wi-Fi, then click Connect a device. The app on the device opens, already set up.")
                     .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Connect a device") { scan.connectDevices() }.disabled(scan.connecting)
+                    if scan.connecting { ProgressView().controlSize(.small) }
+                }
+                if let result = scan.deviceMessage {
+                    Text(result).font(.caption)
+                }
                 HStack {
                     Text(scan.token).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                     Spacer()
