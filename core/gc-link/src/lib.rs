@@ -3,6 +3,12 @@
 //! This is the development-mode hub. It listens on loopback only, requires a
 //! bearer token on every route except health, and rejects browser origins.
 //! Paired mode (TLS, per-device keys) and the live video stream come later.
+//!
+//! Work that takes time runs as a job: the client starts it, asks how far it
+//! is, and fetches the files it produced. Jobs are written to disk, so a
+//! finished job can still be read after the hub restarts.
+
+mod jobs;
 
 use axum::{
     body::Body,
@@ -36,6 +42,10 @@ pub struct HubConfig {
     pub max_file_bytes: u64,
     /// Browser origins allowed to call the hub. Empty means none.
     pub allowed_origins: Vec<String>,
+    /// The program that reads text from pictures, with its leading arguments.
+    /// Picture paths are added after them, and it must print what `gc-ocr`
+    /// prints. Without it, document jobs are refused.
+    pub ocr_command: Option<Vec<String>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -73,13 +83,26 @@ pub struct JobRequest {
     pub upload_id: String,
 }
 
+/// A piece of work the hub does for a client.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Job {
     pub id: String,
+    /// `inventory` or `document`.
     pub kind: String,
     pub upload_id: String,
+    /// `queued`, `running`, `done` or `failed`.
     pub status: String,
+    /// How far a running job is, 0 to 1.
+    #[serde(default)]
+    pub progress: f32,
+    /// A summary once the job is done.
     pub result: Option<serde_json::Value>,
+    /// Files the job produced, fetched from `/v1/jobs/{id}/files/{name}`.
+    #[serde(default)]
+    pub files: Vec<String>,
+    /// Why a failed job failed, in words fit for the user.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -92,6 +115,8 @@ pub struct ErrorBody {
 struct AppState {
     config: Arc<HubConfig>,
     jobs: Arc<Mutex<HashMap<String, Job>>>,
+    /// Heavy jobs run one at a time, so they do not starve the live picture.
+    heavy: Arc<tokio::sync::Semaphore>,
 }
 
 /// A generic error for the client; details stay in the server log.
@@ -274,21 +299,63 @@ async fn create_job(
     Json(req): Json<JobRequest>,
 ) -> Result<Json<Job>, ApiError> {
     let dir = upload_dir(&state, &req.upload_id)?;
-    // The only job kind so far summarises an upload. OCR, 3D and LLM jobs plug in here.
-    if req.kind != "inventory" {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "unknown job kind"));
-    }
     let files = list_files(&dir).map_err(internal("list upload"))?;
-    let bytes: u64 = files.iter().map(|f| f.bytes).sum();
-    let job = Job {
+    let mut job = Job {
         id: uuid::Uuid::new_v4().to_string(),
         kind: req.kind,
         upload_id: req.upload_id,
-        status: "done".into(),
-        result: Some(serde_json::json!({ "files": files.len(), "bytes": bytes })),
+        status: "queued".into(),
+        progress: 0.0,
+        result: None,
+        files: Vec::new(),
+        error: None,
     };
-    state.jobs.lock().unwrap().insert(job.id.clone(), job.clone());
+    match job.kind.as_str() {
+        // A summary of an upload: quick, so it is done before the answer goes out.
+        "inventory" => {
+            let bytes: u64 = files.iter().map(|f| f.bytes).sum();
+            job.status = "done".into();
+            job.progress = 1.0;
+            job.result = Some(serde_json::json!({ "files": files.len(), "bytes": bytes }));
+            jobs::store(&state, &job);
+        }
+        // Text from photos, merged into one document. Runs in the background.
+        "document" => {
+            if state.config.ocr_command.is_none() {
+                return Err(ApiError(StatusCode::NOT_IMPLEMENTED, "this hub has no text reader set up"));
+            }
+            let pictures: Vec<PathBuf> =
+                files.iter().filter(|f| jobs::is_picture(&f.name)).map(|f| dir.join(&f.name)).collect();
+            if pictures.is_empty() {
+                return Err(ApiError(StatusCode::BAD_REQUEST, "the upload holds no pictures"));
+            }
+            jobs::store(&state, &job);
+            tokio::spawn(jobs::run_document(state.clone(), job.id.clone(), pictures));
+        }
+        _ => return Err(ApiError(StatusCode::BAD_REQUEST, "unknown job kind")),
+    }
     Ok(Json(job))
+}
+
+/// A file a job produced.
+async fn get_job_file(
+    State(state): State<AppState>,
+    Path((id, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    if !valid_id(&id) || !valid_name(&name) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid name"));
+    }
+    let listed = state.jobs.lock().unwrap().get(&id).is_some_and(|job| job.files.contains(&name));
+    if !listed {
+        return Err(ApiError(StatusCode::NOT_FOUND, "no such file"));
+    }
+    let bytes = tokio::fs::read(jobs::job_dir(&state.config, &id).join(&name)).await.map_err(internal("read job file"))?;
+    let kind = match name.rsplit('.').next() {
+        Some("json") => "application/json",
+        Some("md") => "text/markdown; charset=utf-8",
+        _ => "text/plain; charset=utf-8",
+    };
+    Ok(([(header::CONTENT_TYPE, kind)], bytes).into_response())
 }
 
 async fn get_job(
@@ -307,7 +374,8 @@ async fn get_job(
 
 /// Build the hub's router. Exposed so tests can serve it on an ephemeral port.
 pub fn router(config: HubConfig) -> Router {
-    let state = AppState { config: Arc::new(config), jobs: Arc::default() };
+    let jobs = Arc::new(Mutex::new(jobs::load(&config)));
+    let state = AppState { config: Arc::new(config), jobs, heavy: Arc::new(tokio::sync::Semaphore::new(1)) };
     Router::new()
         .route("/v1/health", get(health))
         .route("/v1/uploads", post(create_upload))
@@ -315,6 +383,7 @@ pub fn router(config: HubConfig) -> Router {
         .route("/v1/uploads/{id}/files/{name}", put(put_file))
         .route("/v1/jobs", post(create_job))
         .route("/v1/jobs/{id}", get(get_job))
+        .route("/v1/jobs/{id}/files/{name}", get(get_job_file))
         // File bodies are streamed and counted by the handler itself.
         .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(state.clone(), guard))
@@ -333,6 +402,7 @@ pub async fn bind_dev(
         return Err(HubError::WeakToken);
     }
     std::fs::create_dir_all(config.data_dir.join("uploads"))?;
+    std::fs::create_dir_all(config.data_dir.join("jobs"))?;
     Ok(tokio::net::TcpListener::bind(addr).await?)
 }
 

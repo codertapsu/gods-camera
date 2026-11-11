@@ -7,7 +7,8 @@ publish.workspace = true
 
 [dependencies]
 anyhow = "1.0.104"
-clap = { version = "4.6.7", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive", "env"] }
+gc-doc = { version = "0.1.0", path = "../gc-doc" }
 gc-link = { version = "0.1.0", path = "../gc-link" }
 gc-live = { version = "0.1.0", path = "../gc-live" }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

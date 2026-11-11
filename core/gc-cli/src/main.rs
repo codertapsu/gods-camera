@@ -28,6 +28,18 @@ enum Command {
         /// Largest accepted file, in megabytes.
         #[arg(long, default_value_t = 64)]
         max_file_mb: u64,
+        /// The program that reads text from pictures, such as `gc-ocr`. Without it the hub refuses document jobs.
+        #[arg(long, env = "GC_OCR")]
+        ocr: Option<PathBuf>,
+    },
+    /// Turn a folder of photos into one document: upload them, read and merge the text on the hub, fetch the result.
+    Scan {
+        folder: PathBuf,
+        #[arg(long, default_value = "http://127.0.0.1:47800")]
+        hub: String,
+        /// Folder for document.md, document.txt and document.json.
+        #[arg(long, default_value = ".")]
+        out: PathBuf,
     },
     /// Upload every file in a folder, resuming partial files, then run an inventory job.
     Upload {
@@ -46,6 +58,17 @@ enum Command {
         /// Folder holding the model files.
         #[arg(long)]
         store: PathBuf,
+    },
+    /// Merge text already read from overlapping photos into one document.
+    MergeOcr {
+        /// JSON as `gc-ocr` prints it: a list of photos with their lines.
+        ocr: PathBuf,
+        /// Folder for document.md, document.txt and document.json.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// The true text, to report the character error rate against.
+        #[arg(long)]
+        truth: Option<PathBuf>,
     },
     /// Put the face from one picture onto the faces in another.
     Swap {
@@ -125,19 +148,31 @@ fn token() -> Result<String> {
 #[tokio::main]
 async fn main() -> Result<()> {
     match Cli::parse().command {
-        Command::Hub { addr, data_dir, max_file_mb } => {
+        Command::Hub { addr, data_dir, max_file_mb, ocr } => {
+            if let Some(program) = &ocr {
+                if !program.is_file() {
+                    bail!("the text reader {} does not exist", program.display());
+                }
+            }
             let config = HubConfig {
                 token: token()?,
                 data_dir,
                 max_file_bytes: max_file_mb << 20,
                 allowed_origins: vec![],
+                ocr_command: ocr.map(|program| vec![program.to_string_lossy().into_owned()]),
             };
             let listener = gc_link::bind_dev(addr, &config).await?;
             println!("hub (development mode) listening on http://{}", listener.local_addr()?);
             gc_link::serve(listener, config).await?;
         }
-        Command::Upload { folder, hub, upload_id } => upload(&folder, &hub, upload_id).await?,
+        Command::Upload { folder, hub, upload_id } => {
+            let (id, _) = upload(&folder, &hub, upload_id).await?;
+            let job = start_job(&hub, "inventory", &id).await?;
+            println!("job {} {}: {}", job.id, job.status, job.result.unwrap_or_default());
+        }
+        Command::Scan { folder, hub, out } => scan(&folder, &hub, &out).await?,
         Command::VerifyPacks { manifests, store } => verify_packs(&manifests, &store)?,
+        Command::MergeOcr { ocr, out, truth } => merge_ocr(&ocr, out.as_deref(), truth.as_deref())?,
         Command::Swap { packs, source, target, out, model, mask, all, no_colour_match } => {
             // The models block the thread, so they stay off the async runtime's workers.
             let args = face::SwapArgs {
@@ -196,7 +231,59 @@ async fn expect_ok(res: reqwest::Response) -> Result<reqwest::Response> {
     bail!("hub answered {status}: {}", res.text().await.unwrap_or_default())
 }
 
-async fn upload(folder: &Path, hub: &str, upload_id: Option<String>) -> Result<()> {
+/// Start a job on the hub.
+async fn start_job(hub: &str, kind: &str, upload_id: &str) -> Result<Job> {
+    let job = expect_ok(
+        reqwest::Client::new()
+            .post(format!("{hub}/v1/jobs"))
+            .bearer_auth(token()?)
+            .json(&serde_json::json!({ "kind": kind, "upload_id": upload_id }))
+            .send()
+            .await?,
+    )
+    .await?
+    .json()
+    .await?;
+    Ok(job)
+}
+
+/// Upload a folder of photos, have the hub read and merge their text, and save the document.
+async fn scan(folder: &Path, hub: &str, out: &Path) -> Result<()> {
+    let started = Instant::now();
+    let (upload_id, files) = upload(folder, hub, None).await?;
+    let mut job = start_job(hub, "document", &upload_id).await?;
+    let http = reqwest::Client::new();
+    let token = token()?;
+    let mut shown = -1i32;
+    while job.status == "queued" || job.status == "running" {
+        let percent = (job.progress * 100.0) as i32;
+        if percent / 10 != shown / 10 {
+            println!("reading: {percent} %");
+            shown = percent;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        job = expect_ok(http.get(format!("{hub}/v1/jobs/{}", job.id)).bearer_auth(&token).send().await?).await?.json().await?;
+    }
+    if job.status != "done" {
+        bail!("the job failed: {}", job.error.unwrap_or_else(|| "no reason given".into()));
+    }
+    std::fs::create_dir_all(out)?;
+    for name in &job.files {
+        let url = format!("{hub}/v1/jobs/{}/files/{name}", job.id);
+        let bytes = expect_ok(http.get(url).bearer_auth(&token).send().await?).await?.bytes().await?;
+        std::fs::write(out.join(name), &bytes)?;
+    }
+    println!(
+        "{files} files in {:.1} s: {}",
+        started.elapsed().as_secs_f64(),
+        job.result.map(|r| r.to_string()).unwrap_or_default()
+    );
+    println!("wrote {} to {}", job.files.join(", "), out.display());
+    Ok(())
+}
+
+/// Upload every file in a folder, resuming partial files. Returns the upload's id and the number of files.
+async fn upload(folder: &Path, hub: &str, upload_id: Option<String>) -> Result<(String, usize)> {
     let token = token()?;
     let http = reqwest::Client::new();
     let mut names: Vec<PathBuf> = std::fs::read_dir(folder)
@@ -238,16 +325,6 @@ async fn upload(folder: &Path, hub: &str, upload_id: Option<String>) -> Result<(
             bail!("{name}: the hub stored {} of {} bytes", info.bytes, data.len());
         }
     }
-    let job: Job = expect_ok(
-        http.post(format!("{hub}/v1/jobs"))
-            .bearer_auth(&token)
-            .json(&serde_json::json!({ "kind": "inventory", "upload_id": existing.id }))
-            .send()
-            .await?,
-    )
-    .await?
-    .json()
-    .await?;
     let secs = started.elapsed().as_secs_f64();
     println!(
         "upload {}: {} files ({} already complete), {:.1} MB sent in {:.2} s",
@@ -257,7 +334,35 @@ async fn upload(folder: &Path, hub: &str, upload_id: Option<String>) -> Result<(
         sent as f64 / 1e6,
         secs
     );
-    println!("job {} {}: {}", job.id, job.status, job.result.unwrap_or_default());
+    Ok((existing.id, names.len()))
+}
+
+fn merge_ocr(ocr: &Path, out: Option<&Path>, truth: Option<&Path>) -> Result<()> {
+    let text = std::fs::read_to_string(ocr).with_context(|| format!("cannot read {}", ocr.display()))?;
+    let pages: Vec<gc_doc::OcrPage> = serde_json::from_str(&text).context("not gc-ocr output")?;
+    let document = gc_doc::build(&pages);
+    let lines: usize = pages.iter().map(|page| page.lines.len()).sum();
+    println!(
+        "{} photos, {} lines read, {} repeated readings removed, {} blocks, {} group(s)",
+        document.pages,
+        lines,
+        document.duplicates_removed,
+        document.blocks.len(),
+        document.groups
+    );
+    let plain = gc_doc::export::to_text(&document);
+    if let Some(truth) = truth {
+        let truth = std::fs::read_to_string(truth)?;
+        let rate = gc_doc::text::character_error_rate(&plain, &truth);
+        println!("character error rate {:.2} % ({:.2} % accuracy)", rate * 100.0, (1.0 - rate) * 100.0);
+    }
+    if let Some(out) = out {
+        std::fs::create_dir_all(out)?;
+        std::fs::write(out.join("document.txt"), &plain)?;
+        std::fs::write(out.join("document.md"), gc_doc::export::to_markdown(&document))?;
+        std::fs::write(out.join("document.json"), gc_doc::export::to_json(&document))?;
+        println!("wrote document.txt, document.md and document.json to {}", out.display());
+    }
     Ok(())
 }
 

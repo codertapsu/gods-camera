@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-link", "gc-live", "gc-ffi", "gc-cli"]
+members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-doc", "gc-link", "gc-live", "gc-ffi", "gc-cli"]
 
 [workspace.package]
 version = "0.1.0"

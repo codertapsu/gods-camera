@@ -17,3 +17,4 @@ core/gc-infer/tests/golden/*.png
 # Built by tools/build-core-apple.sh
 apps/apple/GodsCameraKit/Frameworks/
 apps/apple/GodsCameraKit/Sources/GCCore/gc_ffi.swift
+apps/apple/tools/gc-ocr/.build/

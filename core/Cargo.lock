@@ -633,6 +633,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "gc-doc",
  "gc-link",
  "gc-live",
  "gc-models",
@@ -640,6 +641,15 @@ dependencies = [
  "reqwest",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "gc-doc"
+version = "0.1.0"
+dependencies = [
+ "gc-align",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -666,6 +676,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "futures-util",
+ "gc-doc",
  "hex",
  "reqwest",
  "serde",
