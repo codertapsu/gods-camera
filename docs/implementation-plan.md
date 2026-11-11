@@ -621,7 +621,8 @@ Checks only you can do
 
 - [x] Pairing with a six-digit code shown on the Mac (SPAKE2, so the code is never sent), TLS with the hub's certificate pinned by the device, a token per device, a device list on the Mac, and removal that takes effect at once. Pairing by QR code and per-device permissions are open.
 - [x] Discovery: the Mac announces the hub by Bonjour, and the Android app finds it with network service discovery, with typing an address as the fallback. macOS asks once for local-network access.
-- [ ] Before use on a network you do not control: fuzzing of the hub's parsers and an idle timeout on network connections (section 10.2).
+- [x] Limits on the network listener: 64 connections, 10 seconds for a handshake, two minutes of silence.
+- [ ] Before use on a network you do not control: fuzzing of the hub's parsers (section 10.2).
 - [ ] The app's minimum and build target are both API 36. Add Android 17's local-network permission flow before raising the target to 37.
 - [ ] Codec negotiation and frame dropping tuned on real Wi-Fi.
 
