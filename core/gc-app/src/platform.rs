@@ -13,9 +13,9 @@ pub use windows::native;
 #[cfg(windows)]
 mod windows {
     use crate::faces::{new_key, FaceError, KeyStore};
-    use crate::model::{Platform, VirtualCamera};
+    use crate::model::{CameraChoice, CaptureFrom, OnFrame, Platform, SourceProblem, VirtualCamera};
     use gc_camera::Output;
-    use gc_win::{CameraKeeper, CameraOutput, Credential, Feed, FeedError};
+    use gc_win::{CameraKeeper, CameraOutput, Capture, CaptureSource, Credential, Feed, FeedError};
     use std::sync::Arc;
 
     /// The name the key for saved faces goes under in Credential Manager.
@@ -63,6 +63,23 @@ mod windows {
 
         fn key_store(&self) -> Box<dyn KeyStore> {
             Box::new(FaceKey)
+        }
+
+        fn cameras(&self) -> Vec<CameraChoice> {
+            gc_win::cameras().into_iter().map(|camera| CameraChoice { id: camera.id, name: camera.name }).collect()
+        }
+
+        fn capture(&self, from: CaptureFrom, on_frame: OnFrame) -> Result<Box<dyn Send>, SourceProblem> {
+            let (source, from_file) = match from {
+                CaptureFrom::Camera(id) => (CaptureSource::Camera(id), false),
+                CaptureFrom::File(path) => (CaptureSource::File(path), true),
+            };
+            match Capture::start(source, on_frame) {
+                Ok(capture) => Ok(Box::new(capture)),
+                Err(_) if from_file => Err(SourceProblem::FileUnreadable),
+                Err(error) if error.refused() => Err(SourceProblem::CameraRefused),
+                Err(_) => Err(SourceProblem::CameraUnavailable),
+            }
         }
     }
 

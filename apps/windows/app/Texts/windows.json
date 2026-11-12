@@ -1,5 +1,6 @@
 {
  "A still picture, shown as your camera.": "Một ảnh tĩnh, hiển thị như camera của bạn.",
+ "A video file, played again and again as your camera.": "Một tệp video, phát lặp đi lặp lại như camera của bạn.",
  "An app is using the camera": "Có ứng dụng đang dùng camera",
  "An app is using the camera, at {0} × {1}.": "Có ứng dụng đang dùng camera, ở cỡ {0} × {1}.",
  "Another copy of God's Camera is running and holds the camera. Close it, then start this one again.": "Một bản God's Camera khác đang chạy và giữ camera. Hãy đóng nó, rồi mở lại bản này.",
@@ -7,6 +8,7 @@
  "Data folder": "Thư mục dữ liệu",
  "For development": "Dành cho phát triển",
  "Model files": "Tệp mô hình",
+ "No camera is attached to this PC.": "Không có camera nào được gắn vào máy tính này.",
  "Not in this version yet": "Chưa có trong phiên bản này",
  "Open Windows Settings": "Mở Cài đặt Windows",
  "Open the data folder": "Mở thư mục dữ liệu",
@@ -15,11 +17,11 @@
  "Saved faces and loops stay on this PC. Saved faces are encrypted, with the key in Windows Credential Manager.": "Khuôn mặt và vòng lặp đã lưu chỉ nằm trên máy tính này. Khuôn mặt đã lưu được mã hóa, khóa nằm trong Credential Manager của Windows.",
  "Saved faces are encrypted and stay on this PC.": "Khuôn mặt đã lưu được mã hóa và chỉ nằm trên máy tính này.",
  "Saved faces, their encryption key, saved loops and what the app remembered are removed from this PC. This cannot be undone.": "Khuôn mặt đã lưu, khóa mã hóa của chúng, vòng lặp đã lưu và những gì ứng dụng ghi nhớ sẽ bị xóa khỏi máy tính này. Không thể hoàn tác.",
- "Showing a video file is not in this version yet.": "Phiên bản này chưa phát được tệp video.",
- "That file cannot be shown as a picture.": "Không hiển thị được tệp đó như một ảnh.",
+ "That file cannot be shown.": "Không hiển thị được tệp đó.",
+ "The camera cannot be used. Another app may have it, or it was unplugged.": "Không dùng được camera. Có thể một ứng dụng khác đang dùng, hoặc camera đã bị rút ra.",
  "The camera is installed together with the app, by its installer. This copy was started without it.": "Camera được cài cùng ứng dụng, bằng trình cài đặt. Bản này được mở mà chưa cài camera.",
  "The scanner works in the Mac app today. The Windows app gets it once reading text from pictures is built for Windows.": "Hiện máy quét hoạt động trong ứng dụng trên Mac. Ứng dụng Windows sẽ có khi phần đọc chữ từ ảnh được làm xong cho Windows.",
- "Using a camera is not in this version yet. Choose Image or Test pattern.": "Phiên bản này chưa dùng được camera. Hãy chọn Ảnh hoặc Hình thử.",
  "Windows could not make the camera.": "Windows không tạo được camera.",
- "Windows does not let desktop apps use cameras. Turn that on under Privacy & security, Camera.": "Windows đang không cho ứng dụng máy tính dùng camera. Hãy bật trong Quyền riêng tư & bảo mật, Camera."
+ "Windows does not let desktop apps use cameras. Turn that on under Privacy & security, Camera.": "Windows đang không cho ứng dụng máy tính dùng camera. Hãy bật trong Quyền riêng tư & bảo mật, Camera.",
+ "Your own camera, with whatever this app adds to it.": "Camera của chính bạn, cùng những gì ứng dụng này thêm vào."
 }

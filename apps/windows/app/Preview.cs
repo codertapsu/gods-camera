@@ -120,8 +120,11 @@ internal sealed class PreviewPane : Grid
             emptyText.Text = state.SourceProblem switch
             {
                 SourceProblem.NoFileChosen => T("Choose a file to show."),
-                SourceProblem.FileUnreadable => T("That file cannot be shown as a picture."),
-                SourceProblem.NotAvailable => T("Using a camera is not in this version yet. Choose Image or Test pattern."),
+                SourceProblem.FileUnreadable => T("That file cannot be shown."),
+                SourceProblem.CameraNotAllowed => T("God's Camera needs your permission to use the camera."),
+                SourceProblem.NoCamera => T("No camera is attached to this PC."),
+                SourceProblem.CameraRefused => T("Windows does not let desktop apps use cameras. Turn that on under Privacy & security, Camera."),
+                SourceProblem.CameraUnavailable => T("The camera cannot be used. Another app may have it, or it was unplugged."),
                 _ => T("Waiting for the picture…"),
             };
         }

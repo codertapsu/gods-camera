@@ -41,10 +41,14 @@ pub enum Quality {
 #[serde(default)]
 pub struct Settings {
     pub source: SourceKind,
-    /// The camera last chosen, by the name Windows knows it under.
+    /// The user has said that the app may turn the camera on. Until then it stays off.
+    pub camera_allowed: bool,
+    /// The camera last chosen, by what the system opens it by.
     pub camera: Option<String>,
-    /// The picture or video file last chosen.
+    /// The picture file last chosen.
     pub file: Option<String>,
+    /// The video file last chosen.
+    pub video: Option<String>,
     pub mirror: bool,
     pub loop_style: LoopStyle,
     pub show_loop_badge: bool,
@@ -65,8 +69,10 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             source: SourceKind::Camera,
+            camera_allowed: false,
             camera: None,
             file: None,
+            video: None,
             mirror: false,
             loop_style: LoopStyle::Automatic,
             show_loop_badge: false,

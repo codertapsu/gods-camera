@@ -990,6 +990,7 @@ name = "gc-win"
 version = "0.1.0"
 dependencies = [
  "gc-camera",
+ "gc-infer",
  "windows",
 ]
 

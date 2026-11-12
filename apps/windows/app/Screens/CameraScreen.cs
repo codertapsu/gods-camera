@@ -22,8 +22,17 @@ internal sealed class CameraScreen : UserControl, IScreen
     private readonly Shell shell;
     private readonly PreviewPane preview;
     private readonly SelectorBar sourceBar = new();
+    private static readonly string[] Pictures = { ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff" };
+    private static readonly string[] Videos = { ".mp4", ".m4v", ".mov", ".wmv", ".avi", ".mkv" };
+
+    private readonly ComboBox cameraBox = new() { MinWidth = 220 };
+    private readonly Button allow;
     private readonly Button choose;
     private readonly TextBlock fileName = Ui.Secondary("", 13);
+    private string cameraKey = "";
+    private CameraChoice[] cameraList = Array.Empty<CameraChoice>();
+    private SourceKind shownSource;
+    private int ticks;
     private readonly Hint sourceHint = new();
     private readonly SwitchRow mirror;
     private readonly Hint meeting = new();
@@ -49,8 +58,16 @@ internal sealed class CameraScreen : UserControl, IScreen
             if (index >= 0) shell.App.SetSource(Sources[index], null);
         };
         choose = Ui.PlainButton(T("Choose…"), ChooseFile);
+        allow = Ui.PlainButton(T("Allow camera access"), () => shell.App.AllowCamera());
+        allow.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+        cameraBox.SelectionChanged += (_, _) =>
+        {
+            if (showing) return;
+            var index = cameraBox.SelectedIndex;
+            if (index >= 0 && index < cameraList.Length) shell.App.SetCamera(cameraList[index].Id);
+        };
         mirror = new SwitchRow(T("Mirror the picture"), on => shell.App.SetMirror(on));
-        var chosen = Ui.Row(10, choose, fileName);
+        var chosen = Ui.Row(10, allow, cameraBox, choose, fileName);
         layout.Under.Children.Add(sourceBar);
         mirror.Width = 220;
         layout.Under.Children.Add(Ui.Spread(Ui.Column(8, chosen, sourceHint), mirror));
@@ -64,8 +81,9 @@ internal sealed class CameraScreen : UserControl, IScreen
 
     private async void ChooseFile()
     {
-        var files = await shell.PickFiles(false, ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff");
-        if (files.Count > 0) shell.App.SetSource(SourceKind.Image, files[0]);
+        var video = shownSource == SourceKind.Video;
+        var files = await shell.PickFiles(false, video ? Videos : Pictures);
+        if (files.Count > 0) shell.App.SetSource(video ? SourceKind.Video : SourceKind.Image, files[0]);
     }
 
     public void Update(AppState state)
@@ -78,26 +96,60 @@ internal sealed class CameraScreen : UserControl, IScreen
         showing = false;
         mirror.Show(state.Mirror);
 
-        var wantsFile = state.Source == SourceKind.Image;
+        shownSource = state.Source;
+        var wantsFile = state.Source is SourceKind.Image or SourceKind.Video;
         choose.Visible(wantsFile);
         fileName.Visible(wantsFile);
         fileName.Text = state.FileName ?? T("No file chosen");
-        switch (state.Source)
+
+        // The camera is turned on only after the user has said it may be.
+        var camera = state.Source == SourceKind.Camera;
+        var notAllowed = camera && state.SourceProblem == SourceProblem.CameraNotAllowed;
+        allow.Visible(notAllowed);
+        cameraBox.Visible(camera && !notAllowed && state.Cameras.Length > 0);
+        var key = string.Join("|", state.Cameras.Select(one => one.Id + ":" + one.Name));
+        showing = true;
+        if (key != cameraKey)
         {
-            case SourceKind.Pattern:
+            cameraKey = key;
+            cameraList = state.Cameras;
+            cameraBox.Items.Clear();
+            foreach (var one in cameraList) cameraBox.Items.Add(one.Name);
+        }
+        var chosen = Array.FindIndex(cameraList, one => one.Id == state.Camera);
+        if (cameraBox.SelectedIndex != chosen) cameraBox.SelectedIndex = chosen;
+        showing = false;
+        // A camera may be plugged in or pulled out while this screen is open.
+        if (camera && ++ticks % 30 == 0) shell.App.RefreshCameras();
+
+        switch (state.Source, state.SourceProblem)
+        {
+            case (SourceKind.Pattern, _):
                 sourceHint.Set(T("Colour bars with a moving block, for checking the camera in other apps."));
                 break;
-            case SourceKind.Image when state.SourceProblem == SourceProblem.FileUnreadable:
-                sourceHint.Set(T("That file cannot be shown as a picture."), Ui.IconWarning, Tone.Warning);
+            case (_, SourceProblem.FileUnreadable):
+                sourceHint.Set(T("That file cannot be shown."), Ui.IconWarning, Tone.Warning);
                 break;
-            case SourceKind.Image:
+            case (SourceKind.Image, _):
                 sourceHint.Set(T("A still picture, shown as your camera."));
                 break;
-            case SourceKind.Video:
-                sourceHint.Set(T("Showing a video file is not in this version yet."), Ui.IconInfo);
+            case (SourceKind.Video, _):
+                sourceHint.Set(T("A video file, played again and again as your camera."));
+                break;
+            case (_, SourceProblem.CameraNotAllowed):
+                sourceHint.Set(T("God's Camera needs your permission to use the camera."));
+                break;
+            case (_, SourceProblem.NoCamera):
+                sourceHint.Set(T("No camera is attached to this PC."), Ui.IconWarning, Tone.Warning);
+                break;
+            case (_, SourceProblem.CameraRefused):
+                sourceHint.Set(T("Windows does not let desktop apps use cameras. Turn that on under Privacy & security, Camera."), Ui.IconWarning, Tone.Warning);
+                break;
+            case (_, SourceProblem.CameraUnavailable):
+                sourceHint.Set(T("The camera cannot be used. Another app may have it, or it was unplugged."), Ui.IconWarning, Tone.Warning);
                 break;
             default:
-                sourceHint.Set(T("Using a camera is not in this version yet. Choose Image or Test pattern."), Ui.IconInfo);
+                sourceHint.Set(T("Your own camera, with whatever this app adds to it."));
                 break;
         }
 

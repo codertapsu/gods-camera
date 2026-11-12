@@ -43,7 +43,7 @@ internal static class Ui
     public const string IconHidden = "\uED1A";
     public const string IconLock = "\uE72E";
     public const string IconHelp = "\uE897";
-    public const string IconNoVideo = "\uE8D7";
+    public const string IconNoVideo = "\uE714";
     public const string IconCircle = "\uEA3A";
     public const string IconCheckedCircle = "\uE930";
     public const string IconWrench = "\uE90F";

@@ -3,13 +3,14 @@
 
 use gc_app::faces::{FaceError, FindFace, FoundFace, KeyStore};
 use gc_app::model::{
-    AppConfig, AppState, DesktopApp, EngineMode, FaceConsent, FaceNotice, Platform, SourceProblem, SwapState, VirtualCamera,
+    AppConfig, AppState, CameraChoice, CaptureFrom, DesktopApp, EngineMode, FaceConsent, FaceNotice, OnFrame, Platform, SourceProblem,
+    SwapState, VirtualCamera,
 };
 use gc_app::settings::{LoopStyle, Quality, SourceKind};
 use gc_camera::Output;
-use gc_infer::image::ImageView;
+use gc_infer::image::{ImageView, PixelFormat};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -49,9 +50,33 @@ impl KeyStore for Keys {
     }
 }
 
+/// The cameras a test has "attached", and what was opened.
+#[derive(Clone, Default)]
+struct Attached {
+    cameras: Arc<Mutex<Vec<CameraChoice>>>,
+    /// Every source the app asked to be opened, in order.
+    opened: Arc<Mutex<Vec<CaptureFrom>>>,
+}
+
+/// A stand-in for a camera or a video file: grey pictures until it is dropped.
+struct Delivering {
+    stop: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for Delivering {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            thread.join().unwrap();
+        }
+    }
+}
+
 struct Stand {
     camera: Camera,
     keys: Keys,
+    attached: Attached,
     started: Instant,
 }
 
@@ -70,6 +95,32 @@ impl Platform for Stand {
 
     fn key_store(&self) -> Box<dyn KeyStore> {
         Box::new(self.keys.clone())
+    }
+
+    fn cameras(&self) -> Vec<CameraChoice> {
+        self.attached.cameras.lock().unwrap().clone()
+    }
+
+    fn capture(&self, from: CaptureFrom, mut on_frame: OnFrame) -> Result<Box<dyn Send>, SourceProblem> {
+        self.attached.opened.lock().unwrap().push(from.clone());
+        // What is shown says where it came from: each camera has a brightness of its own.
+        let level = match &from {
+            CaptureFrom::Camera(id) if id == "broken" => return Err(SourceProblem::CameraUnavailable),
+            CaptureFrom::Camera(id) => 40 + 60 * id.len() as u8,
+            CaptureFrom::File(path) if !path.exists() => return Err(SourceProblem::FileUnreadable),
+            CaptureFrom::File(_) => 230,
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        let (stopped, started) = (Arc::clone(&stop), self.started);
+        let thread = std::thread::spawn(move || {
+            let picture = [level, level, level, 255].repeat(320 * 180);
+            while !stopped.load(Ordering::Acquire) {
+                let view = ImageView::new(&picture, 320, 180, 320 * 4, PixelFormat::Bgra).unwrap();
+                on_frame(&view, started.elapsed().as_nanos() as u64);
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        Ok(Box::new(Delivering { stop, thread: Some(thread) }))
     }
 }
 
@@ -97,6 +148,7 @@ struct Fixture {
     app: Arc<DesktopApp>,
     camera: Camera,
     keys: Keys,
+    attached: Attached,
     folder: PathBuf,
 }
 
@@ -104,12 +156,13 @@ impl Fixture {
     fn new(name: &str) -> Self {
         let folder = std::env::temp_dir().join(format!("gc-app-model-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
-        Self::open(folder, Camera::default(), Keys::default())
+        Self::open(folder, Camera::default(), Keys::default(), Attached::default())
     }
 
     /// Start the app on a data folder, as after closing and opening it again.
-    fn open(folder: PathBuf, camera: Camera, keys: Keys) -> Self {
-        let platform = Arc::new(Stand { camera: camera.clone(), keys: keys.clone(), started: Instant::now() });
+    fn open(folder: PathBuf, camera: Camera, keys: Keys, attached: Attached) -> Self {
+        let platform =
+            Arc::new(Stand { camera: camera.clone(), keys: keys.clone(), attached: attached.clone(), started: Instant::now() });
         let config = AppConfig {
             data_dir: folder.join("data").to_string_lossy().into_owned(),
             // No model files anywhere near here.
@@ -118,13 +171,20 @@ impl Fixture {
         };
         let app = DesktopApp::with_platform(config, platform);
         app.set_face_finder(Box::new(ByColour));
-        Self { app, camera, keys, folder }
+        Self { app, camera, keys, attached, folder }
     }
 
     fn reopen(self) -> Self {
-        let (folder, camera, keys) = (self.folder.clone(), self.camera.clone(), self.keys.clone());
+        let (folder, camera, keys, attached) = (self.folder.clone(), self.camera.clone(), self.keys.clone(), self.attached.clone());
         drop(self);
-        Self::open(folder, camera, keys)
+        Self::open(folder, camera, keys, attached)
+    }
+
+    /// The brightness of the picture the window would show.
+    fn shown(&self) -> u8 {
+        let mut preview = Vec::new();
+        self.app.settle();
+        self.app.preview(&mut preview).map_or(0, |_| preview[0])
     }
 
     fn until(&self, what: &str, mut done: impl FnMut(&AppState) -> bool) -> AppState {
@@ -156,9 +216,9 @@ impl Drop for Fixture {
 #[test]
 fn the_test_picture_goes_to_the_camera_in_the_size_asked_for() {
     let fixture = Fixture::new("pattern");
-    // Nothing was chosen before, and this build has no camera capture yet.
+    // Nothing was chosen before: the camera is the source, and it is not on until the user allows it.
     let state = fixture.app.state();
-    assert_eq!((state.source, state.source_problem, state.mode), (SourceKind::Camera, Some(SourceProblem::NotAvailable), EngineMode::Idle));
+    assert_eq!((state.source, state.source_problem, state.mode), (SourceKind::Camera, Some(SourceProblem::CameraNotAllowed), EngineMode::Idle));
     assert_eq!(state.virtual_camera, VirtualCamera::Ready);
 
     fixture.app.set_source(SourceKind::Pattern, None);
@@ -418,4 +478,88 @@ fn deleting_all_data_leaves_nothing_readable() {
     assert_eq!(state.source, SourceKind::Pattern, "where the picture comes from is not personal data");
     assert_eq!(face_files(), 0);
     assert_ne!(fixture.keys.load_or_create().unwrap(), old_key, "the old key is gone for good");
+}
+
+#[test]
+fn the_camera_stays_off_until_the_user_allows_it() {
+    let fixture = Fixture::new("camera");
+    let attach = |cameras: &[(&str, &str)]| {
+        *fixture.attached.cameras.lock().unwrap() =
+            cameras.iter().map(|(id, name)| CameraChoice { id: id.to_string(), name: name.to_string() }).collect();
+        fixture.app.refresh_cameras();
+    };
+    attach(&[("a", "Desk camera"), ("bb", "Other camera")]);
+
+    // The camera is the source from the first start, and nothing has opened it.
+    let state = fixture.app.state();
+    assert_eq!((state.source, state.source_problem, state.mode), (SourceKind::Camera, Some(SourceProblem::CameraNotAllowed), EngineMode::Idle));
+    assert_eq!(state.cameras.iter().map(|camera| camera.name.as_str()).collect::<Vec<_>>(), ["Desk camera", "Other camera"]);
+    assert_eq!(state.camera.as_deref(), Some("a"), "the first camera is the one that would be used");
+    fixture.app.set_camera("bb".into());
+    fixture.app.set_source(SourceKind::Pattern, None);
+    fixture.app.set_source(SourceKind::Camera, None);
+    assert!(fixture.attached.opened.lock().unwrap().is_empty(), "the camera was opened without being allowed");
+
+    // Allowed: the chosen camera comes on.
+    fixture.app.allow_camera();
+    let state = fixture.until("the camera's picture", |state| state.mode == EngineMode::Live && fixture.shown() == 160);
+    assert_eq!((state.source_problem, state.camera.as_deref()), (None, Some("bb")));
+    assert_eq!(*fixture.attached.opened.lock().unwrap(), [CaptureFrom::Camera("bb".into())]);
+
+    // Another camera is chosen: the first is let go, the other comes on.
+    fixture.app.set_camera("a".into());
+    fixture.until("the other camera's picture", |_| fixture.shown() == 100);
+    assert_eq!(fixture.attached.opened.lock().unwrap().len(), 2);
+
+    // After a restart the allowance and the choice hold, and the camera comes on by itself.
+    let fixture = fixture.reopen();
+    fixture.until("the camera after a restart", |state| state.mode == EngineMode::Live && state.frames_out > 2);
+    assert_eq!(fixture.attached.opened.lock().unwrap().last(), Some(&CaptureFrom::Camera("a".into())));
+
+    // The chosen camera is pulled out: the next start takes the one that is left.
+    *fixture.attached.cameras.lock().unwrap() = vec![CameraChoice { id: "bb".into(), name: "Other camera".into() }];
+    fixture.app.set_source(SourceKind::Camera, None);
+    fixture.until("the remaining camera", |_| fixture.shown() == 160);
+
+    // No camera at all, and one that will not open.
+    *fixture.attached.cameras.lock().unwrap() = Vec::new();
+    fixture.app.set_source(SourceKind::Camera, None);
+    let state = fixture.until("the picture to stop", |state| state.mode == EngineMode::Idle);
+    assert_eq!(state.source_problem, Some(SourceProblem::NoCamera));
+    *fixture.attached.cameras.lock().unwrap() = vec![CameraChoice { id: "broken".into(), name: "Busy camera".into() }];
+    fixture.app.set_source(SourceKind::Camera, None);
+    assert_eq!(fixture.app.state().source_problem, Some(SourceProblem::CameraUnavailable));
+
+    // A camera that is plugged in while one is waited for is used at once.
+    *fixture.attached.cameras.lock().unwrap() = Vec::new();
+    fixture.app.set_source(SourceKind::Camera, None);
+    assert_eq!(fixture.app.state().source_problem, Some(SourceProblem::NoCamera));
+    *fixture.attached.cameras.lock().unwrap() = vec![CameraChoice { id: "a".into(), name: "Desk camera".into() }];
+    fixture.app.refresh_cameras();
+    fixture.until("the camera that was plugged in", |state| state.mode == EngineMode::Live);
+}
+
+#[test]
+fn a_video_file_is_a_source_of_its_own() {
+    let fixture = Fixture::new("video");
+    fixture.app.set_source(SourceKind::Video, None);
+    assert_eq!(fixture.app.state().source_problem, Some(SourceProblem::NoFileChosen));
+    fixture.app.set_source(SourceKind::Video, Some(fixture.folder.join("missing.mp4").to_string_lossy().into_owned()));
+    let state = fixture.app.state();
+    assert_eq!((state.source_problem, state.mode), (Some(SourceProblem::FileUnreadable), EngineMode::Idle));
+
+    std::fs::create_dir_all(&fixture.folder).unwrap();
+    let film = fixture.folder.join("holiday.mp4");
+    std::fs::write(&film, b"stands in for a film").unwrap();
+    fixture.app.set_source(SourceKind::Video, Some(film.to_string_lossy().into_owned()));
+    let state = fixture.until("the film's pictures", |state| state.mode == EngineMode::Live && fixture.shown() == 230);
+    assert_eq!((state.file_name.as_deref(), state.source_problem), (Some("holiday.mp4"), None));
+
+    // The picture file chosen earlier and the film are remembered apart.
+    let picture = fixture.photo("desk.png", [10, 200, 90]);
+    fixture.app.set_source(SourceKind::Image, Some(picture));
+    assert_eq!(fixture.app.state().file_name.as_deref(), Some("desk.png"));
+    fixture.app.set_source(SourceKind::Video, None);
+    let state = fixture.until("the film again", |_| fixture.shown() == 230);
+    assert_eq!(state.file_name.as_deref(), Some("holiday.mp4"));
 }

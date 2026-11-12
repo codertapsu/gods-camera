@@ -11,7 +11,7 @@ Windows work began on 2026-11-12, when you brought the PC in. That is earlier th
    `powershell -ExecutionPolicy Bypass -File tools\register-windows-camera.ps1`
 
    It copies one DLL to `C:\Program Files\GodsCamera\` and registers it. Nothing else changes. `-Unregister` undoes it. You can also tell me to run it; this PC grants administrator rights without a prompt, which is why I wait for your word.
-2. **Say whether I may turn on your USB camera.** A camera named "HD Web Camera" was attached during the day. I have not opened it. Testing capture needs it on for a few seconds at a time; I would read frame sizes and rates and not keep any picture.
+2. **Say whether I may turn on your USB camera, or try it yourself.** A camera named "HD Web Camera" was attached during the day. I have not opened it. The app can now use a camera, but that part is tested only with a video file, which comes through the same reader. To try it yourself: start the app, and on the Camera screen click "Allow camera access". If I am to test it, I would turn it on for a few seconds at a time, read frame sizes and rates, and keep no picture.
 
 After step 1, I can check the camera in Windows' own camera service, in Chrome and in Edge without you. Zoom, Teams, Discord, Slack and OBS are not installed on this PC; a check in those needs you.
 
@@ -34,7 +34,7 @@ Your account is an administrator, and this PC approves administrator requests wi
 
 The core had only ever been cross-compiled for Windows from the Mac. It now builds and runs here.
 
-- **Tests.** 219 pass in a full run on the PC. Four more are run by hand: three print speeds, and one listens on every network interface (see the firewall note below).
+- **Tests.** 224 pass in a full run on the PC. Four more are run by hand: three print speeds, and one listens on every network interface (see the firewall note below).
 - **Same pictures as the Mac.** The parity tests compare the Rust pipeline with InsightFace's own on its sample photo, and pass here. The reference numbers made on this PC differ from the Mac's by at most 0.19 pixels for a detected keypoint, which is ordinary difference between processors.
 - **What had to change for Windows.** The hub's tests used a shell script as their stand-in text reader; they now use PowerShell here. Development builds optimise the tracker, the image code, the live engine and the camera pipeline, because unoptimised they are seven times slower on this processor and the tests that time them failed for that reason alone.
 
@@ -188,7 +188,7 @@ The window is WinUI 3 in C#, as planned, with the Rust core beside it as one DLL
 
 | Screen | State |
 |---|---|
-| Camera | Works: the live picture, where it comes from (a picture file or the test picture), mirroring, and whether other apps can see the camera |
+| Camera | Works: the live picture, where it comes from (a camera, a picture file, a video file or the test picture), mirroring, and whether other apps can see the camera. A camera stays off until you click "Allow camera access" |
 | Loop | Works: record, play, how it repeats, the LOOP badge, save, saved loops, the warning when the room's light has changed |
 | Face | Works: add a face from photos, the question whose face it is, choose, rename, remove a photo, delete, the swap's switch with its rules shown first, quality, the options, the "AI" badge |
 | Scanner | A placeholder. It waits for text reading on Windows |
@@ -197,15 +197,16 @@ The window is WinUI 3 in C#, as planned, with the Rust core beside it as one DLL
 - **Checked by looking.** `tools\snapshot-windows-app.ps1 -Demo` starts the app on a data folder of its own, records and plays a loop, adds the sample photo as a face through the same code the buttons call, turns the swap on, and saves a picture of every screen. I looked at them in English and Vietnamese, light and dark. On the Face screen the swap ran on the graphics card: a new face every 37 ms, 54 ms behind the picture.
 - **Vietnamese.** The window uses the Mac app's translations, plus 23 texts that only Windows has. The build fails if a text has no Vietnamese.
 - **Not checked.** I pressed no button with a mouse. The pictures show that the screens draw and that the model behind them works; whether every button is wired to the right call is for you to try, or for a test that clicks.
-- **Not in the window yet:** using a camera or a video file as the source, the tray icon, hot keys, going back to live when you start to speak, and the installer.
+- **A camera or a video file as the source.** Windows decodes either and hands the app one picture at a time. A test writes a short film, reads it back and checks that it is the right way up, has the right colours, plays at 30 pictures a second and starts again at its end. The camera goes through the same reader; it has not been turned on. Of the modes a camera offers, the app takes the one nearest to 1280×720 at 30 a second.
+- **Not in the window yet:** the tray icon, hot keys, going back to live when you start to speak, and the installer.
 
 For the window I installed two tools for your user account only, without administrator rights: the .NET 10 SDK, and the program that writes the C# description of the core. `tools\build-windows-app.ps1` builds everything.
 
 ## Open
 
 - **Registration**, then the check in Windows' camera service and in real apps. See the top of this note.
-- **Capture from the USB camera**, once you say I may turn it on.
-- **The rest of the Windows app.** Camera and video file as sources, the tray icon, hot keys, the hub with a firewall rule made by the installer, the scanner, and the installer that registers the camera.
+- **A test with the real USB camera**, once you say I may turn it on or have tried it yourself.
+- **The rest of the Windows app.** The tray icon, hot keys, the hub with a firewall rule made by the installer, the scanner, and the installer that registers the camera.
 - Text reading on Windows (PP-OCRv5) and its Vietnamese accuracy.
 - The occlusion mask at half rate on machines with one accelerator.
 - The core changes made here still have to pass `tools/check.sh` on the Mac.

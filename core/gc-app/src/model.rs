@@ -63,6 +63,26 @@ pub enum VirtualCamera {
     None,
 }
 
+/// A camera the user can choose.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CameraChoice {
+    /// What the system opens it by.
+    pub id: String,
+    pub name: String,
+}
+
+/// Where a platform is asked to fetch pictures from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CaptureFrom {
+    /// A camera, by `CameraChoice::id`.
+    Camera(String),
+    /// A video file, played at its own speed, again and again.
+    File(PathBuf),
+}
+
+/// Called with every picture and the moment it was taken, on the platform's clock.
+pub type OnFrame = Box<dyn FnMut(&ImageView<'_>, u64) + Send>;
+
 /// What the model needs from the system it runs on.
 pub trait Platform: Send + Sync {
     /// Where the engine's pictures go: the virtual camera.
@@ -71,6 +91,14 @@ pub trait Platform: Send + Sync {
     fn clock(&self) -> u64;
     fn virtual_camera(&self) -> (VirtualCamera, String);
     fn key_store(&self) -> Box<dyn KeyStore>;
+    /// The cameras attached to this computer. Asking opens none of them.
+    fn cameras(&self) -> Vec<CameraChoice> {
+        Vec::new()
+    }
+    /// Start fetching pictures. They are delivered until what is returned is dropped.
+    fn capture(&self, _from: CaptureFrom, _on_frame: OnFrame) -> Result<Box<dyn Send>, SourceProblem> {
+        Err(SourceProblem::NotAvailable)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -85,8 +113,16 @@ pub enum EngineMode {
 pub enum SourceProblem {
     /// A picture or video is wanted and no file is chosen.
     NoFileChosen,
-    /// The chosen file cannot be read as a picture.
+    /// The chosen file cannot be read as a picture, or as a video.
     FileUnreadable,
+    /// The user has not yet said that the app may turn the camera on.
+    CameraNotAllowed,
+    /// No camera is attached.
+    NoCamera,
+    /// The system's privacy settings do not let the app use a camera.
+    CameraRefused,
+    /// Another app has the camera, or it was unplugged.
+    CameraUnavailable,
     /// This kind of source is not built for this system yet.
     NotAvailable,
 }
@@ -217,8 +253,12 @@ pub struct AppState {
 
     // Camera.
     pub source: SourceKind,
+    /// The name of the picture or video file chosen for the source in use.
     pub file_name: Option<String>,
     pub source_problem: Option<SourceProblem>,
+    pub cameras: Vec<CameraChoice>,
+    /// The camera in use, or the one that would be.
+    pub camera: Option<String>,
     pub mirror: bool,
     pub virtual_camera: VirtualCamera,
     pub virtual_camera_detail: String,
@@ -266,10 +306,24 @@ pub struct PreviewFrame {
 /// and says its size.
 type Draw = Box<dyn FnMut(f32, &mut Vec<u8>) -> (u32, u32) + Send>;
 
-/// A source that delivers pictures until it is dropped.
+/// A source of the model's own that delivers pictures until it is dropped.
 struct Running {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
+}
+
+/// A source of the platform's, with the engine told when it ends.
+struct Captured {
+    /// Dropped first: no picture comes after the engine was told.
+    capture: Option<Box<dyn Send>>,
+    core: Arc<Core>,
+}
+
+impl Drop for Captured {
+    fn drop(&mut self) {
+        self.capture = None;
+        self.core.engine.source_stopped();
+    }
 }
 
 impl Drop for Running {
@@ -289,8 +343,11 @@ struct Stage {
 
 struct Inner {
     settings: Settings,
-    source: Option<Running>,
+    /// Whatever delivers pictures now. Dropping it stops them.
+    source: Option<Box<dyn Send>>,
     source_problem: Option<SourceProblem>,
+    /// The cameras attached when the app last looked.
+    cameras: Vec<CameraChoice>,
 
     clip: Option<Arc<Clip>>,
     clip_saved: bool,
@@ -387,15 +444,47 @@ impl Core {
                     (width, height)
                 })
             }
-            SourceKind::Camera | SourceKind::Video => {
-                inner.source_problem = Some(SourceProblem::NotAvailable);
+            SourceKind::Camera => {
+                inner.cameras = self.platform.cameras();
+                if !inner.settings.camera_allowed {
+                    inner.source_problem = Some(SourceProblem::CameraNotAllowed);
+                    return;
+                }
+                // The camera chosen last time if it is still there, otherwise the first.
+                let chosen = inner.settings.camera.as_ref().filter(|id| inner.cameras.iter().any(|camera| &&camera.id == id)).cloned();
+                let Some(id) = chosen.or_else(|| inner.cameras.first().map(|camera| camera.id.clone())) else {
+                    inner.source_problem = Some(SourceProblem::NoCamera);
+                    return;
+                };
+                self.capture(inner, CaptureFrom::Camera(id));
+                return;
+            }
+            SourceKind::Video => {
+                match inner.settings.video.clone() {
+                    Some(file) => self.capture(inner, CaptureFrom::File(PathBuf::from(file))),
+                    None => inner.source_problem = Some(SourceProblem::NoFileChosen),
+                }
                 return;
             }
         };
         let stop = Arc::new(AtomicBool::new(false));
         let (core, stopped) = (Arc::clone(self), Arc::clone(&stop));
         let thread = std::thread::Builder::new().name("picture source".into()).spawn(move || deliver(&core, &stopped, frames));
-        inner.source = thread.ok().map(|thread| Running { stop, thread: Some(thread) });
+        inner.source = thread.ok().map(|thread| Box::new(Running { stop, thread: Some(thread) }) as Box<dyn Send>);
+    }
+
+    /// Have the platform fetch pictures and hand them to the engine.
+    fn capture(self: &Arc<Self>, inner: &mut Inner, from: CaptureFrom) {
+        let core = Arc::clone(self);
+        self.engine.source_started();
+        let started = self.platform.capture(from, Box::new(move |picture, taken| core.engine.push_frame(picture, taken)));
+        match started {
+            Ok(capture) => inner.source = Some(Box::new(Captured { capture: Some(capture), core: Arc::clone(self) })),
+            Err(problem) => {
+                self.engine.source_stopped();
+                inner.source_problem = Some(problem);
+            }
+        }
     }
 
     // The face swap
@@ -571,6 +660,7 @@ impl DesktopApp {
                 settings,
                 source: None,
                 source_problem: None,
+                cameras: Vec::new(),
                 clip: None,
                 clip_saved: false,
                 clips: ClipLibrary::new(data_dir.join("Loops")).ok(),
@@ -673,8 +763,14 @@ impl DesktopApp {
             output_height: status.output.1,
 
             source: settings.source,
-            file_name: settings.file.as_ref().and_then(|file| PathBuf::from(file).file_name().map(|name| name.to_string_lossy().into_owned())),
+            file_name: match settings.source {
+                SourceKind::Video => settings.video.as_ref(),
+                _ => settings.file.as_ref(),
+            }
+            .and_then(|file| PathBuf::from(file).file_name().map(|name| name.to_string_lossy().into_owned())),
             source_problem: inner.source_problem,
+            cameras: inner.cameras.clone(),
+            camera: settings.camera.clone().filter(|id| inner.cameras.iter().any(|camera| &camera.id == id)).or_else(|| inner.cameras.first().map(|camera| camera.id.clone())),
             mirror: settings.mirror,
             virtual_camera,
             virtual_camera_detail,
@@ -736,15 +832,50 @@ impl DesktopApp {
     // Camera
 
     /// Choose where the picture comes from. `file` is the picture or video to
-    /// show, for the sources that show one.
+    /// show, for the sources that show one; without it, the one chosen last time.
     pub fn set_source(&self, source: SourceKind, file: Option<String>) {
         let mut inner = self.core.lock();
         inner.settings.source = source;
-        if file.is_some() {
-            inner.settings.file = file;
+        match (source, file) {
+            (SourceKind::Video, Some(file)) => inner.settings.video = Some(file),
+            (_, Some(file)) => inner.settings.file = Some(file),
+            (_, None) => {}
         }
         self.core.save_settings(&inner);
         self.core.restart_source(&mut inner);
+    }
+
+    /// The user says the app may turn the camera on. Until this is called the
+    /// camera stays off, whatever else is chosen.
+    pub fn allow_camera(&self) {
+        let mut inner = self.core.lock();
+        inner.settings.camera_allowed = true;
+        self.core.save_settings(&inner);
+        if inner.settings.source == SourceKind::Camera {
+            self.core.restart_source(&mut inner);
+        }
+    }
+
+    /// Use this camera, one of `AppState::cameras`.
+    pub fn set_camera(&self, id: String) {
+        let mut inner = self.core.lock();
+        inner.settings.camera = Some(id);
+        self.core.save_settings(&inner);
+        if inner.settings.source == SourceKind::Camera {
+            self.core.restart_source(&mut inner);
+        }
+    }
+
+    /// Look again for cameras: one may have been plugged in or pulled out.
+    pub fn refresh_cameras(&self) {
+        let cameras = self.core.platform.cameras();
+        let mut inner = self.core.lock();
+        let changed = inner.cameras != cameras;
+        inner.cameras = cameras;
+        // A camera that has just arrived is used at once if one was waited for.
+        if changed && inner.settings.source == SourceKind::Camera && inner.source.is_none() && inner.settings.camera_allowed {
+            self.core.restart_source(&mut inner);
+        }
     }
 
     /// Flip the live picture left to right.
@@ -1093,7 +1224,12 @@ impl DesktopApp {
         inner.clip_saved = false;
         inner.pending = None;
         inner.notice = None;
-        inner.settings = Settings { source: inner.settings.source, camera: inner.settings.camera.clone(), ..Settings::default() };
+        inner.settings = Settings {
+            source: inner.settings.source,
+            camera: inner.settings.camera.clone(),
+            camera_allowed: inner.settings.camera_allowed,
+            ..Settings::default()
+        };
         self.core.save_settings(&inner);
         if let Some(cache) = &self.core.cache_dir {
             let _ = std::fs::remove_dir_all(cache);
