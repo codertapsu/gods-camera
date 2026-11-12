@@ -159,6 +159,10 @@ fn a_video_file_plays_at_its_own_speed_the_right_way_up_and_starts_again() {
     let per_picture = (seen[FRAMES - 1].at - seen[5].at).as_secs_f64() * 1000.0 / (FRAMES - 6) as f64;
     assert!((per_picture - 33.3).abs() < 3.0, "a picture every {per_picture:.1} ms");
     assert!(seen.windows(2).all(|pair| pair[1].host_ns >= pair[0].host_ns));
+    // `GC_KEEP_FILM=<file>` keeps a copy of the film, for trying the app's Video source by hand.
+    if let Some(keep) = std::env::var_os("GC_KEEP_FILM") {
+        std::fs::copy(&film, keep).expect("keeping the film");
+    }
     let _ = std::fs::remove_file(&film);
 }
 
