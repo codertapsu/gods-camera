@@ -402,3 +402,37 @@ impl Swapper {
         Ok(SwapResult { rgb, mask })
     }
 }
+
+/// A model with one picture-shaped input and one output, run on the
+/// processor. For crates that bring their own work before and after the
+/// model, such as the text reader.
+pub struct Model {
+    session: Session,
+}
+
+impl Model {
+    /// Open `model`. `threads` is how many processor threads one run may
+    /// use; 0 leaves it to the library, which takes every core.
+    pub fn load(runtime: &Runtime, model: &Path, threads: usize) -> Result<Self, InferError> {
+        if !model.is_file() {
+            return Err(InferError::Model(format!("{} is missing", model.display())));
+        }
+        let mut builder = Session::builder(&runtime.environment).map_err(runtime_error)?;
+        if threads > 0 {
+            builder = builder.with_intra_threads(threads).map_err(runtime_error)?;
+        }
+        Ok(Self { session: builder.commit_from_file(model).map_err(runtime_error)? })
+    }
+
+    /// Run the model on numbers laid out as `[pictures, channels, height,
+    /// width]`. Returns the shape of its first output and the numbers in it.
+    pub fn run(&mut self, shape: [usize; 4], input: Vec<f32>) -> Result<(Vec<usize>, Vec<f32>), InferError> {
+        if input.len() != shape.iter().product::<usize>() {
+            return Err(InferError::Model("the input does not have as many numbers as its shape says".into()));
+        }
+        let tensor = Tensor::from_array((shape, input.into_boxed_slice())).map_err(runtime_error)?;
+        let outputs = self.session.run(ort::inputs![tensor]).map_err(runtime_error)?;
+        let (shape, data) = outputs[0].try_extract_tensor::<f32>().map_err(runtime_error)?;
+        Ok((shape.iter().map(|side| *side as usize).collect(), data.to_vec()))
+    }
+}

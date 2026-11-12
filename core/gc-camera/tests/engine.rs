@@ -373,8 +373,11 @@ fn a_recording_ends_by_itself_at_its_longest() {
         std::thread::sleep(Duration::from_millis(2));
     };
     // A fifth of a second at 120 pictures a second is 24 pictures after the
-    // first; one more may slip in before the engine hears that the clip is full.
-    assert!((25..=27).contains(&clip.frame_count()), "{} pictures", clip.frame_count());
+    // first. The test's pictures are a whole number of nanoseconds apart,
+    // which leaves the 25th a hair short of a fifth of a second: the 26th
+    // ends the recording. Each picture was recorded before the next was shown,
+    // however busy the computer is, so the count is exact.
+    assert_eq!(clip.frame_count(), 26);
     assert_eq!(clip.frame_rate, 120.0);
 }
 
@@ -409,9 +412,13 @@ fn a_loop_plays_its_frames_in_order_and_fades_over_its_seam() {
         };
         assert!(close(picture.mean_luma(), expected, 2.0), "picture {index}: {} for {expected}", picture.mean_luma());
     }
-    // A picture every 120th of a second, as the clip was recorded.
-    let spacing = (sent[23].host_ns - sent[3].host_ns) as f64 / 20.0 / 1e6;
-    assert!((spacing - 8.33).abs() < 1.0, "a picture every {spacing:.2} ms");
+    // A picture every 120th of a second, as the clip was recorded. On a busy
+    // computer a picture can be late and the next one early to make up for
+    // it, so the usual spacing is judged, not every one.
+    let mut spacings: Vec<f64> = sent[3..=23].windows(2).map(|pair| (pair[1].host_ns - pair[0].host_ns) as f64 / 1e6).collect();
+    spacings.sort_by(f64::total_cmp);
+    let spacing = spacings[spacings.len() / 2];
+    assert!((spacing - 8.33).abs() < 1.0, "a picture every {spacing:.2} ms: {spacings:.1?}");
 
     // No source to go back to: stopping ends the loop at once.
     engine.stop_loop();

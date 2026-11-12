@@ -1,0 +1,14 @@
+{
+  "name": "pp_ocrv6_small_det",
+  "licence": "Apache-2.0 (model card of PaddlePaddle/PP-OCRv6_small_det_onnx on Hugging Face).",
+  "commercial_ok": true,
+  "files": [
+    {
+      "path": "PP-OCRv6_small_det.onnx",
+      "source_url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx/resolve/28fe5895c24fd108c19eb3e8479f4ab385fbfc62/inference.onnx",
+      "sha256": "d73e0058b7a8086bbd57f3d10b8bcd4ff95363f67e06e2762b5e814fe9c9410e",
+      "bytes": 9880512,
+      "role": "finds the lines of text in a picture, in any language"
+    }
+  ]
+}

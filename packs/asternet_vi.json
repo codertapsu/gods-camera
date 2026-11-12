@@ -1,0 +1,21 @@
+{
+  "name": "asternet_vi",
+  "licence": "MIT (model card of asterxlabs/asternet-vietnamese-ocr on Hugging Face).",
+  "commercial_ok": true,
+  "files": [
+    {
+      "path": "asternet_vi.onnx",
+      "source_url": "https://huggingface.co/asterxlabs/asternet-vietnamese-ocr/resolve/aec29ab0aaf26061e861cb4b3a301988744c5fa3/asternet.onnx",
+      "sha256": "10c96b533e1f64031d73edfddafd7d4b13595544f11891f0531bcd72cb29be80",
+      "bytes": 42742163,
+      "role": "reads one line of Vietnamese or English text"
+    },
+    {
+      "path": "asternet_vi.vocab.json",
+      "source_url": "https://huggingface.co/asterxlabs/asternet-vietnamese-ocr/resolve/aec29ab0aaf26061e861cb4b3a301988744c5fa3/vocab.json",
+      "sha256": "82c6df018ceca8c10876947e0f7df798ed321825276ed7f3bb12ae3ed6dc647b",
+      "bytes": 2541,
+      "role": "the characters that model knows, in its order"
+    }
+  ]
+}

@@ -372,6 +372,8 @@ struct Recording {
     /// Buffers the helper has finished with, to use again.
     spare: Receiver<Vec<u8>>,
     progress: Arc<RecordingProgress>,
+    /// How many frames the helper was handed.
+    handed: u64,
 }
 
 #[derive(Default)]
@@ -379,6 +381,8 @@ struct RecordingProgress {
     /// Seconds recorded so far, as the bits of an `f64`.
     seconds: AtomicU64,
     full: AtomicBool,
+    /// How many frames the helper has dealt with.
+    handled: AtomicU64,
 }
 
 /// A loop being played.
@@ -527,7 +531,16 @@ impl Worker {
                 Message::Tick(number) => self.loop_tick(number),
                 Message::Sync(done) => {
                     if let Some(recording) = &self.recording {
+                        // The recording's helper finishes what it was handed
+                        // first, so that whoever asked sees the recording as it stands.
+                        let patience = Instant::now() + Duration::from_secs(2);
+                        while recording.progress.handled.load(Ordering::Relaxed) < recording.handed && Instant::now() < patience {
+                            std::thread::sleep(Duration::from_micros(200));
+                        }
                         self.status.recorded_seconds = f64::from_bits(recording.progress.seconds.load(Ordering::Relaxed));
+                        if recording.progress.full.load(Ordering::Relaxed) {
+                            self.finish_recording();
+                        }
                     }
                     self.publish();
                     let _ = done.send(());
@@ -852,6 +865,7 @@ impl Worker {
                     for_helper.seconds.store(recorder.elapsed_seconds().to_bits(), Ordering::Relaxed);
                     for_helper.full.store(!room, Ordering::Relaxed);
                 }
+                for_helper.handled.fetch_add(1, Ordering::Relaxed);
                 let _ = give_back.send(bgra);
             }
             // The engine has let go of the recording: make the clip of it.
@@ -862,7 +876,7 @@ impl Worker {
         if helper.is_err() {
             return;
         }
-        self.recording = Some(Recording { frames, spare, progress });
+        self.recording = Some(Recording { frames, spare, progress, handed: 0 });
         self.status.is_recording = true;
         self.status.recorded_seconds = 0.0;
         self.publish();
@@ -870,12 +884,14 @@ impl Worker {
 
     /// Add the live picture just drawn to the recording, if there is one.
     fn record(&mut self, host_ns: u64) {
-        let Some(recording) = &self.recording else { return };
+        let Some(recording) = &mut self.recording else { return };
         let mut bgra = recording.spare.try_recv().unwrap_or_default();
         bgra.clear();
         bgra.extend_from_slice(self.live.canvas());
         // A full queue means the helper is behind: this frame is left out.
-        let gone = matches!(recording.frames.try_send((bgra, host_ns)), Err(TrySendError::Disconnected(_)));
+        let sent = recording.frames.try_send((bgra, host_ns));
+        recording.handed += u64::from(sent.is_ok());
+        let gone = matches!(sent, Err(TrySendError::Disconnected(_)));
         let full = recording.progress.full.load(Ordering::Relaxed);
         self.status.recorded_seconds = f64::from_bits(recording.progress.seconds.load(Ordering::Relaxed));
         if gone || full {

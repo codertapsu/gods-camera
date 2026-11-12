@@ -14,8 +14,18 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-FONT = "/System/Library/Fonts/Supplemental/Times New Roman.ttf"
-FONT_BOLD = "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf"
+
+
+def font_file(*places: str) -> str:
+    """Times New Roman, where this computer keeps it."""
+    for place in places:
+        if Path(place).is_file():
+            return place
+    raise SystemExit("Times New Roman was not found on this computer")
+
+
+FONT = font_file("/System/Library/Fonts/Supplemental/Times New Roman.ttf", "C:/Windows/Fonts/times.ttf")
+FONT_BOLD = font_file("/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf", "C:/Windows/Fonts/timesbd.ttf")
 
 # Text written for this test. It is plain invented news, with every Vietnamese tone mark in use.
 VI = {

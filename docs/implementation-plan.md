@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-12, revision 11 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, and its app has its main screens; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-12, revision 12 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, and its text reader is built and measured; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -116,7 +116,7 @@ A floor is what the app needs to run well on that platform. It is not lowered to
 |---|---|---|---|---|
 | Virtual camera and loop | Phase 1 | Phase 4 | — | — |
 | Live swap | Phase 2 | Phase 4; speed to measure | Through a desktop; on-device unlikely | Through a desktop; best candidate for on-device |
-| OCR | Apple Vision; Vietnamese verified | PP-OCRv5; Vietnamese accuracy to measure | Quick preview with ML Kit | Same |
+| OCR | Apple Vision; Vietnamese verified | PP-OCRv6's line detector with the AsterNet recogniser; Vietnamese measured at 99.7 % on the test documents | Quick preview with ML Kit | Same |
 | Local LLMs | Apple's on-device model and Ollama | Small models only | Through the hub | Through the hub |
 | 3D reconstruction | Object Capture; verified available | Open pipeline | Capture | Capture |
 | Local try-on | To test | Borderline: the model wants about 8 GB | — | — |
@@ -222,7 +222,7 @@ The split of responsibilities:
 | Inference | ONNX Runtime, Core ML provider | ONNX Runtime, DirectML provider | ONNX Runtime on the CPU for the detector; swap runtime chosen by bake-off | ONNX Runtime, Core ML provider |
 | Video codec | VideoToolbox | Media Foundation with NVIDIA hardware codecs | MediaCodec | VideoToolbox |
 | Virtual camera | Camera Extension (Swift) | Media Foundation media source (C++) | — | — |
-| Scanner and OCR | Vision, accurate level | PP-OCRv5 on ONNX Runtime | ML Kit document scanner and text recognition | VisionKit, Vision |
+| Scanner and OCR | Vision, accurate level | PP-OCRv6's line detector and the AsterNet recogniser on ONNX Runtime | ML Kit document scanner and text recognition | VisionKit, Vision |
 | 3D | Object Capture | Open pipeline (Gaussian splats) | Capture; ARCore where supported | Guided Object Capture |
 | System LLM | Foundation Models | None on this PC | None on these devices, as far as published lists show | Foundation Models |
 | Shared core | Rust via UniFFI | Rust via C ABI + C# bindings | Rust via UniFFI, built with the NDK | Rust via UniFFI |
@@ -360,7 +360,7 @@ Included with the desktop app, so it works offline after install:
 
 - Virtual camera driver and engine.
 - Detector, identity encoder, landmarks and `inswapper_128` (about 1 GB together).
-- OCR baseline: built into macOS; PP-OCRv5 files on Windows.
+- OCR baseline: built into macOS; a line detector and a recogniser on Windows, 52 MB together.
 
 Added on demand, per device:
 
@@ -648,7 +648,7 @@ State: the toolchain is in place, the core passes its tests on the PC, and the m
 Start
 
 - [x] Toolchain on the PC, as in section 5.3. Windows 11 Pro 25H2 build 26200.8655, NVIDIA driver 616.92. .NET 10 is still to be installed for the app shell.
-- [x] The core's unit and parity tests pass on the PC: 225 in a full run.
+- [x] The core's unit and parity tests pass on the PC: 252 in a full run.
 - [x] **S2 Windows driver.** Custom media source under Frame Server. Measured with the driver loaded into a test tool: 1 to 3 ms from the app to the reader through a named pipe, so neither shared memory nor a shared texture was built. Registered on 2026-11-12 and verified under Windows' own camera service, in Chrome and in Edge. Zoom, Teams, Camera and OBS are in the app matrix below.
 - [x] **S3 on the RTX 3050.** `inswapper_128` and HyperSwap 256 at full, half and mixed precision, through DirectML and CUDA, with milliseconds, video memory and the error of each picture. DirectML with mixed-precision copies was chosen. TensorRT did not load in the comparison and was not pursued.
 - [x] **S8 Shared renderer.** Decided without the wgpu test: on Windows the outgoing picture is drawn on the processor (`gc-render`), 3 to 10 ms a frame. The camera wants its pictures in ordinary memory, and the one graphics card is busy with the models. To be looked at again for Android.
@@ -663,7 +663,7 @@ Build
 - [ ] The window: WinUI 3 in C#. The Camera, Loop, Face and Settings screens are built, in English and Vietnamese, and checked by pictures of a scripted run. Open: the Scanner screen, and a check by hand.
 - [x] Core inference on the card through DirectML, with separate sessions and queues per stage and no global inference lock. A model the card refuses runs on the processor instead.
 - [ ] A fixed video-memory budget for the live pipeline. S3 measured about 0.7 GB for `inswapper_128` with the detector and the mask, and 1 GB with HyperSwap, of the card's 8 GB.
-- [ ] OCR with PP-OCRv5; Vietnamese accuracy measured against the corpus.
+- [x] OCR: `gc-ocr`, with PP-OCRv6's line detector and the AsterNet recogniser, because no PP-OCR recogniser can write Vietnamese. Measured on the test documents: 99.7 to 99.8 % of characters right in Vietnamese, 99.9 to 100 % in English. Photos of real pages are still to be read.
 - [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it. Built: the shell, the tray icon and the hot keys. Open: the hub.
 - [ ] Installer that registers the camera; file logging; single-instance guard. Built: the log and the guard. Until there is an installer, the app carries the driver and installs or removes it itself when asked, with Windows' own administrator question.
 - [ ] App matrix: Zoom, Teams, Meet in Chrome and Edge, Slack, Discord, OBS, Camera.

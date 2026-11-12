@@ -2,7 +2,7 @@
 
 Date: 2026-11-12 · Plan: [implementation-plan.md](implementation-plan.md)
 
-Windows work began on 2026-11-12, when you brought the PC in. That is earlier than the plan's start point, so Phase 4 now runs beside what is left of Phase 3. This note covers the first day: the toolchain, the shared core on Windows, the models on the RTX 3050, the virtual camera, the engine that feeds it, and the app's window.
+Windows work began on 2026-11-12, when you brought the PC in. That is earlier than the plan's start point, so Phase 4 now runs beside what is left of Phase 3. This note covers the first day: the toolchain, the shared core on Windows, the models on the RTX 3050, the virtual camera, the engine that feeds it, the app's window, and the reader that turns photos of a page into text.
 
 ## What you did, and what it showed
 
@@ -44,7 +44,7 @@ Your account is an administrator, and this PC approves administrator requests wi
 
 The core had only ever been cross-compiled for Windows from the Mac. It now builds and runs here.
 
-- **Tests.** 225 pass in a full run on the PC. Four more are run by hand: three print speeds, and one listens on every network interface (see the firewall note below).
+- **Tests.** 252 pass in a full run on the PC. Four more are run by hand: three print speeds, and one listens on every network interface (see the firewall note below).
 - **Same pictures as the Mac.** The parity tests compare the Rust pipeline with InsightFace's own on its sample photo, and pass here. The reference numbers made on this PC differ from the Mac's by at most 0.19 pixels for a detected keypoint, which is ordinary difference between processors.
 - **What had to change for Windows.** The hub's tests used a shell script as their stand-in text reader; they now use PowerShell here. Development builds optimise the tracker, the image code, the live engine and the camera pipeline, because unoptimised they are seven times slower on this processor and the tests that time them failed for that reason alone.
 
@@ -213,10 +213,64 @@ The window is WinUI 3 in C#, as planned, with the Rust core beside it as one DLL
 
 For the window I installed two tools for your user account only, without administrator rights: the .NET 10 SDK, and the program that writes the C# description of the core. `tools\build-windows-app.ps1` builds everything.
 
+## Reading text
+
+The scanner needs a reader that turns a photo of a page into lines of text. The plan named PP-OCRv5 for Windows. It cannot write Vietnamese, so the reader is built from two other models.
+
+**What was found**
+
+- **PP-OCR cannot write Vietnamese.** Its "Latin" recogniser lists Vietnamese among its languages, but its character list has none of the 90 Vietnamese letters with a tone mark that Unicode keeps from U+1EA0 to U+1EF9, such as ạ, ấ, ề and ỹ. Version 6, published in June 2026, lacks 88 of them. I read the lists in the published model files, not the papers.
+- **Windows' own reader has no Vietnamese** on this PC, only English.
+- **Four recognisers were tried** on drawn lines of the test page's text in Times New Roman:
+
+| Recogniser | Characters right | Note |
+|---|---|---|
+| VietOCR, sequence model | 97.7 % | Drops tone marks. It squeezes every line to one width, so a line of 80 letters reads at 85 % |
+| VietOCR, transformer | 97.9 % | Writes capital letters small. Four times slower |
+| Tesseract 5 with its Vietnamese data | 99.3 % | |
+| AsterNet | 99.5 % | A Vietnamese recogniser published in October 2026 under the MIT licence |
+
+- **On ten fonts**, drawn clean and as a phone would photograph them, Tesseract read 99.2 % and 99.4 % of the characters right, and AsterNet 99.4 % and 99.6 %. Georgia was left out: on this PC it has no Vietnamese letters and draws boxes.
+- **On photographed test documents the two part ways.** With the same line finder in front, Tesseract got 19 to 38 of a Vietnamese document's 398 words wrong, and AsterNet 3 to 6.
+
+**What is built**
+
+- **`gc-ocr`**, a program in the shared core. It takes the same arguments and prints the same thing as the Mac's reader, so the hub uses either. PP-OCRv6's small detector (Apache-2.0) finds the lines, in any language, and AsterNet reads each one. Both run on the processor through the inference library the app already carries, so nothing new has to be bundled but the two model files.
+- **The models** are in the pack manifests, 52 MB together, each at a fixed revision with its hash. `python tools/fetch-packs.py` fetches them.
+- **`tools/ocrkit`** has the same steps in Python. That is where the models were chosen and the settings measured, and it holds the comparison above.
+- **A line too wide for the recogniser** is cut between words and read in pieces. AsterNet takes a line up to 32 times as wide as it is high; a line across a whole A4 page is about that.
+- **Two kinds of nonsense are dropped**: the sliver of a line that a photo's top or bottom edge leaves over, and a shadow taken for text, which the recogniser reads with little confidence.
+
+**Measured** on the seven test documents of Phase 3, made again on the PC with the same generator. The last column is what the Mac's reader scored on its copies:
+
+| Page | Shots | Words wrong | Characters right | The Mac's reader |
+|---|---|---|---|---|
+| Vietnamese, three columns | 6, in a 3 × 2 grid | 4 of 398 | 99.77 % | 99.94 % |
+| Vietnamese, two columns | 8, in a 4 × 2 grid | 5 | 99.72 % | 99.94 % |
+| Vietnamese, three columns | 9, in a 3 × 3 grid | 3 | 99.66 % | 99.72 % |
+| Vietnamese, one wide column | 5, in a strip | 6 | 99.66 % | 99.72 % |
+| English, two columns | 4, in a 2 × 2 grid | 0 of 248 | 100 % | 100 % |
+| English, three columns | 6, in a 3 × 2 grid | 1 | 99.93 % | 100 % |
+| English, two columns, every shot narrower than a column | 9, in a 3 × 3 grid | 1 | 99.93 % | 100 % |
+
+The target is 98 %.
+
+- **What is still wrong.** Most slips are a full stop in the middle of a line read as a comma. The rest are one tone mark each: "đê" read as "để", "lẩu" as "lầu".
+- **One page does not come out as one document**: the three-column Vietnamese page in a 3 × 3 grid. Its bottom row of shots shows only the last line or two of text, too little to place them. The text is right all the same, because lines read twice are dropped. The Mac has the same weak spot with this generator.
+- **Through the hub.** `gc hub` on this PC with `gc-ocr` as its reader, and `gc scan` sending the shots to it: the six-shot Vietnamese document came back with the same 4 words wrong, and the four-shot English one with none.
+- **Speed.** About 1 second a photo: 0.45 s to find the lines and 0.03 s to read each, on 4 processor threads, plus 1 s to start. The six-shot document takes 6 seconds, where the Mac takes 1. Another project's build was running on the PC while I measured, so a quiet machine may do better. Not tried yet: finding the lines on the graphics card, reading several lines at once, and keeping the models loaded between photos.
+- **Tests.** 27 for the reader: 21 on its own steps and 6 on the program as a whole, four of those with the real models on two small pictures in the repository.
+
+**Not verified**
+
+- **Photos of real pages.** Everything above is the generator's pages: clean print, slightly turned, skewed, unevenly lit and blurred. Real photos from your tablet will show what the reader does with curved paper, shadows and small print.
+- **HEIC photos are not read.** JPEG, PNG, WebP, TIFF and BMP are. A HEIC photo is reported as unreadable and the others in the job are still read.
+- **AsterNet is new and little used**: three weeks old, from a publisher I know nothing else about. Its file is a plain model file that the inference library runs; it cannot run code of its own. Its hash is fixed in the manifest.
+
 ## Open
 
 - **The camera in a normal browser window and in meeting apps**, and the uneven timing with the real camera. See the top of this note.
-- **The rest of the Windows app.** The hub with a firewall rule made by the installer, the scanner, and the installer that registers the camera and carries the model files.
-- Text reading on Windows (PP-OCRv5) and its Vietnamese accuracy.
+- **The rest of the Windows app.** The hub with a firewall rule made by the installer, the Scanner screen, and the installer that registers the camera and carries the model files.
+- **The text reader on real photos**, HEIC photos, and its speed. See "Reading text".
 - The occlusion mask at half rate on machines with one accelerator.
 - The core changes made here still have to pass `tools/check.sh` on the Mac.

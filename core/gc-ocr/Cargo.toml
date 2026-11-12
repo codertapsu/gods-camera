@@ -1,0 +1,17 @@
+[package]
+name = "gc-ocr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gc-doc = { version = "0.1.0", path = "../gc-doc" }
+gc-infer = { version = "0.1.0", path = "../gc-infer", features = ["runtime"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tiff", "bmp"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[[bin]]
+name = "gc-ocr"
+path = "src/main.rs"

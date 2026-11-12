@@ -496,6 +496,13 @@ fn merge_ocr(ocr: &Path, out: Option<&Path>, truth: Option<&Path>) -> Result<()>
         document.blocks.len(),
         document.groups
     );
+    // When the photos did not all join up, say which ones did: that is where to look.
+    if document.groups > 1 {
+        let name = |page: &usize| Path::new(&pages[*page].path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        for group in &gc_doc::register::register(&pages).groups {
+            println!("  joined: {}", group.iter().map(name).collect::<Vec<_>>().join(", "));
+        }
+    }
     let plain = gc_doc::export::to_text(&document);
     if let Some(truth) = truth {
         let truth = std::fs::read_to_string(truth)?;

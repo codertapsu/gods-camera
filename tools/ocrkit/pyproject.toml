@@ -1,0 +1,15 @@
+[project]
+name = "ocrkit"
+version = "0.1.0"
+description = "Where the Windows text reader's models were chosen and measured: the same steps as core/gc-ocr, in Python."
+requires-python = ">=3.12"
+dependencies = [
+    "numpy<3",
+    "onnxruntime>=1.20",
+    "opencv-python-headless>=4.10",
+    "pillow>=10",
+]
+
+[project.optional-dependencies]
+# Only for comparing against Tesseract: uv sync --extra tesseract
+tesseract = ["tesserocr>=2.8"]

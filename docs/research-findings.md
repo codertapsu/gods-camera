@@ -316,10 +316,12 @@ Hosted routes are less certain. MiniMax's own API runs the base model and is unl
 | Garment try-on, others | IDM-VTON, OOTDiffusion, CatVTON, FitDiT | CC BY-NC-SA | Yes | No |
 | Hair and outfit edits | Cloud image-edit models; local Qwen-Image-Edit | Provider terms; Apache-2.0 (Reported) | Yes | To confirm |
 | 3D reconstruction | Apple Object Capture; Brush | OS-provided; Apache-2.0 (Reported) | Yes | To confirm |
-| OCR | Apple Vision; PP-OCRv5; ML Kit | OS-provided; Apache-2.0; Google terms | Yes | Yes |
+| OCR | Apple Vision; on Windows PP-OCRv6's line detector with the AsterNet recogniser; ML Kit | OS-provided; Apache-2.0 and MIT; Google terms | Yes | Yes |
 | LLMs | Apple's on-device model; open-weight models through Ollama or llama.cpp; cloud APIs | Varies | Yes | Per model |
 
 Faceswap's extraction weights (S3FD, FAN, HRNet, BiSeNet-FP) carry no licence statement and are not needed.
+
+PP-OCR's own recognisers cannot write Vietnamese, although their documentation lists the language (Verified 2026-11-12, from the character lists inside the published model files). `latin_PP-OCRv5_mobile_rec` has none of the 90 Vietnamese letters from U+1EA0 to U+1EF9; `PP-OCRv6_small_rec` and `PP-OCRv6_medium_rec` lack 88 of them. Their line detectors do not depend on the language and are used. Windows' built-in reader offers no Vietnamese on the PC. The comparison that led to AsterNet is in [phase-4-results.md](phase-4-results.md).
 
 ## 7. Regulation and store policy
 
