@@ -107,6 +107,11 @@ impl Compositor {
         self.height as u32
     }
 
+    /// The picture drawn last, in the form `draw` returns it. Black before the first scene.
+    pub fn canvas(&self) -> &[u8] {
+        &self.canvas
+    }
+
     /// Draw a scene. Returns the picture, four bytes a pixel in the order
     /// blue, green, red, unused, row after row without gaps: a window can show it as it is.
     pub fn draw(&mut self, scene: &Scene<'_>) -> &[u8] {

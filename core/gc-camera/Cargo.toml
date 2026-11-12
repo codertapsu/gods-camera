@@ -1,0 +1,23 @@
+[package]
+name = "gc-camera"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The camera pipeline: a source, the face swap, the outgoing picture, recording and looping."
+
+[dependencies]
+gc-align = { version = "0.1.0", path = "../gc-align" }
+gc-infer = { version = "0.1.0", path = "../gc-infer" }
+gc-live = { version = "0.1.0", path = "../gc-live" }
+gc-render = { version = "0.1.0", path = "../gc-render" }
+# A recorded clip is kept as one JPEG per frame: any frame can be decoded on
+# its own, which is what backwards playback and cross-fades need.
+jpeg-encoder = { version = "0.7.1", features = ["simd"] }
+zune-jpeg = "0.5.15"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[dev-dependencies]
+# Tests write pictures for a person to look at.
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-doc", "gc-pair", "gc-link", "gc-live", "gc-render", "gc-win", "gc-ffi", "gc-mobile", "gc-cli"]
+members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-doc", "gc-pair", "gc-link", "gc-live", "gc-render", "gc-camera", "gc-win", "gc-ffi", "gc-mobile", "gc-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -25,4 +25,11 @@ opt-level = 3
 [profile.dev.package.gc-live]
 opt-level = 3
 [profile.dev.package.gc-render]
+opt-level = 3
+# The camera pipeline and the picture codec its recordings use.
+[profile.dev.package.gc-camera]
+opt-level = 3
+[profile.dev.package.jpeg-encoder]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
 opt-level = 3
