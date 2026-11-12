@@ -119,6 +119,22 @@ pub(crate) fn find_model(folders: &[PathBuf], file: &str) -> PathBuf {
         .unwrap_or_else(|| folders.first().map(|folder| folder.join(file)).unwrap_or_else(|| PathBuf::from(file)))
 }
 
+impl LiveConfig {
+    /// The first model file this configuration needs that none of the pack
+    /// folders has, by its name. `None` when everything is there.
+    pub fn missing_file(&self) -> Option<String> {
+        let plan = ModelPlan::new(self);
+        let needed = [Some(&plan.detector.0), Some(&plan.swapper.0), plan.swapper.2.as_ref()];
+        let missing = needed.into_iter().flatten().find(|path| !path.is_file())?;
+        Some(missing.file_name().map_or_else(|| missing.display().to_string(), |name| name.to_string_lossy().into_owned()))
+    }
+
+    /// The model that keeps a hand or an object in front of the face is installed.
+    pub fn has_occlusion_model(&self) -> bool {
+        ModelPlan::new(self).occluder.is_some()
+    }
+}
+
 impl ModelPlan {
     /// The choices measured in spike S3 on Apple silicon: the swap model gets
     /// the unit it is fastest on, and the detector stays off that unit.
@@ -923,6 +939,15 @@ pub struct Enroller {
 }
 
 impl Enroller {
+    /// The first model file reading a photo needs that none of the pack
+    /// folders has, by its name. `None` when everything is there.
+    pub fn missing_file(packs: &[PathBuf]) -> Option<String> {
+        ["buffalo_l/det_10g.onnx", "buffalo_l/w600k_r50.onnx"]
+            .into_iter()
+            .find(|file| !find_model(packs, file).is_file())
+            .map(|file| file.rsplit('/').next().unwrap_or(file).to_string())
+    }
+
     /// `packs` are the folders that hold the model files, searched in order.
     pub fn new(packs: &[PathBuf], cache_dir: Option<&std::path::Path>) -> Result<Self, InferError> {
         let runtime = Runtime::shared(cache_dir)?;

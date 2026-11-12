@@ -14,6 +14,38 @@ use gc_live::{
 
 uniffi::setup_scaffolding!();
 
+// The Windows app's model lives in `gc-app`. Its generated interface has to
+// be named here, or the linker leaves it out of the library.
+#[cfg(windows)]
+gc_app::uniffi_reexport_scaffolding!();
+
+/// Copy the Windows app's outgoing picture into `into`, which has room for
+/// `capacity` bytes: four a pixel, blue, green, red, unused. Returns the
+/// picture's number, or 0 if there is no app, no picture yet, or not enough
+/// room, and writes the picture's size to `width` and `height`.
+///
+/// # Safety
+/// `into` must be valid for writing `capacity` bytes, and `width` and
+/// `height` for writing one number each.
+#[cfg(windows)]
+#[no_mangle]
+pub unsafe extern "C" fn gc_app_preview(into: *mut u8, capacity: u64, width: *mut u32, height: *mut u32) -> u64 {
+    if into.is_null() || width.is_null() || height.is_null() {
+        return 0;
+    }
+    let room = unsafe { std::slice::from_raw_parts_mut(into, capacity as usize) };
+    match gc_app::model::copy_current_preview(room) {
+        Some(frame) => {
+            unsafe {
+                *width = frame.width;
+                *height = frame.height;
+            }
+            frame.sequence
+        }
+        None => 0,
+    }
+}
+
 #[derive(Debug, uniffi::Error)]
 pub enum CoreError {
     /// A model is missing or the inference library failed. The message says which.

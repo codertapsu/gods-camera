@@ -818,10 +818,12 @@ dependencies = [
  "gc-camera",
  "gc-infer",
  "gc-live",
+ "gc-win",
  "getrandom 0.4.3",
  "image",
  "serde",
  "serde_json",
+ "uniffi",
 ]
 
 [[package]]
@@ -874,6 +876,7 @@ name = "gc-ffi"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "gc-app",
  "gc-link",
  "gc-live",
  "reqwest",
@@ -986,7 +989,6 @@ dependencies = [
 name = "gc-win"
 version = "0.1.0"
 dependencies = [
- "gc-app",
  "gc-camera",
  "windows",
 ]

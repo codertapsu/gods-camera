@@ -7,7 +7,6 @@ publish.workspace = true
 description = "The app's end of the Windows camera. Empty on every other system."
 
 [target.'cfg(windows)'.dependencies]
-gc-app = { version = "0.1.0", path = "../gc-app" }
 gc-camera = { version = "0.1.0", path = "../gc-camera" }
 # Microsoft's own bindings. Only the parts named here are compiled.
 windows = { version = "0.62.2", features = [

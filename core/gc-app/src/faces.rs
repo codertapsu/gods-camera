@@ -48,7 +48,7 @@ pub struct FacePhoto {
 pub struct SavedFace {
     pub id: String,
     pub name: String,
-    /// When it was added, in seconds since 1970.
+    /// When it was added, in milliseconds since 1970. The list is in this order.
     pub added: u64,
     pub consent: Consent,
     /// 512 numbers that stand for the face: its photos' identities combined.
@@ -394,7 +394,7 @@ pub fn face_from_pending(
                 "" => format!("Face {number}"),
                 given => given.to_string(),
             },
-            added: SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs()),
+            added: SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_millis() as u64),
             consent,
             identity: identity_of(&added),
             photos: added,

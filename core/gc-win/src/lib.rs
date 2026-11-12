@@ -19,8 +19,8 @@ mod output;
 pub mod protocol;
 mod vault;
 
-pub use camera::{CameraError, VirtualCamera};
+pub use camera::{CameraError, CameraKeeper, VirtualCamera};
 pub use feed::{now_100ns, Feed, FeedError, FeedStats};
 pub use output::CameraOutput;
 pub use protocol::Wanted;
-pub use vault::{CredentialKey, FACE_KEY};
+pub use vault::Credential;

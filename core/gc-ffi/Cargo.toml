@@ -16,6 +16,11 @@ gc-live = { version = "0.1.0", path = "../gc-live" }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync"] }
 uniffi = { version = "0.32.2", features = ["cli"] }
 
+# The Windows app's model. Its interface is written by UniFFI too, and this
+# library carries it, so the window loads one DLL.
+[target.'cfg(windows)'.dependencies]
+gc-app = { version = "0.1.0", path = "../gc-app" }
+
 [[bin]]
 name = "uniffi-bindgen"
 path = "src/bin/uniffi-bindgen.rs"

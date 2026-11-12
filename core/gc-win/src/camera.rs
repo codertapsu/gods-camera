@@ -128,3 +128,48 @@ impl Drop for VirtualCamera {
         }
     }
 }
+
+/// The camera, held on a thread of its own. Windows' handle to a camera
+/// belongs to the thread that made it; this can be kept by code that does not.
+pub struct CameraKeeper {
+    /// Dropping this is what tells the thread to let the camera go.
+    release: Option<std::sync::mpsc::Sender<()>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl CameraKeeper {
+    /// As `VirtualCamera::start`. The camera stays until the keeper is dropped.
+    pub fn start(pipe_name: &str) -> Result<Self, CameraError> {
+        let (answer, started) = std::sync::mpsc::channel();
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let pipe_name = pipe_name.to_string();
+        let thread = std::thread::Builder::new()
+            .name("virtual camera".into())
+            .spawn(move || match VirtualCamera::start(&pipe_name) {
+                Ok(camera) => {
+                    let _ = answer.send(Ok(()));
+                    // Until the keeper is dropped.
+                    let _ = held.recv();
+                    drop(camera);
+                }
+                Err(error) => {
+                    let _ = answer.send(Err(error));
+                }
+            })
+            .map_err(|_| CameraError { step: "starting the camera's thread", code: 0 })?;
+        match started.recv() {
+            Ok(Ok(())) => Ok(Self { release: Some(release), thread: Some(thread) }),
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(CameraError { step: "the camera's thread", code: 0 }),
+        }
+    }
+}
+
+impl Drop for CameraKeeper {
+    fn drop(&mut self) {
+        self.release = None;
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}

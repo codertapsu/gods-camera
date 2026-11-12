@@ -79,7 +79,9 @@ fn now_unix_seconds() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }
 
-/// A short recording.
+/// A short recording. A copy shares the frames, so making one costs nothing:
+/// that is how the same recording is played in another way or under another name.
+#[derive(Clone)]
 pub struct Clip {
     pub id: String,
     pub name: String,
@@ -92,9 +94,9 @@ pub struct Clip {
     pub points: LoopPoints,
     pub mode: LoopMode,
     /// One small greyscale picture per frame.
-    thumbnails: Vec<Thumbnail>,
+    thumbnails: Arc<Vec<Thumbnail>>,
     /// One JPEG per frame.
-    frames: Vec<Box<[u8]>>,
+    frames: Arc<Vec<Box<[u8]>>>,
 }
 
 impl fmt::Debug for Clip {
@@ -265,8 +267,8 @@ impl ClipRecorder {
             created: now_unix_seconds(),
             points,
             mode: LoopMode::Forward,
-            thumbnails: self.thumbnails,
-            frames: self.frames,
+            thumbnails: Arc::new(self.thumbnails),
+            frames: Arc::new(self.frames),
         })
     }
 }
@@ -408,10 +410,10 @@ impl ClipLibrary {
             return Err(ClipError::Empty);
         }
         let mut payload = Vec::with_capacity(clip.stored_bytes() + clip.thumbnails.len() * CELLS);
-        for frame in &clip.frames {
+        for frame in clip.frames.iter() {
             payload.extend_from_slice(frame);
         }
-        for thumbnail in &clip.thumbnails {
+        for thumbnail in clip.thumbnails.iter() {
             payload.extend_from_slice(thumbnail.cells());
         }
         write_whole(&self.data_path(&clip.id), &payload)?;
@@ -472,7 +474,8 @@ impl ClipLibrary {
             frames.push(payload[offset..offset + size].to_vec().into_boxed_slice());
             offset += size;
         }
-        let thumbnails = payload[frame_bytes..].as_chunks::<CELLS>().0.iter().map(|cells| Thumbnail::from_cells(*cells)).collect();
+        let thumbnails: Vec<Thumbnail> =
+            payload[frame_bytes..].as_chunks::<CELLS>().0.iter().map(|cells| Thumbnail::from_cells(*cells)).collect();
         Ok(Clip {
             id: record.id,
             name: record.name,
@@ -482,8 +485,8 @@ impl ClipLibrary {
             created: record.created,
             points: record.points,
             mode: record.mode,
-            thumbnails,
-            frames,
+            thumbnails: Arc::new(thumbnails),
+            frames: Arc::new(frames),
         })
     }
 

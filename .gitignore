@@ -29,4 +29,4 @@ apps/android/.kotlin/
 # Built by tools/build-windows-app.ps1
 apps/windows/app/bin/
 apps/windows/app/obj/
-apps/windows/app/Core/gc_ffi.cs
+apps/windows/app/Core/*.cs

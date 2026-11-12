@@ -17,3 +17,9 @@ getrandom = "0.4.3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tiff", "bmp"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+# The window's side of this crate is written by UniFFI, as for the core.
+uniffi = "0.32.2"
+
+# The Windows ends of what the model needs: the camera, its pipe, the key store.
+[target.'cfg(windows)'.dependencies]
+gc-win = { version = "0.1.0", path = "../gc-win" }
