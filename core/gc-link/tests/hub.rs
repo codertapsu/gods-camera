@@ -1,5 +1,8 @@
 //! End-to-end tests of the development hub over real loopback sockets.
 
+mod common;
+use common::fake_reader;
+
 use gc_link::{bind_dev, serve, ErrorBody, FileInfo, Health, HubConfig, HubError, Job, UploadInfo};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -197,32 +200,6 @@ async fn rejects_bad_names_oversize_files_and_unknown_ids() {
         .unwrap();
     assert_eq!(job.status(), 400);
     std::fs::remove_dir_all(dir).ok();
-}
-
-/// A stand-in for the text reader: prints one page per picture, each with the
-/// same two lines, so the merged document must hold each line once.
-fn fake_reader(dir: &std::path::Path, fail: bool) -> Vec<String> {
-    let script = dir.join(if fail { "reader-fails.sh" } else { "reader.sh" });
-    let body = if fail {
-        "#!/bin/sh\necho 'boom' >&2\nexit 3\n".to_string()
-    } else {
-        r#"#!/bin/sh
-printf '['
-first=1
-for f in "$@"; do
-  [ $first = 1 ] || printf ','
-  first=0
-  printf '{"path":"%s","width":1000,"height":1000,"lines":[' "$f"
-  printf '{"text":"Dòng chữ thứ nhất của trang","confidence":0.9,"quad":[100,100,600,100,600,140,100,140],"title":false},'
-  printf '{"text":"dòng chữ thứ hai của trang.","confidence":0.8,"quad":[100,160,600,160,600,200,100,200],"title":false}'
-  printf ']}'
-done
-printf ']'
-"#
-        .to_string()
-    };
-    std::fs::write(&script, body).unwrap();
-    vec!["/bin/sh".into(), script.to_string_lossy().into_owned()]
 }
 
 async fn hub_with_reader(reader: Option<Vec<String>>) -> (String, PathBuf) {

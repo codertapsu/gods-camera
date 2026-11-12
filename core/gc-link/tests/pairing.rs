@@ -1,5 +1,7 @@
 //! Pairing and paired use of the hub, over real TLS sockets on this computer.
 
+mod common;
+
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use gc_link::gc_pair::{Grant, HubIdentity, Initiator, PairingCode};
@@ -133,31 +135,11 @@ fn other_than(code: &PairingCode) -> PairingCode {
     PairingCode::parse(&format!("{other:06}")).unwrap()
 }
 
-/// A stand-in for the text reader, as in the hub's own tests.
-fn fake_reader(dir: &Path) -> Vec<String> {
-    let script = dir.join("reader.sh");
-    let body = r#"#!/bin/sh
-printf '['
-first=1
-for f in "$@"; do
-  [ $first = 1 ] || printf ','
-  first=0
-  printf '{"path":"%s","width":1000,"height":1000,"lines":[' "$f"
-  printf '{"text":"Dòng chữ thứ nhất của trang","confidence":0.9,"quad":[100,100,600,100,600,140,100,140],"title":false},'
-  printf '{"text":"dòng chữ thứ hai của trang.","confidence":0.8,"quad":[100,160,600,160,600,200,100,200],"title":false}'
-  printf ']}'
-done
-printf ']'
-"#;
-    std::fs::write(&script, body).unwrap();
-    vec!["/bin/sh".into(), script.to_string_lossy().into_owned()]
-}
-
 #[tokio::test]
 async fn a_device_pairs_and_then_sends_a_document_over_tls() {
     let dir = std::env::temp_dir().join(format!("gc-pairing-test-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
-    let reader = fake_reader(&dir);
+    let reader = common::fake_reader(&dir, false);
     let running = start_in(dir, HubIdentity::generate("test hub").unwrap(), Some(reader)).await;
     let (hub, lan) = (running.hub.clone(), running.lan.clone());
     assert_eq!(hub.fingerprint(), Some(running.identity.fingerprint()));
