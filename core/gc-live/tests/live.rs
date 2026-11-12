@@ -20,6 +20,16 @@ fn packs() -> Option<PathBuf> {
     }
 }
 
+/// Whether the tests run every model on the processor.
+///
+/// They do where the processor keeps up with the tests' 30 frames a second,
+/// which keeps them independent of what a machine's accelerators are busy
+/// with. A PC's processor does not keep up: the Core i5-13400F takes half a
+/// second for one swap. There the graphics card does the work, as in the app.
+fn cpu_only() -> bool {
+    !cfg!(windows)
+}
+
 /// InsightFace's sample photo. On a device, where the build machine's paths
 /// do not exist, `GC_GOLDEN_DIR` points at a pushed copy.
 fn photo() -> (Vec<u8>, u32, u32) {
@@ -53,7 +63,7 @@ fn follows_and_swaps_a_moving_face() {
         detector: DetectorKind::Large,
         detector_size: 640,
         swap_model: SwapModel::Inswapper128,
-        cpu_only: true,
+        cpu_only: cpu_only(),
     })
     .expect("engine");
     engine.set_settings(LiveSettings::default());
@@ -154,7 +164,7 @@ fn hides_the_picture_without_a_swap_and_keeps_objects_in_front_of_the_face() {
         detector: DetectorKind::Large,
         detector_size: 640,
         swap_model: SwapModel::Inswapper128,
-        cpu_only: true,
+        cpu_only: cpu_only(),
     })
     .expect("engine");
     assert_eq!(engine.stats().occlusion, occlusion_model);

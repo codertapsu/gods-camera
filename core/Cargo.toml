@@ -10,3 +10,17 @@ publish = false
 
 [profile.release]
 lto = "thin"
+
+# The tracker, the image code and the live engine are real-time code, and
+# their tests check how well a face is followed at camera speed. Unoptimised,
+# the frame thread takes 17 ms a frame on the Windows PC instead of 2.5, and
+# those tests fail for a reason that has nothing to do with the code. So these
+# four crates are optimised in development builds too.
+[profile.dev.package.gc-align]
+opt-level = 3
+[profile.dev.package.gc-track]
+opt-level = 3
+[profile.dev.package.gc-infer]
+opt-level = 3
+[profile.dev.package.gc-live]
+opt-level = 3

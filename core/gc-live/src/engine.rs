@@ -126,6 +126,17 @@ impl ModelPlan {
         let find = |file: &str| find_model(&config.packs, file);
         let on = |accelerator| if config.cpu_only { Accelerator::Cpu } else { accelerator };
         let swapper = match config.swap_model {
+            SwapModel::Inswapper128 if cfg!(windows) => {
+                // Measured on the RTX 3050 through DirectML: the file as
+                // downloaded takes 58 ms. A wholly half-precision copy takes
+                // 18 ms and gives a wrong picture, 14 levels off on average.
+                // The mixed copy keeps the normalisation arithmetic in full
+                // precision: 22 ms, and 0.3 levels off.
+                let emap = Some(find("inswapper_128.emap.bin"));
+                let mixed = find("inswapper_128.mixed.onnx");
+                let file = if !config.cpu_only && mixed.is_file() { mixed } else { find("inswapper_128.onnx") };
+                (file, SwapperContract::INSWAPPER_128, emap, on(Accelerator::Gpu))
+            }
             SwapModel::Inswapper128 => {
                 let emap = Some(find("inswapper_128.emap.bin"));
                 let fast = find("inswapper_128.reflectfree.fp16.onnx");
@@ -138,16 +149,29 @@ impl ModelPlan {
                 }
             }
             SwapModel::Hyperswap256 => {
-                (find("hyperswap_1b_256.onnx"), SwapperContract::HYPERSWAP_256, None, on(Accelerator::Gpu))
+                // The file as downloaded stores half precision. Through DirectML
+                // its normalisation then comes out wrong, 7 levels off on
+                // average, so on a graphics card the mixed copy is used: 21 ms,
+                // 0.05 levels off. If that copy is missing the load fails and
+                // names it, which is better than a wrong face.
+                let on_a_card = cfg!(windows) && !config.cpu_only;
+                let file = if on_a_card { "hyperswap_1b_256.mixed.onnx" } else { "hyperswap_1b_256.onnx" };
+                (find(file), SwapperContract::HYPERSWAP_256, None, on(Accelerator::Gpu))
             }
         };
-        // Both detectors run on the CPU. Measured on the M4 Pro at 640 pixels:
-        // about 11 ms for the large one and 4 ms for the small one, which is
-        // faster than Core ML ran them, and it leaves the GPU and the Neural
-        // Engine to the swap model.
+        // On the Mac both detectors run on the CPU. Measured on the M4 Pro at
+        // 640 pixels: about 11 ms for the large one and 4 ms for the small one,
+        // which is faster than Core ML ran them, and it leaves the GPU and the
+        // Neural Engine to the swap model.
+        //
+        // On Windows the large detector goes to the graphics card. Measured on
+        // the Core i5-13400F and RTX 3050: 48 ms on the processor, and far more
+        // while the other models run, against 10 ms on the card. The small one
+        // takes 1 ms on the processor, and DirectML cannot run it at all.
+        let large_detector_on = if cfg!(windows) { on(Accelerator::Gpu) } else { Accelerator::Cpu };
         let detector = match config.detector {
             DetectorKind::Small => (find("buffalo_s/det_500m.onnx"), Accelerator::Cpu),
-            DetectorKind::Large => (find("buffalo_l/det_10g.onnx"), Accelerator::Cpu),
+            DetectorKind::Large => (find("buffalo_l/det_10g.onnx"), large_detector_on),
         };
         // The occlusion model runs beside the swap model, so it gets the unit
         // the swap model leaves free. Measured on the M4 Pro for one mask:
@@ -301,6 +325,11 @@ struct FrameState {
     speed_px: f32,
     empty_detections: u32,
     settings_changed: bool,
+    /// The face was taken up from a detection that could not be carried
+    /// forward to the frame it was applied on: the first sight of a face, or
+    /// its return. The place may be off by however far the face moved while
+    /// the detector worked, so the next detection is taken whole.
+    unconfirmed: bool,
     /// The face's keypoints on the newest frame, smoothed, in tracker pixels.
     smoothed: Option<Keypoints>,
     /// Seconds since the face was last followed.
@@ -405,6 +434,7 @@ impl LiveEngine {
             speed_px: 0.0,
             empty_detections: 0,
             settings_changed: false,
+            unconfirmed: false,
             smoothed: None,
             unseen_s: f32::INFINITY,
             presence: 0.0,
@@ -524,7 +554,8 @@ impl LiveEngine {
                 speed_px: st.speed_px * to_reference,
                 flow_detect_gap_px: std::mem::take(&mut st.detect_gap_px) * to_reference,
                 dropped_frames: 0,
-                settings_changed: std::mem::take(&mut st.settings_changed),
+                // An unconfirmed face is looked at again at once, like after a changed setting.
+                settings_changed: std::mem::take(&mut st.settings_changed) || st.unconfirmed,
             };
             if st.scheduler.should_detect(&signals) {
                 let mut buffer = std::mem::take(&mut st.spare_frame);
@@ -562,7 +593,9 @@ impl LiveEngine {
         let mut result = FrameResult::NONE;
         let patch = lock(&self.shared.patch).clone();
         let mut visible = false;
-        if let Some(smoothed) = st.smoothed.filter(|_| st.unseen_s <= HOLD_S + FADE_S) {
+        // A face whose place is not confirmed yet is followed but not shown:
+        // for a frame or two it would be drawn where the face was, not where it is.
+        if let Some(smoothed) = st.smoothed.filter(|_| st.unseen_s <= HOLD_S + FADE_S && !st.unconfirmed) {
             let mut kps = smoothed;
             for p in &mut kps {
                 p[0] *= scale[0];
@@ -665,6 +698,7 @@ fn apply_detection(
         // One miss can be a blink of the detector; two in a row means the face has gone.
         if st.empty_detections >= 2 {
             st.tracker.reset();
+            st.unconfirmed = false;
         }
         return;
     }
@@ -718,7 +752,13 @@ fn apply_detection(
             // differ by a clear margin.
             let relative = gap / distance(kps[0], kps[1]).max(1.0);
             let t01 = ((relative - NOISE_FRACTION) / (SNAP_FRACTION - NOISE_FRACTION)).clamp(0.0, 1.0);
-            let pull = DETECT_PULL + (1.0 - DETECT_PULL) * t01 * t01 * (3.0 - 2.0 * t01);
+            let mut pull = DETECT_PULL + (1.0 - DETECT_PULL) * t01 * t01 * (3.0 - 2.0 * t01);
+            // The face was taken up from a stale detection. This one was
+            // carried forward properly, so it is the first true fix: take it whole.
+            if st.unconfirmed && since.is_some() {
+                pull = 1.0;
+                st.unconfirmed = false;
+            }
             for (point, held) in kps.iter_mut().zip(&t) {
                 *point = [held[0] + (point[0] - held[0]) * pull, held[1] + (point[1] - held[1]) * pull];
             }
@@ -729,6 +769,9 @@ fn apply_detection(
             st.smoothed = None;
             st.presence = 0.0;
             *lock(&shared.patch) = None;
+            // With no face followed there was no motion to carry the detection
+            // forward by, unless it is from this very frame.
+            st.unconfirmed = detected_on != now;
         }
     }
     st.tracker.observe(gray, &kps);
@@ -943,8 +986,9 @@ mod tests {
         };
         let plan = ModelPlan::new(&config);
         assert_eq!(plan.swapper.3, Accelerator::Gpu);
-        // The detector stays off the units the swap model can use.
-        assert_eq!(plan.detector.1, Accelerator::Cpu);
+        // On the Mac the detector stays off the units the swap model can use.
+        // A PC's processor is too slow for it, so there it shares the graphics card.
+        assert_eq!(plan.detector.1, if cfg!(windows) { Accelerator::Gpu } else { Accelerator::Cpu });
 
         let cpu = ModelPlan::new(&LiveConfig { cpu_only: true, swap_model: SwapModel::Inswapper128, ..config.clone() });
         assert_eq!(cpu.swapper.3, Accelerator::Cpu);
