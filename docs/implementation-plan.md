@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-11, revision 9 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-12, revision 10 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -105,7 +105,7 @@ A floor is what the app needs to run well on that platform. It is not lowered to
 | Platform | Minimum | Notes |
 |---|---|---|
 | Mac | Apple silicon, 24 GB memory, macOS 27, 60 GB free disk | Tested on the M4 Pro only |
-| Windows PC | Windows 11 64-bit, Core i5-13400F class CPU, 32 GB memory, GeForce RTX 3050 with 8 GB | Exact Windows version recorded at the start of Phase 4 |
+| Windows PC | Windows 11 64-bit, Core i5-13400F class CPU, 32 GB memory, GeForce RTX 3050 with 8 GB, a DirectX 12 graphics driver | Tested on Windows 11 Pro 25H2 (build 26200) with NVIDIA driver 616.92 |
 | Android phone or tablet | Android 16 (API level 36), 64-bit ARM, 8 GB memory, Snapdragon 8 Gen 1 or newer | The tablet meets it. The phone does not until it is updated |
 | iPhone / iPad | Not supported yet | Provisional floor when you have one: iPhone 16 or later, iOS 27 |
 | Network | Phone and desktop on the same Wi-Fi 6 network, or joined by a USB cable | |
@@ -149,11 +149,13 @@ Verified on 2026-11-11; details are in the research document, section 8.
 
 ### 5.3 The Windows PC
 
-- Nothing is installed on it until the Windows start point (section 12).
-- Until then, the shared core is cross-compiled for Windows from the Mac on every merge, so Mac-only assumptions are caught early. The Mac already has Rust's Windows targets; it still needs cargo-xwin and LLVM for this.
-- At the start point the PC needs a toolchain: Visual Studio with the C++ and Windows SDK workloads, the .NET SDK, Rust, Git, a current NVIDIA driver, and the CUDA and TensorRT runtime libraries for ONNX Runtime. Allow a couple of hours for downloads and roughly 30 GB of disk.
-- Turning on its OpenSSH server lets builds and benchmarks be driven from the Mac.
-- It has an external camera, so it does not depend on the phone for video input.
+- In use since 2026-11-12, when you moved the work onto it. Each platform's own work is done on its own machine, and the two share one GitHub repository; `CLAUDE.md` at the top of the repository says how.
+- Found ready: Visual Studio Build Tools 2022 with the C++ tools, Windows SDK 10.0.26100, Rust, CMake, Ninja, Python with uv, Git and the GitHub CLI, and a current NVIDIA driver. The .NET SDK is version 8, whose support has ended; the app shell needs .NET 10.
+- Not needed after all: the CUDA and TensorRT libraries. The models run through DirectML, which comes with ONNX Runtime as one library (spike S3, in [phase-4-results.md](phase-4-results.md)).
+- The model files and the parity tests' reference pictures are made on the PC by `tools/fetch-packs.py` and `tools/make-reference.py`.
+- The Mac still cross-compiles the core for Windows on every merge. The PC now runs the core's tests natively as well.
+- Work sessions on the PC run without administrator rights. Steps that need them, such as registering the camera driver, are yours, or mine when you say so.
+- It has an external camera; none was attached on the first day, so the virtual camera is tested with a generated picture.
 
 ### 5.4 Localhost-first workflow
 
@@ -217,7 +219,7 @@ The split of responsibilities:
 | UI | SwiftUI + AppKit | WinUI 3, C# | Jetpack Compose, Kotlin | SwiftUI, sharing packages with macOS |
 | Capture | AVFoundation | Media Foundation | CameraX | AVFoundation |
 | GPU | Metal | Direct3D 11 | OpenGL ES 3.1 | Metal |
-| Inference | ONNX Runtime, Core ML provider | ONNX Runtime, CUDA then TensorRT provider | ONNX Runtime on the CPU for the detector; swap runtime chosen by bake-off | ONNX Runtime, Core ML provider |
+| Inference | ONNX Runtime, Core ML provider | ONNX Runtime, DirectML provider | ONNX Runtime on the CPU for the detector; swap runtime chosen by bake-off | ONNX Runtime, Core ML provider |
 | Video codec | VideoToolbox | Media Foundation with NVIDIA hardware codecs | MediaCodec | VideoToolbox |
 | Virtual camera | Camera Extension (Swift) | Media Foundation media source (C++) | — | — |
 | Scanner and OCR | Vision, accurate level | PP-OCRv5 on ONNX Runtime | ML Kit document scanner and text recognition | VisionKit, Vision |
@@ -295,6 +297,13 @@ Measured in Phase 2 with the whole engine running at 1280×720 and 30 frames a s
 - The frame thread needs about 1 ms a frame for tracking, smoothing and cutting the crop.
 - Both detectors are faster on the CPU than through Core ML: about 11 ms for the large one. They run there, which leaves the GPU and the Neural Engine to the swap model.
 - The tracker is the steady part and the detector the noisy part. A detection therefore only nudges the tracked keypoints, a tenth of the way, unless the two disagree clearly.
+
+Measured on the Windows PC in spike S3, on the RTX 3050 through DirectML:
+
+- A wholly half-precision swap model is fast and gives a wrong picture: 18 ms a swap and 14 levels off for `inswapper_128`, and 7 levels off for HyperSwap, which is stored that way. A mixed-precision copy, with the normalisation in full precision, takes 21 to 22 ms and is right. Windows uses those copies; the manifests pin them.
+- With the whole engine running: 25 swaps a second with the occlusion mask and 30 without. The swapped face on screen is 2 frames old at the median.
+- The PC has one accelerator, so the swap model, the detector and the occlusion mask share the card. The large detector still belongs there: 10 ms against 48 ms on the processor.
+- NVIDIA's CUDA provider was no faster than DirectML for any model on this card.
 
 ### 6.6 Virtual camera drivers
 
@@ -407,7 +416,7 @@ Targets are goals to validate on the reference devices, not measurements. The sw
 | Mac output | 720p30 held with swap on; 1080p30 as the stretch |
 | Windows output | 720p30 held with swap on the RTX 3050 |
 | Added latency, capture to virtual camera | Mac: ≤ 12 ms median, ≤ 25 ms at the 95th percentile. Windows: set by spike S2 |
-| Age of the swapped face when it is shown | Mac: ≤ 80 ms median, ≤ 110 ms at the 95th percentile, reset after spike S3. Windows: set by spike S3 on the RTX 3050 |
+| Age of the swapped face when it is shown | Mac: ≤ 80 ms median, ≤ 110 ms at the 95th percentile, reset after spike S3. Windows: the same; spike S3 measured 60 ms at the median on the RTX 3050 |
 | Tracker | ≤ 2 ms per frame; ≤ 0.3 px wander at rest |
 | Parity with InsightFace's Python output on the same inputs | Mean absolute difference ≤ 2 levels out of 255 on the swapped crop |
 | Android through a desktop | 30 fps output; swap patch age ≤ 150 ms median over Wi-Fi 6 or USB |
@@ -628,18 +637,20 @@ Checks only you can do
 
 Exit: 50 overlapping photos of a multi-column Vietnamese newspaper page, taken with the tablet, become one text that meets the OCR targets. Phone-as-camera meets the latency target over USB and over Wi-Fi.
 
-**Phases 0–3 are the first usable product.** The exit of this phase is also the Windows start point: I tell you then that Windows work can begin (section 12).
+**Phases 0–3 are the first usable product.** The exit of this phase was meant to be the Windows start point. You brought the PC in on 2026-11-12, before that, so Phase 4 now runs beside the rest of this phase (section 12).
 
-### Phase 4 — Windows desktop (6–10 weeks, from the Windows start point)
+### Phase 4 — Windows desktop (6–10 weeks; started 2026-11-12)
 
 Goal: parity with Phases 1–3 on the Windows PC.
 
+State: the toolchain is in place, the core passes its tests on the PC, and the models run on the RTX 3050 at camera speed. The virtual camera is the piece in progress. Details are in [phase-4-results.md](phase-4-results.md).
+
 Start
 
-- [ ] Toolchain on the PC, as in section 5.3. Record the Windows version and the GPU driver version.
-- [ ] The core's unit and parity tests pass on the PC.
+- [x] Toolchain on the PC, as in section 5.3. Windows 11 Pro 25H2 build 26200.8655, NVIDIA driver 616.92. .NET 10 is still to be installed for the app shell.
+- [x] The core's unit and parity tests pass on the PC: 145 in a full run.
 - [ ] **S2 Windows driver.** Custom media source under Frame Server. Compare shared memory and shared texture for the frame hand-off. Verify in Zoom, Teams, Chrome, Edge, Camera and OBS.
-- [ ] **S3 on the RTX 3050.** `inswapper_128` and HyperSwap 256 through the CUDA and TensorRT providers, at full and half precision. Record milliseconds and video memory used.
+- [x] **S3 on the RTX 3050.** `inswapper_128` and HyperSwap 256 at full, half and mixed precision, through DirectML and CUDA, with milliseconds, video memory and the error of each picture. DirectML with mixed-precision copies was chosen. TensorRT did not load in the comparison and was not pursued.
 - [ ] **S8 Shared renderer.** A short test of one wgpu renderer for Windows and Android against a native Direct3D graph. Pick one before building.
 
 Build
@@ -648,10 +659,10 @@ Build
 - [ ] Frame hand-off into Frame Server per the S2 result.
 - [ ] Inputs: Media Foundation capture from the external camera, and the phone-as-camera link as a second source.
 - [ ] Render graph using the shared shaders.
-- [ ] Core inference with static shapes, cached engines and warm-up; separate sessions and queues per stage; no global inference lock.
-- [ ] A fixed video-memory budget for the live pipeline, set from the S3 measurement.
+- [x] Core inference on the card through DirectML, with separate sessions and queues per stage and no global inference lock. A model the card refuses runs on the processor instead.
+- [ ] A fixed video-memory budget for the live pipeline. S3 measured about 0.7 GB for `inswapper_128` with the detector and the mask, and 1 GB with HyperSwap, of the card's 8 GB.
 - [ ] OCR with PP-OCRv5; Vietnamese accuracy measured against the corpus.
-- [ ] Hub on the shared core, firewall rule prompt, WinUI shell, tray icon, hotkeys.
+- [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it.
 - [ ] Installer that registers the camera; file logging; single-instance guard.
 - [ ] App matrix: Zoom, Teams, Meet in Chrome and Edge, Slack, Discord, OBS, Camera.
 
@@ -828,12 +839,12 @@ These are the points where I come back to you for a decision.
 |---|---|---|
 | Updating the S22+ | Whenever you choose | Nothing to decide in the plan. The phone joins testing once it is on Android 16 |
 | Freeing disk space on the Mac | Before anything is deleted | What goes. The Xcode build cache (10 GB) is the obvious candidate |
-| Windows start point | When Phase 3 exits, roughly four to six months in | Start Windows next, or after the Android swap work in Phase 6 (the default) |
+| Windows start point | Decided on 2026-11-12: you brought the PC in, and Phase 4 began | Nothing further to decide |
 | On-device swap on Android | After spike S6 in Phase 6 | Keep it for the devices that pass, or stay with the desktop |
 | iPhone and iPad | When you own one | Start Phase 11 and set its floors |
 | Release in Vietnam | When you decide to release | Start Phase 12 |
 
-Why the Windows start point is the exit of Phase 3:
+Why the plan put the Windows start point at the exit of Phase 3, and what starting early changes. The first two reasons were about work done twice. They still hold for the hub's video stream, which Phase 3 has not built yet: Windows takes that up only once the Mac has it. The engine and the pairing are settled, so the camera driver, the models on the card and the app shell can go ahead now.
 
 - **Not earlier.** Before that, Windows would port an engine and a hub that are still changing, so the work would be done twice. Problems in the swap pipeline would also have to be debugged on two systems at once.
 - **Ready by then.** The three things Windows reuses are settled: the live engine in the core and the shared shaders (Phase 2), and the hub interface (Phase 3).
@@ -856,6 +867,6 @@ Only for a release:         Phase 12 (Vietnam gate)
 ```
 
 - Recommended order: 0, 1, 2, 3, 5, 6, 4, 8, 9.
-- Windows can start any time after Phase 3 exits. By default it follows Phase 6, and it should start before Phase 8.
+- Windows started on 2026-11-12, beside the end of Phase 3. Its camera driver, inference and app shell do not wait for anything; its phone-as-camera input waits for Phase 3 to build the video stream.
 - Phases 5, 8 and 9 can each start from the command-line client, before the phone work they depend on is finished.
 - First product: Phases 0–3, roughly four to six months of solo work. Phases 0–9: about a year.

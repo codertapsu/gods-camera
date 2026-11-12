@@ -8,6 +8,7 @@ Personal-use virtual camera, face swap, scanner and capture tools for macOS, Win
 - Phase 1 results: [docs/phase-1-results.md](docs/phase-1-results.md)
 - Phase 2 results: [docs/phase-2-results.md](docs/phase-2-results.md)
 - Phase 3 results so far: [docs/phase-3-results.md](docs/phase-3-results.md)
+- Phase 4 (Windows) results so far: [docs/phase-4-results.md](docs/phase-4-results.md)
 
 ## Layout
 
@@ -18,6 +19,19 @@ Personal-use virtual camera, face swap, scanner and capture tools for macOS, Win
 | `apps/android/` | Android companion app (`tools/build-core-android.sh` once, then `./gradlew :app:assembleDebug` with JDK 17; see `apps/android/README.md`) |
 | `tools/modelkit/` | Python reference runs and model benchmarks (`uv run python ...`) |
 | `packs/` | Model manifests with pinned SHA-256 hashes. Model files live outside the repository, in `../packs` |
+
+## Setting up a machine
+
+The work runs on a Mac and a Windows PC that share this repository; `CLAUDE.md` describes how. A fresh clone on either needs four things that are not in git:
+
+```sh
+sh tools/setup-git.sh              # clone settings: a pull rebases; line endings come from .gitattributes
+python tools/fetch-packs.py        # the model files, into ../packs, checked against their manifests
+python tools/make-reference.py     # the parity tests' reference pictures
+cd core && cargo test --workspace  # the shared core's tests
+```
+
+On Windows, run the shell scripts in Git Bash. The Windows pieces are in `apps/windows`; see its README.
 
 ## Common commands
 
