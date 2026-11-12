@@ -1,15 +1,16 @@
 //! `gc camera`: the live face swap, shown through the Windows camera.
 //!
-//! It does what the app will do: make the pipe, ask Windows for the camera,
-//! and while something watches, run every frame through the live engine, draw
-//! the outgoing picture and hand it over. The frames come from a moving-face
-//! clip made from a photo, so it needs no camera of its own.
+//! It does what the app does: make the pipe, ask Windows for the camera, and
+//! while something watches, run the camera engine on every frame. The frames
+//! come from a moving-face clip made from a photo, so it needs no camera of
+//! its own.
 
 use crate::face::{percentile, Picture};
 use anyhow::{bail, Context, Result};
+use gc_camera::{CameraEngine, Mode, SwapStage};
 use gc_live::synthetic::{FaceClip, Motion};
 use gc_live::{Enroller, ImageView, LiveConfig, LiveEngine, LiveSettings, PixelFormat, SwapModel};
-use gc_win::{Feed, FeedError, VirtualCamera, Wanted};
+use gc_win::{CameraOutput, Feed, FeedError, VirtualCamera, Wanted};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -34,6 +35,8 @@ pub struct CameraArgs {
     /// Send the clip as it is, to tell the camera's cost from the engine's.
     pub no_swap: bool,
     pub no_occlusion: bool,
+    /// After this many seconds of live picture, record a loop and play it.
+    pub loop_after: Option<f32>,
     pub cache_dir: Option<PathBuf>,
     pub json: Option<PathBuf>,
     /// Set when the user asks to stop.
@@ -42,22 +45,21 @@ pub struct CameraArgs {
 
 /// The clip's own size, as a webcam's would be.
 const CLIP: (u32, u32) = (1280, 720);
+/// How long the loop recorded by `--loop-after` is.
+const LOOP_SECONDS: f32 = 5.0;
 
-/// Times for one stage of the work, in milliseconds.
-#[derive(Default)]
-struct Stage(Vec<f32>);
+/// Where `--loop-after` has got to.
+enum LoopDemo {
+    Off,
+    Waiting { since: Instant },
+    Recording { since: Instant },
+    AwaitingClip,
+    Playing,
+}
 
-impl Stage {
-    fn add(&mut self, since: Instant) {
-        self.0.push(since.elapsed().as_secs_f32() * 1000.0);
-    }
-
-    fn report(&mut self) -> serde_json::Value {
-        self.0.sort_by(f32::total_cmp);
-        serde_json::json!({
-            "median": percentile(&self.0, 0.5), "p95": percentile(&self.0, 0.95), "max": percentile(&self.0, 1.0)
-        })
-    }
+fn median_and_tail(times: &mut [f32]) -> serde_json::Value {
+    times.sort_by(f32::total_cmp);
+    serde_json::json!({ "median": percentile(times, 0.5), "p95": percentile(times, 0.95), "max": percentile(times, 1.0) })
 }
 
 pub fn run(args: CameraArgs) -> Result<()> {
@@ -65,12 +67,12 @@ pub fn run(args: CameraArgs) -> Result<()> {
         Some(name) => Feed::open_named(name),
         None => Feed::open(),
     };
-    let feed = feed.map_err(|error| match error {
+    let feed = Arc::new(feed.map_err(|error| match error {
         FeedError::Taken => anyhow::anyhow!(
             "another program already holds the camera's pipe. Is the app, another gc camera or gc-vcam-host running?"
         ),
         other => anyhow::anyhow!(other),
-    })?;
+    })?);
     let camera = match args.no_camera {
         true => None,
         false => Some(VirtualCamera::start(feed.pipe_name()).map_err(|error| {
@@ -91,7 +93,7 @@ pub fn run(args: CameraArgs) -> Result<()> {
     let stride = CLIP.0 as usize * 4;
     let mut frame = Vec::new();
 
-    let engine = match args.no_swap {
+    let swap = match args.no_swap {
         true => None,
         false => {
             let identity = match &args.source {
@@ -101,7 +103,7 @@ pub fn run(args: CameraArgs) -> Result<()> {
                 }
                 None => enroller.identity(&photo.view(), &faces[faces.len() - 1].kps)?,
             };
-            let engine = LiveEngine::new(&LiveConfig {
+            let swap = LiveEngine::new(&LiveConfig {
                 packs: vec![args.packs.clone()],
                 cache_dir: args.cache_dir.clone(),
                 detector: gc_live::DetectorKind::Large,
@@ -109,26 +111,28 @@ pub fn run(args: CameraArgs) -> Result<()> {
                 swap_model: args.model,
                 cpu_only: false,
             })?;
-            engine.set_settings(LiveSettings { occlusion: !args.no_occlusion, ..LiveSettings::default() });
-            engine.set_identity(Some(identity));
+            swap.set_settings(LiveSettings { occlusion: !args.no_occlusion, ..LiveSettings::default() });
+            swap.set_identity(Some(identity));
             // The first runs of a model are slow. Get them over with before anything watches.
             let warm_started = Instant::now();
             clip.render(&clip.pose(args.motion, 0.0), &mut frame);
             let mut clock_ns = 1u64;
-            while engine.patch().is_none() && warm_started.elapsed() < Duration::from_secs(120) {
+            while swap.patch().is_none() && warm_started.elapsed() < Duration::from_secs(120) {
                 let view = ImageView::new(&frame, CLIP.0, CLIP.1, stride, PixelFormat::Bgra).context("frame")?;
-                engine.push_frame(&view, clock_ns);
+                swap.push_frame(&view, clock_ns);
                 clock_ns += 33_333_333;
                 std::thread::sleep(Duration::from_millis(33));
             }
-            if engine.patch().is_none() {
-                bail!("no swapped patch after two minutes: {:?}", engine.stats().last_error);
+            if swap.patch().is_none() {
+                bail!("no swapped patch after two minutes: {:?}", swap.stats().last_error);
             }
-            Some(engine)
+            Some(Arc::new(swap))
         }
     };
     drop(enroller);
 
+    let engine = CameraEngine::with_clock(Some(Box::new(CameraOutput::new(Arc::clone(&feed)))), CameraOutput::clock);
+    engine.set_swap(swap.clone().map(|swap| swap as Arc<dyn SwapStage>));
     match &camera {
         Some(_) => eprintln!("The camera \"God's Camera\" is in every app's camera list for as long as this runs."),
         None => eprintln!("The pipe is open. No camera was asked of Windows."),
@@ -136,14 +140,13 @@ pub fn run(args: CameraArgs) -> Result<()> {
 
     let started = Instant::now();
     let mut watching: Option<(Wanted, Instant)> = None;
-    let mut compositor: Option<gc_render::Compositor> = None;
-    let mut outgoing = Vec::new();
-    let (mut made, mut refused, mut swapped, mut watched_s) = (0u64, 0u64, 0u64, 0f32);
-    let (mut clip_ms, mut engine_ms, mut compose_ms, mut send_ms) =
-        (Stage::default(), Stage::default(), Stage::default(), Stage::default());
+    let (mut made, mut with_face, mut from_loop, mut watched_s) = (0u64, 0u64, 0u64, 0f32);
+    let (mut clip_ms, mut hand_over_ms) = (Vec::new(), Vec::new());
     let mut sizes: Vec<String> = Vec::new();
     let mut due = Instant::now();
-    let engine_before = engine.as_ref().map(|engine| engine.stats());
+    let swap_before = swap.as_ref().map(|swap| swap.stats());
+    let mut demo = LoopDemo::Off;
+    let mut loop_report = serde_json::Value::Null;
 
     while !args.stop.load(Ordering::Relaxed) && args.seconds.is_none_or(|limit| started.elapsed().as_secs_f32() < limit) {
         let wanted = feed.watched();
@@ -151,18 +154,26 @@ pub fn run(args: CameraArgs) -> Result<()> {
             if let Some((_, since)) = watching {
                 watched_s += since.elapsed().as_secs_f32();
             }
-            match wanted {
-                Some(wanted) => {
+            match (wanted, watching) {
+                (Some(wanted), was) => {
                     eprintln!("Something is watching: it asked for {} x {}.", wanted.width, wanted.height);
                     let size = format!("{}x{}", wanted.width, wanted.height);
                     if !sizes.contains(&size) {
                         sizes.push(size);
                     }
-                    compositor = Some(gc_render::Compositor::new(wanted.width, wanted.height));
-                    due = Instant::now();
+                    if was.is_none() {
+                        engine.source_started();
+                        due = Instant::now();
+                        if args.loop_after.is_some() {
+                            demo = LoopDemo::Waiting { since: Instant::now() };
+                        }
+                    }
                 }
-                None => {
+                (None, _) => {
                     eprintln!("Nothing is watching.");
+                    engine.stop_loop();
+                    engine.source_stopped();
+                    demo = LoopDemo::Off;
                     if args.once {
                         watching = None;
                         break;
@@ -171,7 +182,7 @@ pub fn run(args: CameraArgs) -> Result<()> {
             }
             watching = wanted.map(|wanted| (wanted, Instant::now()));
         }
-        let (Some((wanted, _)), Some(compositor)) = (watching, compositor.as_mut()) else {
+        let Some((wanted, _)) = watching else {
             // Nothing reads the camera, so nothing is made.
             std::thread::sleep(Duration::from_millis(20));
             continue;
@@ -188,55 +199,66 @@ pub fn run(args: CameraArgs) -> Result<()> {
         }
         due += period;
 
+        // This is the camera: a frame is taken and handed to the engine.
         let stage = Instant::now();
-        let taken = gc_win::now_100ns();
-        let seconds = started.elapsed().as_secs_f32();
-        clip.render(&clip.pose(args.motion, seconds), &mut frame);
-        clip_ms.add(stage);
+        let taken = CameraOutput::clock();
+        clip.render(&clip.pose(args.motion, started.elapsed().as_secs_f32()), &mut frame);
+        clip_ms.push(stage.elapsed().as_secs_f32() * 1000.0);
         let view = ImageView::new(&frame, CLIP.0, CLIP.1, stride, PixelFormat::Bgra).context("frame")?;
-        let mut scene = gc_render::Scene::of(view);
-
         let stage = Instant::now();
-        let result = engine.as_ref().map(|engine| engine.push_frame(&view, (seconds as f64 * 1e9) as u64 + 5_000_000_000));
-        let patch = match (&engine, &result) {
-            (Some(engine), Some(result)) => engine.patch().filter(|_| result.patch_sequence > 0 && result.opacity > 0.0),
-            _ => None,
+        engine.push_frame(&view, taken);
+        hand_over_ms.push(stage.elapsed().as_secs_f32() * 1000.0);
+        made += 1;
+        let status = engine.status();
+        with_face += status.swapping as u64;
+        from_loop += (status.mode == Mode::Looping) as u64;
+
+        // `--loop-after`: live for a while, then record a loop and play it.
+        demo = match demo {
+            LoopDemo::Waiting { since } if since.elapsed().as_secs_f32() >= args.loop_after.unwrap_or(f32::MAX) => {
+                eprintln!("Recording a loop of {LOOP_SECONDS} seconds.");
+                engine.start_recording();
+                LoopDemo::Recording { since: Instant::now() }
+            }
+            LoopDemo::Recording { since } if since.elapsed().as_secs_f32() >= LOOP_SECONDS => {
+                engine.stop_recording();
+                LoopDemo::AwaitingClip
+            }
+            LoopDemo::AwaitingClip => match engine.take_clips().pop() {
+                Some(clip) => {
+                    // The way of repeating that hides the seam best, as the app chooses it.
+                    let mode = clip.suggested_mode();
+                    loop_report = serde_json::json!({
+                        "frames": clip.frame_count(),
+                        "frame_rate": clip.frame_rate,
+                        "megabytes": clip.stored_bytes() as f64 / 1e6,
+                        "loop": [clip.points.start, clip.points.end],
+                        "seam_mismatch": clip.seam_mismatch(),
+                        "mode": format!("{mode:?}"),
+                    });
+                    eprintln!("Playing the loop: {} frames, {mode:?}.", clip.points.length());
+                    let mut clip = Arc::try_unwrap(clip).map_err(|_| anyhow::anyhow!("the clip is in use"))?;
+                    clip.mode = mode;
+                    engine.start_loop(Arc::new(clip));
+                    LoopDemo::Playing
+                }
+                None => LoopDemo::AwaitingClip,
+            },
+            other => other,
         };
-        engine_ms.add(stage);
-
-        let stage = Instant::now();
-        if let Some(result) = &result {
-            scene.blur = result.blur;
-            scene.patch = patch.as_ref().map(|patch| gc_render::Patch {
-                rgba: &patch.rgba,
-                size: patch.size,
-                crop_to_frame: result.crop_to_frame,
-                opacity: result.opacity,
-            });
-        }
-        swapped += scene.patch.as_ref().is_some_and(|patch| patch.opacity > 0.9) as u64;
-        compositor.draw(&scene);
-        compositor.nv12(&mut outgoing);
-        compose_ms.add(stage);
-
-        let stage = Instant::now();
-        // The time is when the frame was taken, so a reader measures the whole way through.
-        match feed.send(&outgoing, wanted.width, wanted.height, taken) {
-            true => made += 1,
-            false => refused += 1,
-        }
-        send_ms.add(stage);
     }
     if let Some((_, since)) = watching {
         watched_s += since.elapsed().as_secs_f32();
     }
 
     // Give the last picture a moment to leave before the pipe closes.
+    engine.sync();
     std::thread::sleep(Duration::from_millis(50));
+    let status = engine.status();
     let stats = feed.stats();
-    let engine_report = match (&engine, engine_before) {
-        (Some(engine), Some(before)) => {
-            let after = engine.stats();
+    let swap_report = match (&swap, swap_before) {
+        (Some(swap), Some(before)) => {
+            let after = swap.stats();
             serde_json::json!({
                 "model": format!("{:?}", args.model),
                 "occlusion_mask": after.occlusion,
@@ -244,11 +266,13 @@ pub fn run(args: CameraArgs) -> Result<()> {
                 "swap_ms": after.swap_ms,
                 "swap_age_ms": after.swap_age_ms,
                 "detector_ms": after.detect_ms,
+                "frame_thread_ms": after.frame_ms,
                 "last_error": after.last_error,
             })
         }
         _ => serde_json::Value::Null,
     };
+    drop(engine);
     drop(camera);
     drop(feed);
 
@@ -260,17 +284,20 @@ pub fn run(args: CameraArgs) -> Result<()> {
         "sizes_asked_for": sizes,
         "frames_made": made,
         "frames_made_per_watched_second": made as f32 / watched_s.max(0.001),
-        "frames_not_taken": refused,
-        "frames_with_the_swapped_face": swapped,
+        "frames_with_the_swapped_face": with_face,
+        "frame_periods_in_the_loop": from_loop,
+        "frames_out": status.frames_out,
+        "frames_passed_over": status.frames_skipped,
         "frames_sent": stats.sent,
         "frames_dropped": stats.dropped,
         "connects": stats.connects,
         "write_failures": stats.write_failures,
-        "clip_ms": clip_ms.report(),
-        "engine_ms": engine_ms.report(),
-        "compose_ms": compose_ms.report(),
-        "send_ms": send_ms.report(),
-        "engine": engine_report,
+        "ended_in": match status.mode { Mode::Idle => "idle", Mode::Live => "live", Mode::Looping => "loop" },
+        "clip_ms": median_and_tail(&mut clip_ms),
+        "hand_over_ms": median_and_tail(&mut hand_over_ms),
+        "draw_ms": status.render_ms,
+        "swap": swap_report,
+        "loop": loop_report,
     });
     println!("{}", serde_json::to_string(&report)?);
     if let Some(path) = &args.json {

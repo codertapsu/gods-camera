@@ -23,6 +23,7 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "fs", "si
 
 # `gc camera` shows the live face swap through the Windows camera.
 [target.'cfg(windows)'.dependencies]
+gc-camera = { version = "0.1.0", path = "../gc-camera" }
 gc-win = { version = "0.1.0", path = "../gc-win" }
 
 [[bin]]

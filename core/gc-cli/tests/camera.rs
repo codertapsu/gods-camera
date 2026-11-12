@@ -58,12 +58,13 @@ fn rgb(nv12: &[u8], width: usize, height: usize) -> Vec<u8> {
 }
 
 #[test]
-fn the_swapped_picture_reaches_a_watching_source_thirty_times_a_second() {
+fn the_swapped_picture_reaches_a_watching_source_live_and_as_a_loop() {
     let Some(packs) = packs() else { return };
     let photo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../gc-infer/tests/golden/input.png");
     let pipe = format!(r"\\.\pipe\godscamera.test.cli.{}", std::process::id());
+    // Three seconds live, five seconds recorded, and then the loop.
     let mut tool = Command::new(GC)
-        .args(["camera", "--no-camera", "--once", "--seconds", "300", "--motion", "talking", "--pipe", &pipe])
+        .args(["camera", "--no-camera", "--once", "--seconds", "300", "--motion", "talking", "--loop-after", "3", "--pipe", &pipe])
         .arg("--packs")
         .arg(&packs)
         .arg("--photo")
@@ -78,7 +79,8 @@ fn the_swapped_picture_reaches_a_watching_source_thirty_times_a_second() {
 
     // Pictures are read on a thread of their own, so a tool that goes wrong
     // fails the test instead of leaving it waiting.
-    const WANTED: usize = 90;
+    const LIVE: usize = 80;
+    const WANTED: usize = 330;
     let (send, receive) = channel::<(FrameHeader, Instant, Vec<u8>)>();
     let reader = std::thread::spawn(move || {
         for _ in 0..WANTED {
@@ -95,48 +97,69 @@ fn the_swapped_picture_reaches_a_watching_source_thirty_times_a_second() {
         // Dropping the connection here is what ends the tool: `--once`.
     });
 
-    let mut pictures = Vec::with_capacity(WANTED);
+    // Only a few whole pictures are kept; of the others, what the checks need.
+    let mut headers: Vec<(FrameHeader, Instant)> = Vec::with_capacity(WANTED);
+    let (mut live_picture, mut last_picture) = (Vec::new(), Vec::new());
     // The first picture comes once the models are loaded and warm.
     let mut patience = Duration::from_secs(180);
-    while pictures.len() < WANTED {
+    while headers.len() < WANTED {
         match receive.recv_timeout(patience) {
-            Ok(picture) => pictures.push(picture),
+            Ok((header, arrived, payload)) => {
+                headers.push((header, arrived));
+                if headers.len() == LIVE {
+                    live_picture = payload;
+                } else if headers.len() == WANTED {
+                    last_picture = payload;
+                }
+            }
             Err(_) => {
                 let _ = tool.kill();
-                panic!("only {} of {WANTED} pictures arrived", pictures.len());
+                panic!("only {} of {WANTED} pictures arrived", headers.len());
             }
         }
         patience = Duration::from_secs(5);
     }
     reader.join().unwrap();
 
-    for pair in pictures.windows(2) {
+    for pair in headers.windows(2) {
         assert_eq!(pair[1].0.sequence, pair[0].0.sequence + 1, "a picture is missing between two that arrived");
         assert!(pair[1].0.time_100ns > pair[0].0.time_100ns, "the times go backwards");
     }
-    assert!(pictures.iter().all(|(header, ..)| (header.width, header.height) == (HD.width, HD.height)));
-    // Thirty a second, by the times the tool stamped and by when the pictures arrived.
-    let spans = (WANTED - 1) as f64;
-    let stamped_ms = (pictures[WANTED - 1].0.time_100ns - pictures[0].0.time_100ns) as f64 / 10_000.0 / spans;
-    let arrived_ms = (pictures[WANTED - 1].1 - pictures[0].1).as_secs_f64() * 1000.0 / spans;
-    assert!((stamped_ms - 33.33).abs() < 1.0, "a picture every {stamped_ms:.2} ms by the stamps");
-    assert!((arrived_ms - 33.33).abs() < 1.0, "a picture every {arrived_ms:.2} ms by arrival");
+    assert!(headers.iter().all(|(header, _)| (header.width, header.height) == (HD.width, HD.height)));
+    // Thirty a second, by the times the tool stamped and by when the pictures
+    // arrived: while live, and over the whole run with the loop in it.
+    let pace = |from: usize, to: usize| -> (f64, f64) {
+        let spans = (to - from) as f64;
+        let stamped = (headers[to].0.time_100ns - headers[from].0.time_100ns) as f64 / 10_000.0 / spans;
+        let arrived = (headers[to].1 - headers[from].1).as_secs_f64() * 1000.0 / spans;
+        (stamped, arrived)
+    };
+    for (what, (stamped, arrived)) in [("live", pace(0, LIVE - 1)), ("in all", pace(0, WANTED - 1))] {
+        assert!((stamped - 33.33).abs() < 1.0, "{what}: a picture every {stamped:.2} ms by the stamps");
+        assert!((arrived - 33.33).abs() < 1.0, "{what}: a picture every {arrived:.2} ms by arrival");
+    }
+    // Starting to record and going over to the loop leave no gap in the pictures.
+    let longest_wait =
+        headers.windows(2).map(|pair| (pair[1].1 - pair[0].1).as_secs_f64() * 1000.0).fold(0.0, f64::max);
+    assert!(longest_wait < 120.0, "the picture stood still for {longest_wait:.0} ms");
 
     // The picture itself: the clip's plain wall at the edge, darker at the top
-    // than at the bottom, and a face in the middle.
+    // than at the bottom, and a face in the middle. Live and in the loop alike.
     let (width, height) = (HD.width as usize, HD.height as usize);
-    let last = &pictures[WANTED - 1].2;
-    let luma = |x: usize, y: usize| last[y * width + x] as i32;
-    assert!((70..=84).contains(&luma(4, 4)), "the wall at the top is {}", luma(4, 4));
-    assert!((104..=118).contains(&luma(4, height - 4)), "the wall at the bottom is {}", luma(4, height - 4));
-    let middle: Vec<i32> = (0..200).flat_map(|i| (0..200).map(move |j| (540 + i, 240 + j))).map(|(x, y)| luma(x, y)).collect();
-    let mean = middle.iter().sum::<i32>() / middle.len() as i32;
-    let spread = middle.iter().map(|value| (value - mean).pow(2)).sum::<i32>() / middle.len() as i32;
-    assert!(spread > 200, "the middle of the picture is flat: nothing like a face is there");
-
-    // For a person to look at: target\tmp\gc-camera-last.png
-    let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("gc-camera-last.png");
-    image::save_buffer(&out, &rgb(last, width, height), HD.width, HD.height, image::ColorType::Rgb8).unwrap();
+    let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    for (name, picture) in [("live", &live_picture), ("loop", &last_picture)] {
+        let luma = |x: usize, y: usize| picture[y * width + x] as i32;
+        assert!((70..=84).contains(&luma(4, 4)), "{name}: the wall at the top is {}", luma(4, 4));
+        assert!((104..=118).contains(&luma(4, height - 4)), "{name}: the wall at the bottom is {}", luma(4, height - 4));
+        let middle: Vec<i32> =
+            (0..200).flat_map(|i| (0..200).map(move |j| (540 + i, 240 + j))).map(|(x, y)| luma(x, y)).collect();
+        let mean = middle.iter().sum::<i32>() / middle.len() as i32;
+        let spread = middle.iter().map(|value| (value - mean).pow(2)).sum::<i32>() / middle.len() as i32;
+        assert!(spread > 200, "{name}: the middle of the picture is flat: nothing like a face is there");
+        // For a person to look at: target\tmp\gc-camera-live.png and gc-camera-loop.png
+        let file = out.join(format!("gc-camera-{name}.png"));
+        image::save_buffer(&file, &rgb(picture, width, height), HD.width, HD.height, image::ColorType::Rgb8).unwrap();
+    }
 
     // The tool notices that the source has gone, stops and reports.
     let output = tool.wait_with_output().unwrap();
@@ -152,8 +175,13 @@ fn the_swapped_picture_reaches_a_watching_source_thirty_times_a_second() {
     assert_eq!(report["frames_dropped"], 0, "{report}");
     // The swapped face is in nearly every picture, and is renewed many times a second.
     assert!(report["frames_with_the_swapped_face"].as_u64().unwrap() * 10 >= made * 9, "{report}");
-    assert!(report["engine"]["swaps_per_second"].as_f64().unwrap() > 12.0, "{report}");
-    assert!(report["engine"]["last_error"].is_null(), "{report}");
+    assert!(report["swap"]["swaps_per_second"].as_f64().unwrap() > 12.0, "{report}");
+    assert!(report["swap"]["last_error"].is_null(), "{report}");
+    // Five seconds were recorded at the rate they went out, and played.
+    let frames = report["loop"]["frames"].as_u64().unwrap();
+    assert!((140..=152).contains(&frames), "{report}");
+    assert_eq!(report["loop"]["frame_rate"], 30.0, "{report}");
+    assert!(report["frame_periods_in_the_loop"].as_u64().unwrap() >= 45, "{report}");
 }
 
 #[test]

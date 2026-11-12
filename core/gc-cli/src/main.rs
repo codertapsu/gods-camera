@@ -219,6 +219,9 @@ enum Command {
         /// Leave the occlusion mask out.
         #[arg(long)]
         no_occlusion: bool,
+        /// After this many seconds of live picture, record five seconds and play them as a loop.
+        #[arg(long)]
+        loop_after: Option<f32>,
         /// Folder for compiled models, so later runs start faster.
         #[arg(long)]
         cache_dir: Option<PathBuf>,
@@ -335,7 +338,8 @@ async fn main() -> Result<()> {
         }
         #[cfg(windows)]
         Command::Camera {
-            packs, photo, source, model, motion, seconds, once, no_camera, pipe, no_swap, no_occlusion, cache_dir, json,
+            packs, photo, source, model, motion, seconds, once, no_camera, pipe, no_swap, no_occlusion, loop_after,
+            cache_dir, json,
         } => {
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let args = camera::CameraArgs {
@@ -350,6 +354,7 @@ async fn main() -> Result<()> {
                 pipe,
                 no_swap,
                 no_occlusion,
+                loop_after,
                 cache_dir,
                 json,
                 stop: stop.clone(),

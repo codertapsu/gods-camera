@@ -820,6 +820,7 @@ dependencies = [
  "anyhow",
  "base64 0.23.1",
  "clap",
+ "gc-camera",
  "gc-doc",
  "gc-link",
  "gc-live",
@@ -959,6 +960,7 @@ dependencies = [
 name = "gc-win"
 version = "0.1.0"
 dependencies = [
+ "gc-camera",
  "windows",
 ]
 
