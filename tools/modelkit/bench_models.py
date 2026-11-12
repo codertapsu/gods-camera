@@ -11,7 +11,7 @@ each accelerated output is from the CPU output.
 Model variants made by rewrite_reflect_pad.py and convert_fp16.py are timed
 too when `--variants` names the folder they are in. A variant is found by its
 file name: `<model>.reflectfree.onnx`, `<model>.fp16.onnx`,
-`<model>.reflectfree.fp16.onnx`.
+`<model>.reflectfree.fp16.onnx`, `<model>.mixed.onnx`.
 
 Usage:
     uv run python bench_models.py --packs ../../../packs [--runs 60] [--variants DIR]
@@ -21,7 +21,9 @@ On Windows, pick the build of ONNX Runtime with uv:
     uv run --no-project --with "onnxruntime-gpu[cuda,cudnn]" --with "numpy<3" python bench_models.py ...
 """
 import argparse
+import importlib.util
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -37,7 +39,7 @@ MODELS = {
     "w600k_r50": ("buffalo_l/w600k_r50.onnx", {"input.1": (1, 3, 112, 112)}),
     "xseg_3": ("xseg_3.onnx", {None: (1, 256, 256, 3)}),
 }
-VARIANTS = ["reflectfree", "fp16", "reflectfree.fp16"]
+VARIANTS = ["reflectfree", "fp16", "reflectfree.fp16", "mixed"]
 
 
 def coreml(units: str, fmt: str = "MLProgram"):
@@ -107,6 +109,13 @@ def main() -> None:
     if hasattr(ort, "preload_dlls"):
         # The NVIDIA build finds CUDA and cuDNN in the pip packages beside it.
         ort.preload_dlls()
+    libs = importlib.util.find_spec("tensorrt_libs")
+    if libs is not None and libs.submodule_search_locations:
+        # TensorRT's own libraries, when the pip package with them is installed.
+        folder = list(libs.submodule_search_locations)[0]
+        os.environ["PATH"] = folder + os.pathsep + os.environ.get("PATH", "")
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(folder)
     found = configs(args.cache)
     print(json.dumps({"onnxruntime": ort.__version__, "configurations": list(found)}), flush=True)
     results = []
