@@ -22,6 +22,8 @@ internal static class Ui
     public const string IconScanner = "\uE8FE";
     public const string IconSettings = "\uE713";
     public const string IconPeople = "\uE716";
+    public const string IconTablet = "\uE70A";
+    public const string IconDocument = "\uE8A5";
     public const string IconApps = "\uE71D";
     public const string IconRecord = "\uE7C8";
     public const string IconStop = "\uE71A";

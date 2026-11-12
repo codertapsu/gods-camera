@@ -10,6 +10,9 @@ pub mod faces;
 pub mod model;
 pub mod pattern;
 pub mod platform;
+pub mod scanner;
+pub mod secrets;
 pub mod settings;
 
 pub use model::{AppConfig, AppState, DesktopApp, Platform};
+pub use scanner::{Scanner, ScannerConfig, ScannerState};

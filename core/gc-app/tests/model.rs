@@ -174,6 +174,7 @@ impl Fixture {
             // No model files anywhere near here.
             pack_dirs: vec![folder.join("packs").to_string_lossy().into_owned()],
             cache_dir: Some(folder.join("cache").to_string_lossy().into_owned()),
+            try_out: true,
         };
         let app = DesktopApp::with_platform(config, platform);
         app.set_face_finder(Box::new(ByColour));

@@ -1,6 +1,6 @@
 # Check what the app's window does outside its screens: the hot keys, closing
 # to the notification area, switching the picture off while nobody looks, one
-# copy at a time, and a clean end.
+# copy at a time, a clean end, and the scanner taking a page and reading it.
 #
 #   powershell -ExecutionPolicy Bypass -File apps\windows\tests\check-app.ps1 [-Program FILE]
 #
@@ -10,6 +10,11 @@
 # Camera icon sits beside the clock for that time. If the user's own app is
 # running, it is left alone: it holds the camera's pipe, and the copy started
 # here then simply has no camera for other apps.
+#
+# The scanner of a copy on a data folder of its own stays on this computer:
+# its hub takes ports the system picks and listens on 127.0.0.1 only, so no
+# other device can reach it and Windows Firewall has nothing to ask. A page is
+# sent to it with the core's own tool, as a device on a cable would send it.
 #
 # The window's messages are sent to it directly: the message a hot key causes,
 # the message the icon sends when it is clicked, and the request to close. No
@@ -50,12 +55,12 @@ function Say([bool] $good, [string] $what) {
     if ($good) { $script:held++; Write-Host "  ok    $what" } else { $script:failed++; Write-Host "  FAIL  $what" }
 }
 
-function Start-App([string] $name, [string] $settings) {
+function Start-App([string] $name, [string] $settings, [string[]] $more = @()) {
     $data = Join-Path $work "$name\data"
     New-Item -ItemType Directory -Force $data | Out-Null
     Set-Content -Path (Join-Path $data 'settings.json') -Value $settings -Encoding ascii
     $status = Join-Path $work "$name\status.json"
-    $process = Start-Process $Program -ArgumentList @('--data', $data, '--status', $status, '--language', 'en') -PassThru
+    $process = Start-Process $Program -ArgumentList (@('--data', $data, '--status', $status, '--language', 'en') + $more) -PassThru
     return @{ Process = $process; Status = $status; Data = $data }
 }
 
@@ -150,6 +155,59 @@ try {
 }
 finally {
     if (-not $plain.Process.HasExited) { $plain.Process.Kill() }
+}
+
+Write-Host 'The scanner'
+$packs = Join-Path (Split-Path -Parent $repo) 'packs'
+$scan = Start-App 'scanner' '{"source": "pattern", "keep_running": false}' @('--scanner', 'on', '--packs', $packs)
+try {
+    $on = Wait-Status $scan { param($s) $s.scanner_running } 60
+    Say ($null -ne $on) 'a copy started with its scanner on has a hub running'
+    if ($on) {
+        Say ($on.scanner_network -eq 'Ready') "its network side is up ($($on.scanner_network))"
+        Say ($on.scanner_address -like 'http://127.0.0.1:*') 'and it says where a device on a cable reaches it, on this computer'
+        $gc = @('release', 'debug') | ForEach-Object { Join-Path $repo "core\target\$_\gc.exe" } | Where-Object { Test-Path $_ } | Select-Object -First 1
+        $token = Join-Path $scan.Data 'Secrets\HubToken.secret'
+        Say (Test-Path $token) 'a try-out keeps its token in its own data folder, not in Credential Manager'
+        if (-not $on.scanner_can_read) {
+            Write-Host '  skip  reading a page: the model files are not in ..\packs (python tools\fetch-packs.py fetches them)'
+        } elseif (-not $gc) {
+            Write-Host '  skip  reading a page: the core''s tool gc.exe is not built (cargo build -p gc-cli in core)'
+        } else {
+            # One page with a heading and five lines, drawn for the reader's own tests.
+            $shots = Join-Path $work 'scanner\shots'
+            $out = Join-Path $work 'scanner\out'
+            New-Item -ItemType Directory -Force $shots | Out-Null
+            Copy-Item (Join-Path $repo 'core\gc-ocr\tests\data\page.png') $shots
+            # The token goes to the tool in its environment, never on its command line.
+            $env:GC_HUB_TOKEN = (Get-Content $token -Raw).Trim()
+            try {
+                & $gc scan $shots --hub $on.scanner_address --out $out | Out-Null
+                $sent = ($LASTEXITCODE -eq 0)
+            } finally {
+                Remove-Item Env:\GC_HUB_TOKEN
+            }
+            Say $sent 'a page sent to it is taken and read'
+            $done = Wait-Status $scan { param($s) $s.documents_done -ge 1 } 60
+            Say ($null -ne $done) 'the document appears in the app'
+            if ($done) {
+                # The heading is sixteen Vietnamese letters and spaces, the first two of them "Ch".
+                $title = [string] $done.newest_document
+                Say ($title.Length -eq 16 -and $title.StartsWith('Ch')) "under the page's heading ($($title.Length) characters)"
+            }
+            if ($sent) {
+                $text = Get-Content (Join-Path $out 'document.txt') -Raw -Encoding UTF8
+                Say ($text -match 'The market opens at 5 a\.m\. and closes before noon\.') 'and the text has the page''s English line, letter for letter'
+            }
+        }
+    }
+    $scan.Process.Refresh()
+    Send $scan.Process.MainWindowHandle $WM_CLOSE
+    $ended = $scan.Process.WaitForExit(20000)
+    Say $ended 'closing the window ends the app and its hub'
+}
+finally {
+    if (-not $scan.Process.HasExited) { $scan.Process.Kill() }
 }
 
 Write-Host ''

@@ -15,12 +15,13 @@ namespace GodsCamera;
 /// <summary>How the app was started.</summary>
 internal sealed record Launch(
     string DataFolder, string[] PackFolders, string CacheFolder, string? Language, string? Theme, string? SnapshotFolder,
-    string? DemoPhoto, string FolderMark, string? StatusFile);
+    string? DemoPhoto, string FolderMark, string? StatusFile, bool TryOut, bool ScannerOn, bool ScannerDemo);
 
 /// <summary>The window: a list of screens at the left, and the chosen screen beside it.</summary>
 internal sealed class Shell : Window
 {
     public DesktopApp App { get; }
+    public Scanner Scanner { get; }
     public PreviewSource Preview { get; } = new();
     public string DataFolder { get; }
     public string[] PackFolders { get; }
@@ -80,7 +81,22 @@ internal sealed class Shell : Window
     {
         DataFolder = launch.DataFolder;
         PackFolders = launch.PackFolders;
-        App = new DesktopApp(new AppConfig(launch.DataFolder, launch.PackFolders, launch.CacheFolder));
+        App = new DesktopApp(new AppConfig(launch.DataFolder, launch.PackFolders, launch.CacheFolder, launch.TryOut));
+        // The program that reads text from photos is beside this one, and finds its models where the app does.
+        var reader = new List<string>();
+        var readerProgram = System.IO.Path.Combine(AppContext.BaseDirectory, "gc-ocr.exe");
+        if (File.Exists(readerProgram))
+        {
+            reader.Add(readerProgram);
+            foreach (var folder in launch.PackFolders)
+            {
+                reader.Add("--packs");
+                reader.Add(folder);
+            }
+        }
+        Scanner = new Scanner(new ScannerConfig(launch.DataFolder, reader.ToArray(), launch.PackFolders, Environment.ProcessPath ?? "", launch.TryOut));
+        if (launch.ScannerOn) Scanner.SetWanted(true);
+        else Scanner.Start();
         handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         // A run that only takes pictures of the app stays out of the notification area.
         resident = launch.SnapshotFolder == null;
@@ -104,7 +120,7 @@ internal sealed class Shell : Window
         Add("camera", T("Camera"), Ui.IconCamera, () => new CameraScreen(this));
         Add("loop", T("Loop"), Ui.IconLoop, () => new LoopScreen(this));
         Add("face", T("Face"), Ui.IconFace, () => new FaceScreen(this));
-        Add("scanner", T("Scanner"), Ui.IconScanner, () => new ScannerScreen());
+        Add("scanner", T("Scanner"), Ui.IconScanner, () => new ScannerScreen(this));
         Add("settings", T("Settings"), Ui.IconSettings, () => new SettingsScreen(this));
         navigation.PaneFooter = StatusCard();
         navigation.SelectionChanged += (_, change) =>
@@ -136,6 +152,8 @@ internal sealed class Shell : Window
         pictureTimer.Tick += (_, _) => Preview.Refresh();
         pictureTimer.Start();
         Log.Write($"started: version {Version}, camera for other apps: {App.State().VirtualCamera}, pictures of the screens only: {!resident}");
+        var scanner = Scanner.State();
+        Log.Write($"scanner: wanted {scanner.Wanted}, running {scanner.Running}, devices on the network: {scanner.Network}, can read text: {scanner.ReaderMissing == null}");
         if (resident)
         {
             previousMessages = Native.SetWindowLongPtrW(
@@ -167,11 +185,12 @@ internal sealed class Shell : Window
                 if (previousMessages != IntPtr.Zero) Native.SetWindowLongPtrW(handle, Native.GWLP_WNDPROC, previousMessages);
                 tray?.Dispose();
             }
+            Scanner.Dispose();
             App.Dispose();
         };
         Poll();
 
-        if (launch.SnapshotFolder != null) _ = TakeSnapshots(launch.SnapshotFolder, launch.DemoPhoto);
+        if (launch.SnapshotFolder != null) _ = TakeSnapshots(launch.SnapshotFolder, launch.DemoPhoto, launch.ScannerDemo);
     }
 
     private readonly Dictionary<string, Func<UserControl>> makers = new();
@@ -377,6 +396,21 @@ internal sealed class Shell : Window
         };
         try
         {
+            var scanner = Scanner.State();
+            status["scanner_running"] = scanner.Running;
+            status["scanner_network"] = scanner.Network.ToString();
+            status["scanner_address"] = scanner.LocalAddress;
+            status["scanner_can_read"] = scanner.ReaderMissing == null;
+            status["documents"] = scanner.Documents.Length;
+            status["documents_done"] = scanner.Documents.Count(document => document.Status == DocumentStatus.Done);
+            status["newest_document"] = scanner.Documents.Length > 0 ? scanner.Documents[0].Title : null;
+        }
+        catch (Exception)
+        {
+            // The window is closing and the scanner is gone.
+        }
+        try
+        {
             var partial = statusFile + ".partial";
             File.WriteAllText(partial, System.Text.Json.JsonSerializer.Serialize(status));
             File.Move(partial, statusFile, true);
@@ -468,6 +502,64 @@ internal sealed class Shell : Window
         Poll();
     }
 
+    /// <summary>The script that tells Windows Firewall about the scanner is beside the program.</summary>
+    public bool CarriesNetworkScript => File.Exists(NetworkScript);
+
+    private static string NetworkScript => System.IO.Path.Combine(AppContext.BaseDirectory, "Network", "allow-windows-hub.ps1");
+
+    /// <summary>
+    /// Tell Windows Firewall to let phones and tablets on a private network
+    /// reach the scanner. Windows asks for an administrator's permission.
+    /// Nothing happens if the user says no.
+    /// </summary>
+    public async Task AllowDevices()
+    {
+        var arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{NetworkScript}\" -Program \"{Environment.ProcessPath}\" -Port 47801";
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("powershell.exe", arguments)
+            {
+                // "runas" is what brings up Windows' own question.
+                Verb = "runas",
+                UseShellExecute = true,
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+            };
+            using var process = System.Diagnostics.Process.Start(start);
+            if (process != null) await process.WaitForExitAsync();
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // The user said no to Windows' question.
+        }
+        Scanner.RefreshNetwork();
+        Log.Write($"asked Windows Firewall to let devices in; devices on the network: {Scanner.State().Network}");
+    }
+
+    /// <summary>Open a file with the program Windows has for it, or a page of Windows Settings.</summary>
+    public static void Open(string what)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(what) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // Nothing to open it with is no reason to trouble the user further.
+        }
+    }
+
+    /// <summary>Show a file in File Explorer, selected.</summary>
+    public static void ShowInExplorer(string file)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{file}\"") { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     public void OpenFolder(string folder)
     {
         try
@@ -490,9 +582,10 @@ internal sealed class Shell : Window
     /// With `demoPhoto`, a photo of a face, the app is also put through its
     /// paces first: a loop is recorded and played, the photo is added as a face
     /// and shown as the picture, and the swap is turned on. Run it on a data
-    /// folder of its own.
+    /// folder of its own. With `scannerDemo`, or after that, the scanner is
+    /// shown in use as well, which needs neither models nor the graphics card.
     /// </summary>
-    private async Task TakeSnapshots(string folder, string? demoPhoto)
+    private async Task TakeSnapshots(string folder, string? demoPhoto, bool scannerDemo)
     {
         try
         {
@@ -504,6 +597,7 @@ internal sealed class Shell : Window
             {
                 await Picture(folder, (string)item.Tag, item);
             }
+            if (demoPhoto != null || scannerDemo) await DemonstrateScanner(folder);
         }
         catch (Exception problem)
         {
@@ -589,6 +683,58 @@ internal sealed class Shell : Window
             // The picture will show what the screen says instead.
         }
         await Task.Delay(1500);
+    }
+
+    /// <summary>
+    /// The scanner as it looks in use: turned on, with documents as a tablet
+    /// would have sent them, and the code a device connects with. The hub of
+    /// a try-out stays on this computer, on whatever ports are free.
+    /// </summary>
+    private async Task DemonstrateScanner(string folder)
+    {
+        Scanner.SetWanted(true);
+        var jobs = System.IO.Path.Combine(DataFolder, "Hub", "jobs");
+        void Document(string id, string status, double progress, string? text)
+        {
+            var job = System.IO.Path.Combine(jobs, id);
+            Directory.CreateDirectory(job);
+            if (text != null) File.WriteAllText(System.IO.Path.Combine(job, "document.txt"), text);
+            File.WriteAllText(System.IO.Path.Combine(job, "job.json"), System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                ["id"] = id,
+                ["kind"] = "document",
+                ["upload_id"] = "00000000-0000-4000-8000-000000000000",
+                ["status"] = status,
+                ["progress"] = progress,
+                ["result"] = text != null ? new Dictionary<string, object?> { ["pictures"] = 6 } : null,
+                ["files"] = text != null ? new[] { "document.md", "document.txt", "document.json" } : Array.Empty<string>(),
+                ["error"] = null,
+            }));
+        }
+        Document("11111111-1111-4111-8111-111111111111", "done", 1.0, T("Sample: a page from a newspaper") + "\n\n" + T("This is where the text of your scanned pages appears, joined into one document."));
+        await Task.Delay(1100);
+        Document("22222222-2222-4222-8222-222222222222", "running", 0.6, null);
+        navigation.SelectedItem = Screen("scanner");
+        await Task.Delay(1500);
+        await Picture(folder, "scanner-on");
+        if (screens.TryGetValue("scanner", out var screen) && screen is ScannerScreen scanner)
+        {
+            // What the screen says before Windows Firewall lets devices in,
+            // and on a network that Windows treats as public.
+            scanner.Picture(NetworkState.FirewallNeeded);
+            await Picture(folder, "scanner-firewall");
+            scanner.Picture(NetworkState.PublicNetwork);
+            await Picture(folder, "scanner-public-network");
+            scanner.Picture(null);
+            scanner.Pair();
+            await Task.Delay(1200);
+            await Picture(folder, "scanner-code");
+            foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(Root))
+            {
+                if (popup.Child is ContentDialog dialog) dialog.Hide();
+            }
+        }
+        Scanner.SetWanted(false);
     }
 
     private static async Task Save(FrameworkElement element, string file)

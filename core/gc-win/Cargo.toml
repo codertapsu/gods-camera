@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "The app's end of the Windows camera. Empty on every other system."
+description = "The app's end of the Windows camera, and what its scanner needs from Windows' networking. Empty on every other system."
 
 [target.'cfg(windows)'.dependencies]
 gc-camera = { version = "0.1.0", path = "../gc-camera" }
@@ -13,6 +13,11 @@ gc-infer = { version = "0.1.0", path = "../gc-infer" }
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Media_MediaFoundation",
+    "Win32_NetworkManagement_Dns",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_NetworkManagement_WindowsFirewall",
+    "Win32_Networking_WinSock",
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_Security_Credentials",
@@ -22,6 +27,7 @@ windows = { version = "0.62.2", features = [
     "Win32_System_IO",
     "Win32_System_Performance",
     "Win32_System_Pipes",
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_System_Variant",
 ] }

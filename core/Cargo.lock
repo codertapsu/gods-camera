@@ -817,12 +817,15 @@ dependencies = [
  "chacha20poly1305",
  "gc-camera",
  "gc-infer",
+ "gc-link",
  "gc-live",
+ "gc-ocr",
  "gc-win",
  "getrandom 0.4.3",
  "image",
  "serde",
  "serde_json",
+ "tokio",
  "uniffi",
 ]
 

@@ -94,7 +94,10 @@ public partial class App : Application
         var launch = new Launch(
             data, packs, Path.Combine(data, "Cache", "Models"),
             Value(arguments, "--language"), Value(arguments, "--theme"), Value(arguments, "--snapshots"),
-            Value(arguments, "--demo"), folderMark, Value(arguments, "--status"));
+            Value(arguments, "--demo"), folderMark, Value(arguments, "--status"),
+            // A data folder named on the command line is a try-out: it keeps its
+            // secrets to itself, and its scanner stays on this computer.
+            Value(arguments, "--data") != null, Value(arguments, "--scanner") == "on", arguments.Contains("--scanner-demo"));
         try
         {
             window = new Shell(launch);

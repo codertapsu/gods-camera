@@ -5,24 +5,6 @@ using static GodsCamera.Texts;
 
 namespace GodsCamera.Screens;
 
-/// <summary>The scanner. On Windows it is not built yet; the screen says so.</summary>
-internal sealed class ScannerScreen : UserControl, IScreen
-{
-    public ScannerScreen()
-    {
-        var column = new StackPanel { Spacing = 16, Padding = new Thickness(24), MaxWidth = 720, HorizontalAlignment = HorizontalAlignment.Left };
-        column.Children.Add(new ScreenHeader(T("Scanner"), T("Photograph pages with your phone or tablet. The text arrives here.")));
-        column.Children.Add(new Card(
-            T("Not in this version yet"), Ui.IconInfo,
-            new Hint(T("The scanner works in the Mac app today. The Windows app gets it once reading text from pictures is built for Windows."))));
-        Content = column;
-    }
-
-    public void Update(AppState state)
-    {
-    }
-}
-
 /// <summary>The camera's state, the data the app keeps, and where things are.</summary>
 internal sealed class SettingsScreen : UserControl, IScreen
 {
@@ -71,7 +53,7 @@ internal sealed class SettingsScreen : UserControl, IScreen
         var delete = Ui.PlainButton(T("Delete all my data…"), DeleteEverything);
         column.Children.Add(new Card(
             T("Your data"), Ui.IconLock,
-            new Hint(T("Saved faces and loops stay on this PC. Saved faces are encrypted, with the key in Windows Credential Manager.")),
+            new Hint(T("Saved faces, loops and scanned documents stay on this PC. Saved faces are encrypted, with the key in Windows Credential Manager.")),
             delete));
 
         var open = Ui.PlainButton(T("Open the data folder"), () => shell.OpenFolder(shell.DataFolder));
@@ -105,11 +87,12 @@ internal sealed class SettingsScreen : UserControl, IScreen
 
     private async void DeleteEverything()
     {
-        var words = Ui.Text(T("Saved faces, their encryption key, saved loops and what the app remembered are removed from this PC. This cannot be undone."));
+        var words = Ui.Text(T("Saved faces, their encryption key, saved loops, scanned documents and what the app remembered are removed from this PC. Phones and tablets that were connected must be connected again. This cannot be undone."));
         words.MaxWidth = 420;
-        if (await shell.Ask(T("Delete every saved face and loop?"), words, T("Delete everything"), T("Cancel")))
+        if (await shell.Ask(T("Delete everything the app has saved?"), words, T("Delete everything"), T("Cancel")))
         {
             shell.App.DeleteAllData();
+            shell.Scanner.DeleteEverything();
         }
     }
 

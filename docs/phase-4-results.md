@@ -2,7 +2,7 @@
 
 Date: 2026-11-12 · Plan: [implementation-plan.md](implementation-plan.md)
 
-Windows work began on 2026-11-12, when you brought the PC in. That is earlier than the plan's start point, so Phase 4 now runs beside what is left of Phase 3. This note covers the first day: the toolchain, the shared core on Windows, the models on the RTX 3050, the virtual camera, the engine that feeds it, the app's window, and the reader that turns photos of a page into text.
+Windows work began on 2026-11-12, when you brought the PC in. That is earlier than the plan's start point, so Phase 4 now runs beside what is left of Phase 3. This note covers the first day: the toolchain, the shared core on Windows, the models on the RTX 3050, the virtual camera, the engine that feeds it, the app's window, the reader that turns photos of a page into text, and the scanner that uses it.
 
 ## What you did, and what it showed
 
@@ -44,7 +44,7 @@ Your account is an administrator, and this PC approves administrator requests wi
 
 The core had only ever been cross-compiled for Windows from the Mac. It now builds and runs here.
 
-- **Tests.** 252 pass in a full run on the PC. Four more are run by hand: three print speeds, and one listens on every network interface (see the firewall note below).
+- **Tests.** 264 pass in a full run on the PC. Four more are run by hand: three print speeds, and one listens on every network interface (see the firewall note below).
 - **Same pictures as the Mac.** The parity tests compare the Rust pipeline with InsightFace's own on its sample photo, and pass here. The reference numbers made on this PC differ from the Mac's by at most 0.19 pixels for a detected keypoint, which is ordinary difference between processors.
 - **What had to change for Windows.** The hub's tests used a shell script as their stand-in text reader; they now use PowerShell here. Development builds optimise the tracker, the image code, the live engine and the camera pipeline, because unoptimised they are seven times slower on this processor and the tests that time them failed for that reason alone.
 
@@ -208,7 +208,7 @@ The window is WinUI 3 in C#, as planned, with the Rust core beside it as one DLL
 - **One copy at a time.** Starting the app again brings the running copy's window forward.
 - **A log.** `Logs\gods-camera.log` in the app's data folder holds what the app did and what went wrong, never a picture or a file name. It found its first fault on the day it was added.
 - **Checked without a person.** `apps\windows\tests\check-app.ps1` starts the app on a data folder of its own and checks 22 things about the above by sending the window the messages a hot key, a click on the icon and a second copy cause. All hold. No key was pressed and no mouse moved: pressing the hot keys and using the icon's menu are for you to try.
-- **Not in the window yet:** going back to live when you start to speak, the diagnostics report, and the installer.
+- **Not in the window yet:** going back to live when you start to speak, the diagnostics report, and the installer. The Scanner screen has a section of its own below.
 - **The model files are not inside the app yet.** The installer will put them there. Until then, the build script's `-Run` points the app at the ones beside the repository.
 
 For the window I installed two tools for your user account only, without administrator rights: the .NET 10 SDK, and the program that writes the C# description of the core. `tools\build-windows-app.ps1` builds everything.
@@ -267,10 +267,43 @@ The target is 98 %.
 - **HEIC photos are not read.** JPEG, PNG, WebP, TIFF and BMP are. A HEIC photo is reported as unreadable and the others in the job are still read.
 - **AsterNet is new and little used**: three weeks old, from a publisher I know nothing else about. Its file is a plain model file that the inference library runs; it cannot run code of its own. Its hash is fixed in the manifest.
 
+## The scanner in the Windows app
+
+The Scanner screen is built, and the app runs the hub that phones and tablets send their photos to.
+
+**What is built**
+
+- **The screen.** A switch, "Receive scans on this PC"; the phones and tablets that are connected, each with a Remove button; "Connect a phone or tablet", which shows a six-digit code with its countdown; and the documents received. A finished document can be read in the window, copied, opened, shown in File Explorer or deleted. English and Vietnamese.
+- **The hub** is the same one the Mac app runs, on the same ports, and it announces itself on the network in the same way. The Android app should therefore list this PC as it lists the Mac. Its texts still say "Mac" for any computer; the code dialog on the PC says so.
+- **Its secrets**, the token and the certificate that connected devices know the PC by, are kept in Windows Credential Manager, apart from the app's files.
+- **Windows Firewall.** The hub does not listen on the network until the firewall has rules for the app, so Windows never puts its own question on the screen. Until then the screen says what is missing and offers "Allow devices on my network". That button starts `tools\allow-windows-hub.ps1` with Windows' administrator question. The script adds two rules, for the app's program and port 47801 only: calls from a private network, such as home Wi-Fi, are let in, and calls from public networks are turned away.
+- **If the phone does not find the PC**, the code dialog shows the PC's address on the network to enter by hand.
+- **Deleting everything** in Settings now also removes the documents, the connected devices, the token and the certificate.
+
+**What I found on this PC**
+
+- **Why Windows asked you about the firewall earlier.** Windows counts this PC as being on a public network as well as on your private Wi-Fi, because of a virtual network adapter. A program that listens on every network without a rule makes Windows ask, and the answer it offered was about public networks. The rules above settle both kinds, so it does not ask again.
+- **14 rules are left over** from that day: Windows made them for test programs of this project that no longer exist. They do no harm. `tools\allow-windows-hub.ps1 -Tidy core\target`, run as administrator, removes them.
+
+**Checked**
+
+- **The model of the screen**, in `gc-app`, by 7 tests with a real hub on this computer: on and off and remembered, the code, the firewall's three answers, the secrets, the documents, deleting everything, and a try-out keeping to itself.
+- **Windows' side**, in `gc-win`: the PC's name and addresses, and reading the firewall's rules without administrator rights. Announcing a made-up hub on the network was tried once by hand; Windows accepted it and took it back.
+- **The app itself**, by `apps\windows\tests\check-app.ps1`, which now holds 31 checks. A copy on a data folder of its own is started with its scanner on, a page is sent to its hub as a device on a cable would send it, and the document appears in the app with the page's heading as its title and its English line right letter for letter.
+- **By looking**: pictures of the Scanner screen off, on with documents, with the code dialog, asking for the firewall to be opened, and on a public network, in English and Vietnamese. `tools\snapshot-windows-app.ps1 -ScannerDemo` takes them; it needs neither the model files nor the graphics card.
+- **A copy started on a data folder of its own keeps to itself.** Its hub takes free ports on this computer only, and its secrets are files in that folder. Before, such a copy shared the key for saved faces with your own app in Credential Manager, and deleting everything in it would have deleted yours. No check ever did that; now none can.
+
+**Not verified: these need you**
+
+- **"Allow devices on my network".** I looked at the request on the screen and did not click the button: it changes the firewall for the whole PC. The script behind it was only run without administrator rights, where it changes nothing and says so.
+- **Connecting your tablet with the code**, over Wi-Fi, and a scan sent from it. The tablet is with the Mac's session, and the PC's hub has never met a real device.
+- **Whether the tablet finds the PC by itself.** Windows accepted the announcement; whether Android sees it on your network is not known until you try.
+
 ## Open
 
 - **The camera in a normal browser window and in meeting apps**, and the uneven timing with the real camera. See the top of this note.
-- **The rest of the Windows app.** The hub with a firewall rule made by the installer, the Scanner screen, and the installer that registers the camera and carries the model files.
+- **The scanner with your tablet.** See "The scanner in the Windows app".
+- **The rest of the Windows app.** The installer, which registers the camera, adds the firewall rules and carries the model files.
 - **The text reader on real photos**, HEIC photos, and its speed. See "Reading text".
 - The occlusion mask at half rate on machines with one accelerator.
 - The core changes made here still have to pass `tools/check.sh` on the Mac.

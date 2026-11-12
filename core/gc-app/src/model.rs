@@ -29,6 +29,10 @@ pub struct AppConfig {
     pub pack_dirs: Vec<String>,
     /// Folder for compiled models, so later starts are faster.
     pub cache_dir: Option<String>,
+    /// A try-out on a scratch data folder. Its secrets are kept in that
+    /// folder, so that nothing the user's own app has stored with the system
+    /// is read, replaced or deleted.
+    pub try_out: bool,
 }
 
 #[derive(Debug, uniffi::Error)]
@@ -753,7 +757,7 @@ impl DesktopApp {
     /// and start the picture source chosen last time.
     #[uniffi::constructor]
     pub fn new(config: AppConfig) -> Result<Arc<Self>, AppError> {
-        let platform = crate::platform::native().map_err(|message| AppError::Failed { message })?;
+        let platform = crate::platform::native(&config).map_err(|message| AppError::Failed { message })?;
         Ok(Self::with_platform(config, platform))
     }
 

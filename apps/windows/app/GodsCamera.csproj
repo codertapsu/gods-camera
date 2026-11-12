@@ -34,10 +34,16 @@
     <!-- The shared core and the graphics library it loads, beside the program. -->
     <Content Include="$(CoreDir)gc_ffi.dll" Link="gc_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="$(CoreDir)DirectML.dll" Link="DirectML.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The program that reads the text in photos, which the scanner starts
+         for every few photos of a document. -->
+    <Content Include="$(CoreDir)gc-ocr.exe" Link="gc-ocr.exe" CopyToOutputDirectory="PreserveNewest" />
     <!-- The camera's media source and the script that installs it, for the
          "Install the camera" button. Built by tools/build-windows.ps1. -->
     <Content Include="$(MSBuildProjectDirectory)/../build/bin/GodsCameraSource.dll" Link="Camera/GodsCameraSource.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(MSBuildProjectDirectory)/../build/bin/GodsCameraSource.dll')" />
     <Content Include="$(MSBuildProjectDirectory)/../../../tools/register-windows-camera.ps1" Link="Camera/register-windows-camera.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The script that tells Windows Firewall about the scanner, for the
+         "Allow devices on my network" button. -->
+    <Content Include="$(MSBuildProjectDirectory)/../../../tools/allow-windows-hub.ps1" Link="Network/allow-windows-hub.ps1" CopyToOutputDirectory="PreserveNewest" />
     <!-- The app's Vietnamese, written by tools/sync-windows-strings.py. -->
     <Content Update="Assets/vi.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Update="Assets/app.ico" CopyToOutputDirectory="PreserveNewest" />

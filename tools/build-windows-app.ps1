@@ -64,7 +64,8 @@ if ($LASTEXITCODE -ne 0) { throw 'the camera driver did not build' }
 Write-Host "== the shared core ($CoreBuild) =="
 Push-Location $core
 try {
-    if ($CoreBuild -eq 'release') { cargo build --release -p gc-ffi } else { cargo build -p gc-ffi }
+    # The core itself, and the program that reads the text in photos for the scanner.
+    if ($CoreBuild -eq 'release') { cargo build --release -p gc-ffi -p gc-ocr } else { cargo build -p gc-ffi -p gc-ocr }
     if ($LASTEXITCODE -ne 0) { throw 'the core did not build' }
 } finally { Pop-Location }
 

@@ -10,6 +10,11 @@ description = "What the desktop app's screens show and do, without the screens."
 gc-camera = { version = "0.1.0", path = "../gc-camera" }
 gc-infer = { version = "0.1.0", path = "../gc-infer" }
 gc-live = { version = "0.1.0", path = "../gc-live" }
+# The scanner: the hub that phones and tablets send photos to, and the reader
+# whose model files it looks for.
+gc-link = { version = "0.1.0", path = "../gc-link" }
+gc-ocr = { version = "0.1.0", path = "../gc-ocr" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync"] }
 # Saved faces are sealed with the cipher the pairing already uses.
 chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc"] }
 getrandom = "0.4.3"
@@ -20,6 +25,7 @@ serde_json = "1.0.154"
 # The window's side of this crate is written by UniFFI, as for the core.
 uniffi = "0.32.2"
 
-# The Windows ends of what the model needs: the camera, its pipe, the key store.
+# The Windows ends of what the models need: the camera, its pipe, the key
+# store, the firewall and the announcement on the local network.
 [target.'cfg(windows)'.dependencies]
 gc-win = { version = "0.1.0", path = "../gc-win" }

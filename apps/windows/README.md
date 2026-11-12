@@ -1,6 +1,6 @@
 # God's Camera on Windows
 
-The virtual camera, as far as spike S2 has taken it: a camera named "God's Camera" that Windows 11 offers to every app, and two command-line tools that test it. And the app's window, with its Camera, Loop, Face and Settings screens; the Scanner screen is a placeholder.
+The virtual camera, as far as spike S2 has taken it: a camera named "God's Camera" that Windows 11 offers to every app, and two command-line tools that test it. And the app's window, with its Camera, Loop, Face, Scanner and Settings screens. The scanner's hub runs inside the app; the text in the photos is read by `gc-ocr.exe` from the shared core, which the build puts beside the app, and `tools\allow-windows-hub.ps1` tells Windows Firewall about the hub when the user asks for it.
 
 Windows 11 only. `MFCreateVirtualCamera` does not exist before it.
 

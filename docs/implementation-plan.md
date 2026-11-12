@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-12, revision 12 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, and its text reader is built and measured; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-12, revision 12 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, its text reader is built and measured, and its scanner is built; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -648,7 +648,7 @@ State: the toolchain is in place, the core passes its tests on the PC, and the m
 Start
 
 - [x] Toolchain on the PC, as in section 5.3. Windows 11 Pro 25H2 build 26200.8655, NVIDIA driver 616.92. .NET 10 is still to be installed for the app shell.
-- [x] The core's unit and parity tests pass on the PC: 252 in a full run.
+- [x] The core's unit and parity tests pass on the PC: 264 in a full run.
 - [x] **S2 Windows driver.** Custom media source under Frame Server. Measured with the driver loaded into a test tool: 1 to 3 ms from the app to the reader through a named pipe, so neither shared memory nor a shared texture was built. Registered on 2026-11-12 and verified under Windows' own camera service, in Chrome and in Edge. Zoom, Teams, Camera and OBS are in the app matrix below.
 - [x] **S3 on the RTX 3050.** `inswapper_128` and HyperSwap 256 at full, half and mixed precision, through DirectML and CUDA, with milliseconds, video memory and the error of each picture. DirectML with mixed-precision copies was chosen. TensorRT did not load in the comparison and was not pursued.
 - [x] **S8 Shared renderer.** Decided without the wgpu test: on Windows the outgoing picture is drawn on the processor (`gc-render`), 3 to 10 ms a frame. The camera wants its pictures in ordinary memory, and the one graphics card is busy with the models. To be looked at again for Android.
@@ -660,11 +660,11 @@ Build
 - [ ] Inputs: Media Foundation capture from the external camera, and the phone-as-camera link as a second source. Built: a reader for cameras and video files in `gc-win`, tested on a video file; the app turns a camera on only after "Allow camera access". The user's USB camera works in the app. Open: why its pictures arrive unevenly, and the phone as a source.
 - [x] The outgoing picture, per the S8 result: `gc-render` draws it, and `gc-camera` is the pipeline around it, with the face swap, the "AI" badge, recording, and the loop with the Mac's rules.
 - [x] The app's model in `gc-app`: source, loop, saved loops, saved faces (encrypted, with the key in Credential Manager), the swap's switch and options, settings, and "delete all my data". The window calls it through UniFFI.
-- [ ] The window: WinUI 3 in C#. The Camera, Loop, Face and Settings screens are built, in English and Vietnamese, and checked by pictures of a scripted run. Open: the Scanner screen, and a check by hand.
+- [ ] The window: WinUI 3 in C#. The Camera, Loop, Face, Scanner and Settings screens are built, in English and Vietnamese, and checked by pictures of a scripted run. Open: a check by hand.
 - [x] Core inference on the card through DirectML, with separate sessions and queues per stage and no global inference lock. A model the card refuses runs on the processor instead.
 - [ ] A fixed video-memory budget for the live pipeline. S3 measured about 0.7 GB for `inswapper_128` with the detector and the mask, and 1 GB with HyperSwap, of the card's 8 GB.
 - [x] OCR: `gc-ocr`, with PP-OCRv6's line detector and the AsterNet recogniser, because no PP-OCR recogniser can write Vietnamese. Measured on the test documents: 99.7 to 99.8 % of characters right in Vietnamese, 99.9 to 100 % in English. Photos of real pages are still to be read.
-- [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it. Built: the shell, the tray icon and the hot keys. Open: the hub.
+- [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it. Built: the shell, the tray icon, the hot keys, and the hub, which the app runs for its scanner. Until there is an installer, the app adds the firewall's rules itself when asked, with Windows' own administrator question. Open: a scan from the tablet over Wi-Fi.
 - [ ] Installer that registers the camera; file logging; single-instance guard. Built: the log and the guard. Until there is an installer, the app carries the driver and installs or removes it itself when asked, with Windows' own administrator question.
 - [ ] App matrix: Zoom, Teams, Meet in Chrome and Edge, Slack, Discord, OBS, Camera.
 

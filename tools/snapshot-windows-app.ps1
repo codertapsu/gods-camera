@@ -1,7 +1,7 @@
 # Save a picture of every screen of the Windows app, to look at it without
 # sitting in front of it.
 #
-#   powershell -ExecutionPolicy Bypass -File tools\snapshot-windows-app.ps1 [-Language en|vi] [-Theme light|dark] [-Demo] [-Out FOLDER] [-Data FOLDER]
+#   powershell -ExecutionPolicy Bypass -File tools\snapshot-windows-app.ps1 [-Language en|vi] [-Theme light|dark] [-Demo] [-ScannerDemo] [-Out FOLDER] [-Data FOLDER]
 #
 # The app is started on a data folder of its own, with the test picture as
 # its source, so nothing of the user's is opened or changed. Its window shows
@@ -13,6 +13,10 @@
 # files (tools\fetch-packs.py) and the sample photo (tools\make-reference.py),
 # uses the graphics card, and takes about a minute.
 #
+# -ScannerDemo shows only the scanner in use: turned on, with two sample
+# documents and the code a device connects with. It needs no model files and
+# no graphics card, and its hub stays on this computer. -Demo includes it.
+#
 # Only one program can hold the camera's pipe. If the user's own app is
 # running, the pictures will say so on the Camera screen; nothing breaks.
 #
@@ -23,6 +27,7 @@ param(
     [ValidateSet('en', 'vi')] [string] $Language = 'en',
     [ValidateSet('light', 'dark')] [string] $Theme = 'light',
     [switch] $Demo,
+    [switch] $ScannerDemo,
     [string] $Out,
     # The built program to take pictures of, if not the one in the usual place.
     [string] $Program,
@@ -52,6 +57,7 @@ if ($Demo) {
     if (-not (Test-Path $photo)) { throw 'The sample photo is missing. Run tools\make-reference.py first.' }
     $arguments += @('--demo', $photo)
 }
+if ($ScannerDemo) { $arguments += '--scanner-demo' }
 $process = Start-Process $program -ArgumentList $arguments -PassThru
 if (-not $process.WaitForExit(360000)) {
     $process.Kill()
