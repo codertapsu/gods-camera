@@ -13,8 +13,8 @@ use crate::thumbnail::Thumbnail;
 use gc_align::Affine;
 use gc_infer::image::{ImageView, PixelFormat};
 use gc_render::{Compositor, Layer, Overlay, Patch, Scene};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{channel, sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -180,6 +180,8 @@ enum Message {
     StopRecording,
     StartLoop(Arc<Clip>),
     StopLoop,
+    /// A frame of the loop is due. The number says which loop the tick belongs to.
+    Tick(u64),
     /// Answer when everything before this has been done.
     Sync(Sender<()>),
     Quit,
@@ -252,10 +254,10 @@ impl CameraEngine {
             clock: Box::new(clock),
         });
         let (messages, inbox) = channel();
-        let for_thread = Arc::clone(&shared);
+        let (for_thread, own_inbox) = (Arc::clone(&shared), messages.clone());
         let thread = std::thread::Builder::new()
             .name("camera engine".into())
-            .spawn(move || Worker::new(for_thread, output).run(inbox))
+            .spawn(move || Worker::new(for_thread, output, own_inbox).run(inbox))
             .expect("the engine's thread");
         Self { shared, messages, thread: Some(thread) }
     }
@@ -383,14 +385,56 @@ struct RecordingProgress {
 struct Playing {
     decoder: Arc<ClipDecoder>,
     sequencer: LoopSequencer,
-    period: Duration,
-    /// When the next frame of the loop is due.
-    due: Instant,
+    /// Which loop this is, counted from the engine's start. Its ticker's ticks carry the number.
+    number: u64,
+    /// Ticks that have been asked for and not yet drawn. The ticker reads it
+    /// and leaves a tick out while the engine is behind; when the loop ends
+    /// it is set to `u32::MAX`, which tells the ticker to stop.
+    ticks_waiting: Arc<AtomicU32>,
     /// Frames left in a fade between live and loop pictures.
     transition_left: u32,
     leaving: bool,
     /// Frames to decode ahead of time.
     ahead: Sender<usize>,
+}
+
+impl Drop for Playing {
+    fn drop(&mut self) {
+        self.ticks_waiting.store(u32::MAX, Ordering::Release);
+    }
+}
+
+/// Ask the engine for a frame of the loop every `period`, on a schedule that
+/// does not drift, until the loop ends.
+///
+/// A thread of its own because it sleeps: a sleep is exact to a fraction of a
+/// millisecond on every system, and waiting on the engine's inbox with a time
+/// limit is not. On Windows such a wait can be 15 ms late, which is half a frame.
+fn tick(messages: Sender<Message>, number: u64, period: Duration, ticks_waiting: Arc<AtomicU32>) {
+    let mut due = Instant::now();
+    loop {
+        match ticks_waiting.load(Ordering::Acquire) {
+            u32::MAX => return,
+            // The engine has not drawn the last tick yet: asking again would only queue pictures up.
+            waiting if waiting > 0 => {}
+            _ => {
+                // Unless the loop ended in this instant, one tick is now waiting.
+                if ticks_waiting.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire).is_ok()
+                    && messages.send(Message::Tick(number)).is_err()
+                {
+                    return;
+                }
+            }
+        }
+        due += period;
+        let now = Instant::now();
+        match due.checked_duration_since(now) {
+            Some(wait) => std::thread::sleep(wait),
+            // Very late, as after the computer slept: carry on from now.
+            None if now.duration_since(due) > period => due = now,
+            None => {}
+        }
+    }
 }
 
 enum Drawn {
@@ -400,6 +444,8 @@ enum Drawn {
 
 struct Worker {
     shared: Arc<Shared>,
+    /// The engine's own inbox, for the helpers that report back to it.
+    messages: Sender<Message>,
     output: Option<Box<dyn Output>>,
     settings: Settings,
     status: Status,
@@ -422,6 +468,7 @@ struct Worker {
     rate_window: Option<(Instant, u32)>,
     recording: Option<Recording>,
     clips_recorded: u32,
+    loops_played: u64,
     playing: Option<Playing>,
 }
 
@@ -435,11 +482,12 @@ fn canvas_view(compositor: &Compositor) -> Option<ImageView<'_>> {
 }
 
 impl Worker {
-    fn new(shared: Arc<Shared>, output: Option<Box<dyn Output>>) -> Self {
+    fn new(shared: Arc<Shared>, output: Option<Box<dyn Output>>, messages: Sender<Message>) -> Self {
         let settings = Settings::default();
         let (width, height) = settings.output;
         Self {
             shared,
+            messages,
             output,
             settings,
             status: Status { output: settings.output, ..Status::default() },
@@ -456,31 +504,16 @@ impl Worker {
             rate_window: None,
             recording: None,
             clips_recorded: 0,
+            loops_played: 0,
             playing: None,
         }
     }
 
     fn run(mut self, inbox: Receiver<Message>) {
         self.publish();
-        loop {
-            // A frame of the loop that is due goes before anything that waits.
-            let message = match self.playing.as_ref().map(|playing| playing.due) {
-                Some(due) => match due.checked_duration_since(Instant::now()) {
-                    None => {
-                        self.loop_tick();
-                        continue;
-                    }
-                    Some(wait) => match inbox.recv_timeout(wait) {
-                        Ok(message) => message,
-                        Err(RecvTimeoutError::Timeout) => continue,
-                        Err(RecvTimeoutError::Disconnected) => break,
-                    },
-                },
-                None => match inbox.recv() {
-                    Ok(message) => message,
-                    Err(_) => break,
-                },
-            };
+        // The worker holds a sender to its own inbox, so the inbox never
+        // closes by itself: the engine ends when it is told to.
+        while let Ok(message) = inbox.recv() {
             match message {
                 Message::Update(change) => self.update(change),
                 Message::Swap(stage) => self.set_swap(stage),
@@ -491,6 +524,7 @@ impl Worker {
                 Message::StopRecording => self.finish_recording(),
                 Message::StartLoop(clip) => self.start_loop(clip),
                 Message::StopLoop => self.stop_loop(),
+                Message::Tick(number) => self.loop_tick(number),
                 Message::Sync(done) => {
                     if let Some(recording) = &self.recording {
                         self.status.recorded_seconds = f64::from_bits(recording.progress.seconds.load(Ordering::Relaxed));
@@ -661,14 +695,13 @@ impl Worker {
         self.emit(Drawn::Live, host_ns);
     }
 
-    fn loop_tick(&mut self) {
-        let Some(mut playing) = self.playing.take() else { return };
-        // On a schedule that does not drift; a tick that is very late is not made up for.
-        let now = Instant::now();
-        playing.due += playing.period;
-        if now > playing.due + playing.period {
-            playing.due = now + playing.period;
+    fn loop_tick(&mut self, number: u64) {
+        // A tick from a loop that has ended since is not this loop's.
+        if self.playing.as_ref().is_none_or(|playing| playing.number != number) {
+            return;
         }
+        let Some(mut playing) = self.playing.take() else { return };
+        playing.ticks_waiting.store(0, Ordering::Release);
 
         let step = playing.sequencer.step();
         // Have the frames of the next tick decoded while this one is drawn.
@@ -875,11 +908,22 @@ impl Worker {
         if helper.is_err() {
             return;
         }
+        // The loop before this one, if any, ends here, and its ticker with it.
+        self.playing = None;
+        self.loops_played += 1;
+        let (number, ticks_waiting) = (self.loops_played, Arc::new(AtomicU32::new(0)));
+        let (messages, period, for_ticker) =
+            (self.messages.clone(), Duration::from_secs_f64(1.0 / clip.frame_rate), Arc::clone(&ticks_waiting));
+        let ticker =
+            std::thread::Builder::new().name("loop ticker".into()).spawn(move || tick(messages, number, period, for_ticker));
+        if ticker.is_err() {
+            return;
+        }
         self.playing = Some(Playing {
             decoder,
             sequencer,
-            period: Duration::from_secs_f64(1.0 / clip.frame_rate),
-            due: Instant::now(),
+            number,
+            ticks_waiting,
             transition_left: if self.have_live { self.settings.transition_frames } else { 0 },
             leaving: false,
             ahead,

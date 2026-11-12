@@ -91,12 +91,34 @@ pub struct Compositor {
     scratch: Vec<f32>,
     /// The small copy's rows stretched to the canvas's width, four bytes a pixel like the canvas.
     wide: Vec<u8>,
+    /// What scaling a picture of another size works in.
+    stretch: Stretch,
+}
+
+/// Working memory for scaling a picture to the canvas's size.
+#[derive(Default)]
+struct Stretch {
+    /// For every canvas column: where in a source row its left neighbour and
+    /// its right neighbour start, and how far towards the right one it lies, in 256ths.
+    columns: Vec<(u32, u32, u32)>,
+    /// Two source rows stretched to the canvas's width, and which rows they are.
+    rows: [Vec<u8>; 2],
+    held: [Option<usize>; 2],
 }
 
 impl Compositor {
     pub fn new(width: u32, height: u32) -> Self {
         let (width, height) = (width.max(2) as usize & !1, height.max(2) as usize & !1);
-        Self { width, height, canvas: vec![0; width * height * 4], other: Vec::new(), small: Vec::new(), scratch: Vec::new(), wide: Vec::new() }
+        Self {
+            width,
+            height,
+            canvas: vec![0; width * height * 4],
+            other: Vec::new(),
+            small: Vec::new(),
+            scratch: Vec::new(),
+            wide: Vec::new(),
+            stretch: Stretch::default(),
+        }
     }
 
     pub fn width(&self) -> u32 {
@@ -116,7 +138,7 @@ impl Compositor {
     /// blue, green, red, unused, row after row without gaps: a window can show it as it is.
     pub fn draw(&mut self, scene: &Scene<'_>) -> &[u8] {
         let (width, height) = (self.width, self.height);
-        let to_output = fill(&scene.primary, &mut self.canvas, width, height);
+        let to_output = fill(&scene.primary, &mut self.canvas, width, height, &mut self.stretch);
 
         let blur = scene.blur.clamp(0.0, 1.0);
         if blur > 0.0 {
@@ -135,7 +157,7 @@ impl Compositor {
             let mix = mix.clamp(0.0, 1.0);
             if mix > 0.0 {
                 self.other.resize(width * height * 4, 0);
-                fill(layer, &mut self.other, width, height);
+                fill(layer, &mut self.other, width, height, &mut self.stretch);
                 blend(&mut self.canvas, &self.other, (mix * 256.0 + 0.5) as u16);
             }
         }
@@ -378,7 +400,7 @@ fn box_blur(source: &[f32], out: &mut [f32], width: usize, height: usize, radius
 /// Draw `layer` so that it fills a canvas of `width` by `height`, cutting off
 /// whichever dimension overflows. Returns the transform from the layer's own
 /// pixels to canvas pixels, so that things placed on the layer can follow it.
-fn fill(layer: &Layer<'_>, canvas: &mut [u8], width: usize, height: usize) -> Affine {
+fn fill(layer: &Layer<'_>, canvas: &mut [u8], width: usize, height: usize, stretch: &mut Stretch) -> Affine {
     let image = &layer.image;
     let (source_width, source_height) = (image.width as usize, image.height as usize);
     let offsets = image.format.rgb_offsets();
@@ -405,25 +427,55 @@ fn fill(layer: &Layer<'_>, canvas: &mut [u8], width: usize, height: usize) -> Af
     }
 
     // Scale so the picture covers the canvas, and centre what overflows.
+    //
+    // Each source row that is needed is stretched to the canvas's width once,
+    // and every canvas row is a mix of two such rows. Whole numbers
+    // throughout: a camera of one size feeding a meeting app that asked for
+    // another is an everyday case, and has to cost a few milliseconds, not thirty.
     let scale = (width as f32 / source_width as f32).max(height as f32 / source_height as f32);
     let left = (source_width as f32 - width as f32 / scale) / 2.0;
     let top = (source_height as f32 - height as f32 / scale) / 2.0;
+    stretch.columns.clear();
+    stretch.columns.extend((0..width).map(|x| {
+        let across = if layer.mirrored { width - 1 - x } else { x };
+        let sx = (left + (across as f32 + 0.5) / scale - 0.5).clamp(0.0, source_width as f32 - 1.0);
+        let x0 = sx as usize;
+        let x1 = (x0 + 1).min(source_width - 1);
+        ((x0 * bytes) as u32, (x1 * bytes) as u32, (sx.fract() * 256.0) as u32)
+    }));
+    stretch.held = [None; 2];
+    for row in &mut stretch.rows {
+        row.resize(width * 4, 255);
+    }
+    let Stretch { columns, rows, held } = stretch;
+    let mut stretched = |source_row: usize, rows: &mut [Vec<u8>; 2]| {
+        // Neighbouring rows go to different places, so both stay at hand.
+        let place = source_row & 1;
+        if held[place] != Some(source_row) {
+            held[place] = Some(source_row);
+            let source = image.row(source_row);
+            for (pixel, &(a, b, towards)) in rows[place].as_chunks_mut::<4>().0.iter_mut().zip(columns.iter()) {
+                let (a, b) = (a as usize, b as usize);
+                for (c, value) in pixel[..3].iter_mut().enumerate() {
+                    let channel = offsets[2 - c];
+                    *value = ((source[a + channel] as u32 * (256 - towards) + source[b + channel] as u32 * towards + 128) >> 8) as u8;
+                }
+            }
+        }
+        place
+    };
     for (y, row) in canvas.chunks_exact_mut(width * 4).enumerate() {
         let sy = (top + (y as f32 + 0.5) / scale - 0.5).clamp(0.0, source_height as f32 - 1.0);
-        let (y0, ty) = (sy as usize, sy.fract());
-        let (upper, lower) = (image.row(y0), image.row((y0 + 1).min(source_height - 1)));
-        for (x, pixel) in row.as_chunks_mut::<4>().0.iter_mut().enumerate() {
-            let across = if layer.mirrored { width - 1 - x } else { x };
-            let sx = (left + (across as f32 + 0.5) / scale - 0.5).clamp(0.0, source_width as f32 - 1.0);
-            let (x0, tx) = (sx as usize, sx.fract());
-            let x1 = (x0 + 1).min(source_width - 1);
-            for c in 0..3 {
-                let channel = offsets[2 - c];
-                let a = upper[x0 * bytes + channel] as f32 + (upper[x1 * bytes + channel] as f32 - upper[x0 * bytes + channel] as f32) * tx;
-                let b = lower[x0 * bytes + channel] as f32 + (lower[x1 * bytes + channel] as f32 - lower[x0 * bytes + channel] as f32) * tx;
-                pixel[c] = (a + (b - a) * ty + 0.5) as u8;
-            }
-            pixel[3] = 255;
+        let (y0, towards) = (sy as usize, (sy.fract() * 256.0) as u16);
+        let upper = stretched(y0, rows);
+        if towards == 0 {
+            row.copy_from_slice(&rows[upper]);
+            continue;
+        }
+        let lower = stretched((y0 + 1).min(source_height - 1), rows);
+        let (upper, lower) = (&rows[upper], &rows[lower]);
+        for ((value, &a), &b) in row.iter_mut().zip(upper.iter()).zip(lower.iter()) {
+            *value = ((a as u16 * (256 - towards) + b as u16 * towards + 128) >> 8) as u8;
         }
     }
     // A point at x on the layer lands at (x + 0.5 - left) * scale - 0.5 on the canvas.
@@ -647,6 +699,13 @@ mod tests {
             scene.blur = 0.0;
             scene.secondary = Some((Layer { image: view, mirrored: true }, 0.5));
             time("in a cross-fade", scene);
+            // A camera of the other size: 1080p shown as 720p, and the reverse.
+            let (other_width, other_height) = if width == 1280 { (1920u32, 1080u32) } else { (1280, 720) };
+            let other: Vec<u8> = (0..other_width * other_height * 4).map(|i| (i * 31 % 251) as u8).collect();
+            let other = ImageView::new(&other, other_width, other_height, other_width as usize * 4, PixelFormat::Bgra).unwrap();
+            let mut scene = Scene::of(other);
+            scene.patch = Some(patch);
+            time(&format!("from {other_width} x {other_height}, with the face"), scene);
         }
     }
 }
