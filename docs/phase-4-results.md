@@ -4,18 +4,26 @@ Date: 2026-11-12 · Plan: [implementation-plan.md](implementation-plan.md)
 
 Windows work began on 2026-11-12, when you brought the PC in. That is earlier than the plan's start point, so Phase 4 now runs beside what is left of Phase 3. This note covers the first day: the toolchain, the shared core on Windows, the models on the RTX 3050, the virtual camera, the engine that feeds it, and the app's window.
 
-## What you need to do
+## What you did, and what it showed
 
-1. **Install the camera driver.** This is the one step that needs administrator rights, so I have not done it. Any of these does it:
+You installed the camera driver, allowed the app to use your USB camera, and ran the Mac's checks. On the PC I verified the first two on 2026-11-12, with your app running:
 
-   - Start the app (`tools\build-windows-app.ps1 -Run` builds and starts it) and click "Install the camera" on the Camera screen. Windows asks for an administrator's permission; on this PC it grants it without a prompt.
-   - Or open PowerShell with "Run as administrator", go to the repository folder, and run `powershell -ExecutionPolicy Bypass -File tools\register-windows-camera.ps1`.
-   - Or tell me to run it.
+| Check | Result |
+|---|---|
+| The driver's registration | Right: the class points at `C:\Program Files\GodsCamera\GodsCameraSource.dll`, and that file is the one that was built |
+| Windows' camera service, read as a meeting app reads it | "God's Camera (Windows Virtual Camera)" is listed. 301 pictures in 10 seconds, all from your app, no placeholder pictures. The first picture came after 8 ms |
+| Chrome 157 | Lists the camera and gets 1280×720 at 30 a second: 121 pictures in 4 seconds |
+| Edge 157 | The same |
+| Your USB camera as the source | Works in your running app: the pictures above are its pictures. I did not open the camera myself and kept no picture |
+| Two programs reading at once | The second gets "device in use" from Windows. That is how Windows treats most cameras; it is not our placeholder picture |
 
-   Either way one DLL is copied to `C:\Program Files\GodsCamera\` and registered, and nothing else changes. "Remove the camera" on the Settings screen, or the script with `-Unregister`, undoes it. The button has not been clicked by anyone yet: what it starts is the same script, which passes its own checks with every protected place redirected.
-2. **Say whether I may turn on your USB camera, or try it yourself.** A camera named "HD Web Camera" was attached during the day. I have not opened it. The app can now use a camera, but that part is tested only with a video file, which comes through the same reader. To try it yourself: start the app, and on the Camera screen click "Allow camera access". If I am to test it, I would turn it on for a few seconds at a time, read frame sizes and rates, and keep no picture.
+This answers what spike S2 could not know before: the camera service's account can open the app's pipe, the pipe's name reaches the driver, and browsers accept the camera.
 
-After step 1, I can check the camera in Windows' own camera service, in Chrome and in Edge without you. Zoom, Teams, Discord, Slack and OBS are not installed on this PC; a check in those needs you.
+Still open here:
+
+- **The browsers were run without a window**, on a profile folder of their own. Meet in a normal Chrome window, the Windows Camera app, and Zoom or Teams, are for you to try; the last two are not installed on this PC.
+- **Uneven timing with the real camera.** Pictures arrived 32 ms apart at the median and 48 ms at the 95th percentile. With the test clip it was 33 and 35. Either the camera delivers unevenly, which dim light causes, or the app adds it. The preview's "pictures a second" tells which; the app writes no log yet that I could read it from.
+- **The Mac.** I could not reach it from this PC: the only other God's Camera session I can see is on this PC too. What `tools/check.sh` and `swift test` printed there has to come from you, or from a session on the Mac.
 
 ## The PC
 
@@ -134,12 +142,7 @@ What is measured, with the DLL loaded into the test tool instead of the camera s
 
 The plan asked to compare shared memory with a shared texture for the hand-off. The pipe copies each picture four times and still takes 1 to 3 ms, so I did not build either. Shared memory would copy once; it is there if a 4K picture ever needs it.
 
-**Not known until the driver is registered:**
-
-- Whether the camera service's account can open the pipe. The pipe's permissions name it, but only the real service can show that they are right.
-- Whether the pipe's name reaches the media source inside the service.
-- Whether the Camera app, Chrome, Edge and Teams accept the camera.
-- Whether any app loads the media source into its own process as well. The pipe takes one reader. A second one would get the slate, and the slate would say so.
+**What registration showed** (see the top of this note): the camera service's account opens the pipe, the pipe's name reaches the media source, and Chrome and Edge accept the camera. A second program that opens the camera while one reads it is turned away by Windows itself, so the pipe's one reader is enough.
 
 Safety, as built:
 
@@ -207,8 +210,7 @@ For the window I installed two tools for your user account only, without adminis
 
 ## Open
 
-- **Registration**, then the check in Windows' camera service and in real apps. See the top of this note.
-- **A test with the real USB camera**, once you say I may turn it on or have tried it yourself.
+- **The camera in a normal browser window and in meeting apps**, and the uneven timing with the real camera. See the top of this note.
 - **The rest of the Windows app.** The tray icon, hot keys, the hub with a firewall rule made by the installer, the scanner, and the installer that registers the camera.
 - Text reading on Windows (PP-OCRv5) and its Vietnamese accuracy.
 - The occlusion mask at half rate on machines with one accelerator.
