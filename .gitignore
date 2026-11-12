@@ -30,3 +30,4 @@ apps/android/.kotlin/
 apps/windows/app/bin/
 apps/windows/app/obj/
 apps/windows/app/Core/*.cs
+apps/windows/app/Assets/vi.json

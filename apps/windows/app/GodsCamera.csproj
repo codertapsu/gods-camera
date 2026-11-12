@@ -32,6 +32,8 @@
     <!-- The shared core and the graphics library it loads, beside the program. -->
     <Content Include="$(CoreDir)gc_ffi.dll" Link="gc_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="$(CoreDir)DirectML.dll" Link="DirectML.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The app's Vietnamese, written by tools/sync-windows-strings.py. -->
+    <Content Update="Assets/vi.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />

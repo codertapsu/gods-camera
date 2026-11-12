@@ -1,6 +1,6 @@
 # God's Camera on Windows
 
-The virtual camera, as far as spike S2 has taken it: a camera named "God's Camera" that Windows 11 offers to every app, and two command-line tools that test it. The app's window is a beginning: it opens and reaches the shared core, and has no screens yet.
+The virtual camera, as far as spike S2 has taken it: a camera named "God's Camera" that Windows 11 offers to every app, and two command-line tools that test it. And the app's window, with its Camera, Loop, Face and Settings screens; the Scanner screen is a placeholder.
 
 Windows 11 only. `MFCreateVirtualCamera` does not exist before it.
 
@@ -13,7 +13,7 @@ Windows 11 only. `MFCreateVirtualCamera` does not exist before it.
 | `vcam-host/` | `gc-vcam-host.exe` | Stands in for the app. Makes the pipe and the camera and sends a test picture |
 | `vcam-probe/` | `gc-vcam-probe.exe` | Reads the camera as a meeting app would and reports what arrived, as one line of JSON |
 | `shared/` | | The contract between the two ends (`gc_vcam_protocol.h`), the test picture and the slate |
-| `app/` | `GodsCamera.exe` | The app's window: WinUI 3 in C#, with the shared Rust core beside it as `gc_ffi.dll`. Built by `tools\build-windows-app.ps1`, which also writes the C# description of the core |
+| `app/` | `GodsCamera.exe` | The app's window: WinUI 3 in C#, with the shared Rust core beside it as `gc_ffi.dll`. Built by `tools\build-windows-app.ps1`, which also writes the C# description of the core and the Vietnamese text. What the screens show and do is in `core/gc-app`; the C# only draws it. `tools\snapshot-windows-app.ps1` saves a picture of every screen |
 | `tests/check.ps1` | | Every check that can be made without registering the camera, in one run |
 
 The same contract is repeated for Rust in `core/gc-win`; a test there compares it with `shared/gc_vcam_protocol.h`.

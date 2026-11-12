@@ -68,6 +68,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'the C# description could not be made' }
 } finally { Pop-Location }
 
+Write-Host '== the Vietnamese text =='
+# Fails, and names them, if any text in the code has no Vietnamese.
+python (Join-Path $repo 'tools\sync-windows-strings.py')
+if ($LASTEXITCODE -ne 0) { throw 'some texts have no Vietnamese' }
+
 Write-Host '== the window =='
 & $dotnet build (Join-Path $app 'GodsCamera.csproj') -c Release "-p:CoreBuild=$CoreBuild"
 if ($LASTEXITCODE -ne 0) { throw 'the app did not build' }
