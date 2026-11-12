@@ -63,7 +63,7 @@ Text files have LF line endings on both machines (`.gitattributes`). Shell scrip
 
 Work done on one machine that the other still has to check. Remove a line when it is done.
 
-- **For the Mac:** run `tools/check.sh` and `swift test` after pulling. The core changed on the PC on 2026-11-12: a face is shown only once its place is confirmed (expect a smaller keypoint offset and wobble in the live test, and the first swapped face a frame or two later), four crates are optimised in development builds, and the hub's tests share one stand-in reader. Then rebuild the Mac app's core with `tools/build-core-apple.sh` and run the app's self-test.
+- **For the Mac:** run `tools/check.sh` and `swift test` after pulling. The core changed on the PC on 2026-11-12: a face is shown only once its place is confirmed (expect a smaller keypoint offset and wobble in the live test, and the first swapped face a frame or two later), the real-time crates are optimised in development builds, and the hub's tests share one stand-in reader. Four crates are new: `gc-render`, `gc-camera` and `gc-app` build and are tested on every system; `gc-win` is empty outside Windows, and the Windows cross-build compiles it with Microsoft's `windows` crate for the first time. Then rebuild the Mac app's core with `tools/build-core-apple.sh` and run the app's self-test.
 - **For the Mac:** `apps/android`'s unit test that starts `gc hub --lan` can pass `--lan-addr 127.0.0.1` now.
 
 ## The Mac
@@ -81,8 +81,10 @@ Work done on one machine that the other still has to check. Remove a line when i
 - Windows 11 Pro 25H2, Core i5-13400F, 32 GB, GeForce RTX 3050 with 8 GB. The repository is at `D:\development\projects\gods-camera\gods-camera`.
 - Installed: Visual Studio Build Tools 2022 with the C++ tools, Windows SDK 10.0.26100, Rust (MSVC), CMake, Ninja, Python 3.12, uv, .NET SDK 8, JDK 17, GitHub CLI (signed in).
 - Sessions are not elevated. The account is an administrator and this PC approves such requests without a prompt, so elevation would work silently: all the more reason not to use it without the user's say-so. Anything that needs administrator rights, such as registering the camera driver for the whole machine, is the user's step, or done only after they agree.
-- No camera is attached unless the user plugs one in; test the virtual camera with a generated picture.
+- A USB camera may be attached. Opening it turns its light on and shows the user's room: ask before the first time, and keep no picture from it. Test the virtual camera with a generated picture.
+- The Windows camera: `tools\build-windows.ps1` builds the driver and its test tools, `apps\windows\tests\check.ps1` runs every check that needs no administrator, and `gc camera` (in `core/gc-cli`) sends the engine's picture to it. Registering the driver is the administrator step, `tools\register-windows-camera.ps1`. Only one program can hold the camera's pipe: stop `gc camera` and `gc-vcam-host` before starting another.
 - Models run on the RTX 3050 through DirectML. A wholly half-precision model is fast there and gives a wrong picture; Windows uses the mixed-precision copies (`*.mixed.onnx`). Any new model or copy is checked on a real crop with `tools/modelkit/check_swap.py` before it is used, never by speed alone.
 - A test or tool must not listen on every network interface: Windows Firewall then asks about the program, and a test program has a new name after every build. Listen on `127.0.0.1`. The app's own hub gets its firewall rule from the installer.
 - `cargo test --workspace` in `core/` is the PC's check for a core change. Two tests are run by hand with `-- --ignored`.
 - Windows PowerShell reads a script without a byte-order mark in the machine's code page. Keep scripts that it runs in plain ASCII.
+- In Git Bash here, a here-document loses one of every two backslashes and fails on an apostrophe. Write a script with backslashes or apostrophes to a file first, then run the file.

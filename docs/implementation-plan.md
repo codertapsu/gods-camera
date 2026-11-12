@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-12, revision 10 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-12, revision 11 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver and its engine are built and wait for the driver's registration; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -643,22 +643,23 @@ Exit: 50 overlapping photos of a multi-column Vietnamese newspaper page, taken w
 
 Goal: parity with Phases 1–3 on the Windows PC.
 
-State: the toolchain is in place, the core passes its tests on the PC, and the models run on the RTX 3050 at camera speed. The virtual camera is the piece in progress. Details are in [phase-4-results.md](phase-4-results.md).
+State: the toolchain is in place, the core passes its tests on the PC, and the models run on the RTX 3050 at camera speed. The virtual camera's driver is built and passes every check that needs no administrator; it waits for you to register it. The engine that feeds it is built in Rust and sends the face swap, a recording and a loop through the driver at 30 frames a second. The app's window does not exist yet. Details are in [phase-4-results.md](phase-4-results.md).
 
 Start
 
 - [x] Toolchain on the PC, as in section 5.3. Windows 11 Pro 25H2 build 26200.8655, NVIDIA driver 616.92. .NET 10 is still to be installed for the app shell.
-- [x] The core's unit and parity tests pass on the PC: 145 in a full run.
-- [ ] **S2 Windows driver.** Custom media source under Frame Server. Compare shared memory and shared texture for the frame hand-off. Verify in Zoom, Teams, Chrome, Edge, Camera and OBS.
+- [x] The core's unit and parity tests pass on the PC: 208 in a full run.
+- [ ] **S2 Windows driver.** Custom media source under Frame Server. Built, and measured with the driver loaded into a test tool: 1 to 3 ms from the app to the reader through a named pipe, so neither shared memory nor a shared texture was built. Open: registration, which needs an administrator, and with it the check under Windows' own camera service and in Zoom, Teams, Chrome, Edge, Camera and OBS.
 - [x] **S3 on the RTX 3050.** `inswapper_128` and HyperSwap 256 at full, half and mixed precision, through DirectML and CUDA, with milliseconds, video memory and the error of each picture. DirectML with mixed-precision copies was chosen. TensorRT did not load in the comparison and was not pursued.
-- [ ] **S8 Shared renderer.** A short test of one wgpu renderer for Windows and Android against a native Direct3D graph. Pick one before building.
+- [x] **S8 Shared renderer.** Decided without the wgpu test: on Windows the outgoing picture is drawn on the processor (`gc-render`), 3 to 10 ms a frame. The camera wants its pictures in ordinary memory, and the one graphics card is busy with the models. To be looked at again for Android.
 
 Build
 
-- [ ] Media Foundation virtual camera: media source DLL, machine-wide registration, session and system lifetime, NV12 and YUY2, placeholder slate, in-use detection.
-- [ ] Frame hand-off into Frame Server per the S2 result.
+- [ ] Media Foundation virtual camera: media source DLL, machine-wide registration, session and system lifetime, NV12 and YUY2, placeholder slate, in-use detection. Built: the DLL, both formats at two sizes, the slate, in-use detection, the lifetime of the app's session, and a script for the registration. Open: the registration itself, and a camera that stays after the app closes.
+- [x] Frame hand-off into Frame Server per the S2 result: a named pipe that the app owns, with its Rust end in `gc-win`. The real media source received every picture from it in the tests.
 - [ ] Inputs: Media Foundation capture from the external camera, and the phone-as-camera link as a second source.
-- [ ] Render graph using the shared shaders.
+- [x] The outgoing picture, per the S8 result: `gc-render` draws it, and `gc-camera` is the pipeline around it, with the face swap, the "AI" badge, recording, and the loop with the Mac's rules.
+- [ ] The app's model in `gc-app`: saved faces are done, encrypted as on the Mac. Open: the key in Credential Manager, settings, saved loops, and the interface the window calls.
 - [x] Core inference on the card through DirectML, with separate sessions and queues per stage and no global inference lock. A model the card refuses runs on the processor instead.
 - [ ] A fixed video-memory budget for the live pipeline. S3 measured about 0.7 GB for `inswapper_128` with the detector and the mask, and 1 GB with HyperSwap, of the card's 8 GB.
 - [ ] OCR with PP-OCRv5; Vietnamese accuracy measured against the corpus.
