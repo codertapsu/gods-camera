@@ -61,13 +61,14 @@ HRESULT Source::Initialize(IMFAttributes* activate_attributes) {
     // that loads the source into its own process says nothing, and gets the
     // pipe of the user it runs as.
     std::wstring pipe_name = PipeNameFrom(attributes_.Get());
-    if (pipe_name.empty()) {
+    const bool named_by_app = !pipe_name.empty();
+    if (!named_by_app) {
         pipe_name = gc::pipe_name_for(gc::current_user_sid());
     }
 
     RETURN_IF_FAILED(MFCreateEventQueue(&events_));
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<Stream>(
-        &stream_, static_cast<IMFMediaSource*>(this), kStreamId, pipe_name));
+        &stream_, static_cast<IMFMediaSource*>(this), kStreamId, pipe_name, named_by_app));
 
     ComPtr<IMFStreamDescriptor> stream_descriptor;
     RETURN_IF_FAILED(stream_->GetStreamDescriptor(&stream_descriptor));

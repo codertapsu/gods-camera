@@ -88,7 +88,8 @@ Stream::~Stream() {
     Shutdown();
 }
 
-HRESULT Stream::RuntimeClassInitialize(IMFMediaSource* parent, DWORD stream_id, const std::wstring& pipe_name) {
+HRESULT Stream::RuntimeClassInitialize(
+    IMFMediaSource* parent, DWORD stream_id, const std::wstring& pipe_name, bool pipe_named_by_app) {
     if (parent == nullptr) {
         return E_INVALIDARG;
     }
@@ -96,6 +97,7 @@ HRESULT Stream::RuntimeClassInitialize(IMFMediaSource* parent, DWORD stream_id, 
     parent_ = parent;
     stream_id_ = stream_id;
     pipe_name_ = pipe_name;
+    pipe_named_by_app_ = pipe_named_by_app;
     wake_.reset(CreateEventW(nullptr, FALSE, FALSE, nullptr));
     if (!wake_.valid() || !feed_.Ready()) {
         return E_OUTOFMEMORY;
@@ -364,6 +366,9 @@ HRESULT Stream::StartLocked(bool send_event, IMFMediaType* new_type) {
     if (new_size || slate_.empty()) {
         std::vector<uint8_t> slate(gc_vcam_nv12_size(width, height));
         gc_slate::draw(slate.data(), width, height);
+        slate_why_ = gc_slate::Why{};
+        slate_why_.named_by_app = pipe_named_by_app_;
+        gc_slate::draw_why(slate.data(), width, height, slate_why_);
         slate_.swap(slate);
     }
 
@@ -592,6 +597,18 @@ HRESULT Stream::FillSample(IMFSample* sample, bool from_app, UINT32* kind, Frame
     } else if (from_app && feed_.WithLatest(width_, height_, info, write)) {
         *kind = info->sequence != last_sequence_ ? GC_VCAM_SAMPLE_FRAME : GC_VCAM_SAMPLE_REPEAT;
     } else {
+        // The slate says why it is showing, for the probe to read.
+        gc_slate::Why why = feed_.Standing();
+        why.named_by_app = pipe_named_by_app_;
+        const FrameFeed::Info latest = feed_.Latest();
+        if (latest.sequence != 0 && (latest.width != width_ || latest.height != height_)) {
+            why.cause = gc_slate::kAnotherSize;
+            why.error = 0;
+        }
+        if (!(why == slate_why_)) {
+            gc_slate::draw_why(slate_.data(), width_, height_, why);
+            slate_why_ = why;
+        }
         write(slate_.data());
         *kind = GC_VCAM_SAMPLE_SLATE;
         *info = FrameFeed::Info{};

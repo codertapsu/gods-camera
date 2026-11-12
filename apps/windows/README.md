@@ -30,6 +30,8 @@ The camera offers 1280 x 720 and 1920 x 1080 at 30 frames a second, as NV12 and 
 
 How the source learns the pipe's name: the app sets it as a string attribute on the virtual camera (`GC_VCAM_ATTRIBUTE_PIPE_NAME`) before starting it. Without the attribute the source uses the pipe of the account it runs as, which is right when a test loads the DLL into its own process.
 
+The slate says why it is showing. Nothing the source writes inside the camera service can be read without an administrator's tools, but its picture always gets out. So a row of 24 small, dim squares along the slate's bottom edge carries the cause, the Windows error code that goes with it, and whether the pipe's name came from the app. The probe reads them back as `why`, `error` and `pipe_named_by_app` in its `timeline`. The causes: the app's pipe does not exist; Windows refused to open it; it is busy with another reader; it could not be opened for another reason; it does not belong to the user in its name; connected, and the app sends nothing; connected, and the app sends another size than asked for.
+
 ## Build
 
 ```powershell
@@ -52,10 +54,11 @@ A good result has `"ok":true`, about 30 `samples_per_second`, `frames.gaps` and 
 
 Other things to try:
 
-- No host at all: every sample is a slate, the first after 0.3 seconds.
+- No host at all: every sample is a slate, the first after 0.3 seconds, and its `why` is "the app's pipe does not exist".
 - Stop the host while the probe runs, then start it again: `timeline` shows frames, then the slate half a second after the last picture, then frames again. `frames.restarts` counts the new host.
 - `--size 1920x1080` and `--format YUY2` on the probe.
-- `--size 1920x1080` on the host while the probe asks for 1280 x 720: the source refuses a size it did not ask for and shows the slate.
+- `--size 1920x1080` on the host while the probe asks for 1280 x 720: the source refuses a size it did not ask for and shows the slate, with the `why` to match.
+- `--pipe-attribute user` on the probe hands the source this user's pipe name the way the app does through the camera, and the slate's `pipe_named_by_app` turns true. Any other text after `--pipe-attribute` shows that the source takes no name but the prefix followed by a SID: it never opens another pipe, a file or a path on another computer.
 
 A reader does not make every call the camera service makes. The second test does:
 
@@ -65,7 +68,7 @@ A reader does not make every call the camera service makes. The second test does
 
 It hands the source an allocator, starts it, pauses and stops the stream alone, asks for another size and another format while pictures flow, stops it while holding pictures, starts it again and shuts it down, and checks each answer. A good result has `"ok":true` and `"failed":0`; each step is listed. It passes with the host running (pictures) and without (slates).
 
-`gc-vcam-host.exe` options: `--seconds N`, `--no-camera` (the pipe only), `--size WxH` (always send this size instead of the size asked for). `gc-vcam-probe.exe` options: `--in-process <dll>`, `--seconds N`, `--size WxH`, `--format NV12|YUY2`; or `--drive <dll>` alone.
+`gc-vcam-host.exe` options: `--seconds N`, `--no-camera` (the pipe only), `--size WxH` (always send this size instead of the size asked for). `gc-vcam-probe.exe` options: `--in-process <dll>`, `--seconds N`, `--size WxH`, `--format NV12|YUY2`, `--pipe-attribute user|<name>`; or `--drive <dll>`, with `--pipe-attribute` if wanted.
 
 ## Register the camera: the one step that needs an administrator
 
@@ -90,6 +93,12 @@ cd apps\windows\build\bin
 ```
 
 With the host running, the camera "God's Camera" should be in the camera list of the Windows Camera app, Chrome, Edge, Teams and the rest, showing colour bars, a white square that moves, and two rows of squares along the top. Windows may add words of its own to the name. The host prints a line each time something starts or stops watching.
+
+If an app shows the slate instead of the bars, the probe says why, read from the slate itself:
+
+- "Windows refused to open the app's pipe": the camera service's account may not open it.
+- "the app's pipe does not exist" with `pipe_named_by_app` false: the pipe's name did not arrive with the camera.
+- "the app's pipe is busy with another reader": something else is reading the pipe; see the last section.
 
 Before registration the host ends at once with `"camera_hresult":"0x80040154"`: Windows knows no such class.
 
@@ -135,6 +144,7 @@ App to source, before every picture (40 bytes), followed at once by the picture:
 - One reader of the pipe at a time. The camera service shares one media source among all apps, so that is enough if the service is the only one that starts the stream. If some app turns out to start the source in its own process as well, the second one gets the slate.
 - Another user of the same PC who writes a program for it could make a camera of their own that reads this user's pipe while this user's app is sending. A secret that the app hands to its own camera would close that. For a PC with one user it does not matter.
 - No scaling in the source: a picture of another size than the one asked for is refused, and the slate shows.
-- The pipe copies each picture four times on its way; the whole trip takes about 1.5 ms at 1080p on this PC. Shared memory would copy it once; the measurement did not call for it.
+- The pipe copies each picture four times on its way; the whole trip takes 1.5 to 3 ms at 1080p on this PC. Shared memory would copy it once; the measurement did not call for it.
+- The row of squares on the slate is there for this stage of the work. The app can keep it or drop it; it is one function in `shared/gc_slate.h`.
 - The camera lives only while the host runs (`MFVirtualCameraLifetime_Session`). A camera that stays after the app closes, and shows the slate, is a choice for the app.
 - No installer, and the DLL is not signed.

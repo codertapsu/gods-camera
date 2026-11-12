@@ -156,7 +156,7 @@ DWORD BytesInItsSamples(IMFVideoSampleAllocator* allocator) {
 
 }  // namespace
 
-int Drive(const std::wstring& dll) {
+int Drive(const std::wstring& dll, const std::wstring& pipe_attribute) {
     Report report;
     Findings findings;
     std::vector<uint8_t> scratch;
@@ -165,7 +165,7 @@ int Drive(const std::wstring& dll) {
     ComPtr<IMFActivate> activate;
     ComPtr<IMFMediaSource> source;
     const char* step = "";
-    HRESULT result = OpenInProcess(dll, &activate, &source, &step);
+    HRESULT result = OpenInProcess(dll, pipe_attribute, &activate, &source, &step);
     if (FAILED(result)) {
         std::printf(
             "{\"tool\":\"gc-vcam-probe\",\"ok\":false,\"mode\":\"drive\",\"step\":\"%s\",\"hresult\":\"0x%08lX\","

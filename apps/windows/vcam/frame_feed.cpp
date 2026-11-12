@@ -63,11 +63,23 @@ void FrameFeed::Stop() {
     }
     std::lock_guard<std::mutex> guard(lock_);
     info_ = Info{};
+    standing_ = gc_slate::Why{};
 }
 
 FrameFeed::Info FrameFeed::Latest() const {
     std::lock_guard<std::mutex> guard(lock_);
     return info_;
+}
+
+gc_slate::Why FrameFeed::Standing() const {
+    std::lock_guard<std::mutex> guard(lock_);
+    return standing_;
+}
+
+void FrameFeed::SetStanding(uint8_t cause, DWORD error) {
+    std::lock_guard<std::mutex> guard(lock_);
+    standing_.cause = cause;
+    standing_.error = static_cast<uint16_t>(error > 0xFFFF ? 0xFFFF : error);
 }
 
 bool FrameFeed::WaitUnlessStopping(DWORD milliseconds) const {
@@ -134,8 +146,15 @@ void FrameFeed::Run() {
             pipe_name_.c_str(), kPipeAccess, 0, nullptr, OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr));
         if (!pipe.valid()) {
+            const DWORD error = GetLastError();
+            SetStanding(
+                error == ERROR_FILE_NOT_FOUND ? gc_slate::kNoPipe
+                    : error == ERROR_ACCESS_DENIED ? gc_slate::kRefused
+                    : error == ERROR_PIPE_BUSY ? gc_slate::kBusy
+                    : gc_slate::kOpenFailed,
+                error);
             if (!said_missing) {
-                DebugLine(L"the app's pipe cannot be opened (error %u); showing the slate", GetLastError());
+                DebugLine(L"the app's pipe cannot be opened (error %u); showing the slate", error);
                 said_missing = true;
             }
             // The app needs a moment to listen again after a reader has left,
@@ -150,6 +169,7 @@ void FrameFeed::Run() {
         said_missing = false;
         failed_attempts = 0;
         if (!OwnerMatchesName(pipe.get(), pipe_name_)) {
+            SetStanding(gc_slate::kNotTheUsers, 0);
             DebugLine(L"the pipe does not belong to the user in its name; ignoring it");
             if (!WaitUnlessStopping(2000)) {
                 break;
@@ -170,6 +190,7 @@ void FrameFeed::Run() {
         request.frame_rate_den = 1;
         bool healthy = WriteExact(pipe.get(), &operation, &request, sizeof(request));
         if (healthy) {
+            SetStanding(gc_slate::kNothingSent, 0);
             DebugLine(L"connected to the app; asked for %u x %u", width_, height_);
         }
 

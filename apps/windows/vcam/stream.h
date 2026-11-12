@@ -19,7 +19,10 @@ public:
     Stream() = default;
     ~Stream() override;
 
-    HRESULT RuntimeClassInitialize(IMFMediaSource* parent, DWORD stream_id, const std::wstring& pipe_name);
+    // `pipe_named_by_app` says whether the pipe's name came from the app,
+    // with the camera, or is the one of the account this process runs as.
+    HRESULT RuntimeClassInitialize(
+        IMFMediaSource* parent, DWORD stream_id, const std::wstring& pipe_name, bool pipe_named_by_app);
 
     // IMFMediaEventGenerator
     IFACEMETHODIMP BeginGetEvent(IMFAsyncCallback* callback, IUnknown* state) override;
@@ -83,6 +86,8 @@ private:
 
     FrameFeed feed_;
     std::vector<uint8_t> slate_;    // the source's own picture, as NV12 at the current size
+    gc_slate::Why slate_why_;       // the reason written into it
+    bool pipe_named_by_app_ = false;
     Tokens requests_;
     uint64_t last_sequence_ = 0;    // the app's frame sent last
     int64_t last_delivery_ = 0;     // when the last sample went out; 0 before the first

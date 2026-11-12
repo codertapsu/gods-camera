@@ -34,6 +34,10 @@ public:
     // What the newest picture is, without copying it.
     Info Latest() const;
 
+    // How the feed stands with the app's pipe, for the slate to say: one of
+    // gc_slate's causes, and the Windows error code that goes with it.
+    gc_slate::Why Standing() const;
+
     // Hand the newest picture, as NV12 with rows `width` bytes apart, to
     // `use`, if it has the size asked for. Returns false if there is none.
     // The picture stays put while `use` runs, so `use` must be quick.
@@ -61,7 +65,10 @@ private:
     gc::Handle new_frame_;
     std::thread reader_;
 
-    mutable std::mutex lock_;      // guards `front_` and `info_`
+    void SetStanding(uint8_t cause, DWORD error);
+
+    mutable std::mutex lock_;      // guards `front_`, `info_` and `standing_`
     std::vector<uint8_t> front_;   // the newest whole picture
     Info info_;
+    gc_slate::Why standing_;
 };

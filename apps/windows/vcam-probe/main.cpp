@@ -1,8 +1,8 @@
 // gc-vcam-probe: reads the camera the way a meeting app would, and says what it got.
 //
 //   gc-vcam-probe [--in-process <GodsCameraSource.dll>] [--seconds N] [--size 1280x720|1920x1080]
-//                 [--format NV12|YUY2]
-//   gc-vcam-probe --drive <GodsCameraSource.dll>
+//                 [--format NV12|YUY2] [--pipe-attribute user|<name>]
+//   gc-vcam-probe --drive <GodsCameraSource.dll> [--pipe-attribute user|<name>]
 //
 // Without --in-process it looks for the camera named "God's Camera" among the
 // computer's cameras, which only works once the media source is registered
@@ -14,6 +14,10 @@
 //
 // With --drive it loads the DLL as well, and then makes the calls the camera
 // service makes and a reader does not; see drive.cpp.
+//
+// With --pipe-attribute, either of the two hands the source a pipe name the
+// way the app does through the camera: "user" for this user's own pipe, or
+// any text, to see that the source takes no name that is not one of ours.
 //
 // The pictures gc-vcam-host sends carry their frame number and the time they
 // were made as rows of squares. The probe reads them back from what the
@@ -37,6 +41,7 @@
 #include "gc_test_pattern.h"
 #include "gc_vcam_guids.h"
 #include "gc_vcam_protocol.h"
+#include "gc_vcam_win.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -48,6 +53,7 @@ constexpr DWORD kVideo = static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM)
 struct Options {
     std::wstring dll;  // empty: find the camera among the computer's devices
     bool drive = false;
+    std::wstring pipe_attribute;  // empty: hand the source no pipe name
     int seconds = 10;
     uint32_t width = 1280;
     uint32_t height = 720;
@@ -57,13 +63,15 @@ struct Options {
 void PrintUsage() {
     std::fputs(
         "gc-vcam-probe [--in-process <GodsCameraSource.dll>] [--seconds N] [--size 1280x720|1920x1080]\n"
-        "              [--format NV12|YUY2]\n"
-        "gc-vcam-probe --drive <GodsCameraSource.dll>\n"
+        "              [--format NV12|YUY2] [--pipe-attribute user|<name>]\n"
+        "gc-vcam-probe --drive <GodsCameraSource.dll> [--pipe-attribute user|<name>]\n"
         "  --in-process DLL  load the media source into this process; needs no registration\n"
         "  --drive DLL       load it, and make the calls the camera service makes and a reader does not\n"
         "  --seconds N       how long to read; 10 if not given\n"
         "  --size WxH        the picture size to ask the camera for; 1280x720 if not given\n"
-        "  --format F        the picture format to ask for; NV12 if not given\n",
+        "  --format F        the picture format to ask for; NV12 if not given\n"
+        "  --pipe-attribute  with a DLL: hand the source a pipe name as the app does through the camera;\n"
+        "                    'user' for this user's own pipe, or any text\n",
         stderr);
 }
 
@@ -75,6 +83,11 @@ bool ParseOptions(int argc, wchar_t** argv, Options* options) {
         } else if (argument == L"--drive" && i + 1 < argc) {
             options->dll = argv[++i];
             options->drive = true;
+        } else if (argument == L"--pipe-attribute" && i + 1 < argc) {
+            options->pipe_attribute = argv[++i];
+            if (options->pipe_attribute == L"user") {
+                options->pipe_attribute = gc::pipe_name_for(gc::current_user_sid());
+            }
         } else if (argument == L"--seconds" && i + 1 < argc) {
             options->seconds = _wtoi(argv[++i]);
             if (options->seconds <= 0 || options->seconds > 3600) {
@@ -154,7 +167,9 @@ TypeInfo Describe(IMFMediaType* type) {
 }
 
 // Load the media source's DLL and make the source as COM would, without the registry.
-HRESULT OpenInProcess(const std::wstring& dll, IMFActivate** activate_out, IMFMediaSource** source_out, const char** step) {
+HRESULT OpenInProcess(
+    const std::wstring& dll, const std::wstring& pipe_attribute, IMFActivate** activate_out,
+    IMFMediaSource** source_out, const char** step) {
     wchar_t full[MAX_PATH * 2];
     const DWORD length = GetFullPathNameW(dll.c_str(), ARRAYSIZE(full), full, nullptr);
     *step = "LoadLibrary";
@@ -182,6 +197,14 @@ HRESULT OpenInProcess(const std::wstring& dll, IMFActivate** activate_out, IMFMe
     result = factory->CreateInstance(nullptr, IID_PPV_ARGS(&activate));
     if (FAILED(result)) {
         return result;
+    }
+    if (!pipe_attribute.empty()) {
+        // What the camera service does with the attributes the app set on its camera.
+        *step = "IMFActivate::SetString";
+        result = activate->SetString(GC_VCAM_ATTRIBUTE_PIPE_NAME, pipe_attribute.c_str());
+        if (FAILED(result)) {
+            return result;
+        }
     }
     *step = "IMFActivate::ActivateObject";
     result = activate->ActivateObject(IID_PPV_ARGS(source_out));
@@ -320,10 +343,12 @@ double Percentile(std::vector<double> values, double fraction) {
     return values[std::min(values.size() - 1, index == 0 ? 0 : index - 1)];
 }
 
-void Note(Findings* findings, const char* kind, double at_ms, uint32_t number) {
-    if (findings->timeline.empty() || std::strcmp(findings->timeline.back().kind, kind) != 0) {
+void Note(Findings* findings, const char* kind, double at_ms, uint32_t number, int why = -1) {
+    if (findings->timeline.empty() || std::strcmp(findings->timeline.back().kind, kind) != 0
+        || findings->timeline.back().why != why) {
         Stretch stretch;
         stretch.kind = kind;
+        stretch.why = why;
         stretch.from_ms = at_ms;
         stretch.first_number = number;
         findings->timeline.push_back(stretch);
@@ -365,7 +390,9 @@ bool Examine(
     }
     if (gc_slate::looks_like(luma, stride, type.width, type.height)) {
         ++findings->slates;
-        Note(findings, "slate", at_ms, 0);
+        gc_slate::Why why;
+        const bool says = gc_slate::read_why(luma, stride, type.width, type.height, &why);
+        Note(findings, "slate", at_ms, 0, says ? static_cast<int>(gc_slate::why_bits(why)) : -1);
     } else {
         ++findings->others;
         Note(findings, "other", at_ms, 0);
@@ -470,7 +497,7 @@ int wmain(int argc, wchar_t** argv) {
         nullptr, 0, Watchdog, reinterpret_cast<LPVOID>(static_cast<uintptr_t>((options.seconds + 20) * 1000)), 0,
         nullptr));
     if (options.drive) {
-        const int code = Drive(options.dll);
+        const int code = Drive(options.dll, options.pipe_attribute);
         MFShutdown();
         CoUninitialize();
         return code;
@@ -485,7 +512,7 @@ int wmain(int argc, wchar_t** argv) {
     std::string device_name;
     std::string checks = "null";
     if (in_process) {
-        result = OpenInProcess(options.dll, &activate, &source, &step);
+        result = OpenInProcess(options.dll, options.pipe_attribute, &activate, &source, &step);
         if (FAILED(result)) {
             return Fail(mode, step, result, "The media source could not be loaded from the DLL.");
         }
@@ -704,6 +731,22 @@ int wmain(int argc, wchar_t** argv) {
             stretch.from_ms, stretch.to_ms, static_cast<unsigned long long>(stretch.samples));
         if (std::strcmp(stretch.kind, "frames") == 0) {
             Append(&out, ",\"first_number\":%u,\"last_number\":%u", stretch.first_number, stretch.last_number);
+        }
+        if (stretch.why >= 0) {
+            // What the slate's own row of squares says about why it is showing.
+            static const char* const kCauses[8] = {
+                "the source has not tried the app's pipe yet",
+                "the app's pipe does not exist",
+                "Windows refused to open the app's pipe",
+                "the app's pipe is busy with another reader",
+                "the app's pipe could not be opened",
+                "the pipe does not belong to the user in its name",
+                "connected, and the app sends nothing",
+                "connected, and the app sends another size than asked for",
+            };
+            Append(
+                &out, ",\"why\":\"%s\",\"error\":%d,\"pipe_named_by_app\":%s", kCauses[(stretch.why >> 16) & 7],
+                stretch.why & 0xFFFF, ((stretch.why >> 19) & 1) != 0 ? "true" : "false");
         }
         out += "}";
     }

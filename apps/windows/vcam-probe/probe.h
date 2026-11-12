@@ -50,6 +50,7 @@ TypeInfo Describe(IMFMediaType* type);
 // A stretch of samples of one kind, for the timeline.
 struct Stretch {
     const char* kind = "";
+    int why = -1;  // for a slate: what its row of squares says, packed; -1 if it has none
     double from_ms = 0;
     double to_ms = 0;
     uint64_t samples = 0;
@@ -90,11 +91,16 @@ void ExamineLocked(
     Findings* findings, const BYTE* first_row, LONG pitch, const TypeInfo& type, int64_t arrival, int64_t began,
     std::vector<uint8_t>* scratch);
 
-// Load the media source's DLL and make the source as COM would, without the registry.
-HRESULT OpenInProcess(const std::wstring& dll, IMFActivate** activate_out, IMFMediaSource** source_out, const char** step);
+// Load the media source's DLL and make the source as COM would, without the
+// registry. If `pipe_attribute` is not empty it is set on the activation
+// object first, which is how the app's pipe name reaches the source inside
+// the camera service.
+HRESULT OpenInProcess(
+    const std::wstring& dll, const std::wstring& pipe_attribute, IMFActivate** activate_out,
+    IMFMediaSource** source_out, const char** step);
 
 // Drive the media source in the DLL directly, the way the camera service
 // does, and print what held and what did not. Returns the exit code.
-int Drive(const std::wstring& dll);
+int Drive(const std::wstring& dll, const std::wstring& pipe_attribute);
 
 }  // namespace probe
