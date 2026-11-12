@@ -40,6 +40,11 @@ enum Command {
         /// The port of the network listener.
         #[arg(long, default_value_t = 47801, requires = "lan")]
         lan_port: u16,
+        /// The address the network listener binds to. The default is every
+        /// interface. `127.0.0.1` keeps it on this computer, which is what tests
+        /// want: a firewall asks about a program that listens on the network.
+        #[arg(long, default_value = "::", requires = "lan")]
+        lan_addr: std::net::IpAddr,
         /// Show a six-digit code at the start, so that one device can pair.
         #[arg(long, requires = "lan")]
         pair: bool,
@@ -189,7 +194,7 @@ async fn main() -> Result<()> {
     // The HTTP client and the hub share one TLS library.
     gc_link::tls::install_crypto_provider();
     match Cli::parse().command {
-        Command::Hub { addr, data_dir, max_file_mb, ocr, lan, lan_port, pair, name } => {
+        Command::Hub { addr, data_dir, max_file_mb, ocr, lan, lan_port, lan_addr, pair, name } => {
             if let Some(program) = &ocr {
                 if !program.is_file() {
                     bail!("the text reader {} does not exist", program.display());
@@ -197,7 +202,7 @@ async fn main() -> Result<()> {
             }
             let lan = match lan {
                 true => Some(gc_link::LanConfig {
-                    bind: SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, lan_port)),
+                    bind: SocketAddr::from((lan_addr, lan_port)),
                     identity_pem: paired::hub_identity(&data_dir, &name)?,
                     name,
                 }),

@@ -455,6 +455,7 @@ impl HubServer {
         data_dir: String,
         ocr_command: Vec<String>,
         lan: Option<HubLan>,
+        lan_address: std::net::IpAddr,
     ) -> Result<Arc<Self>, CoreError> {
         let failed = |message: String| CoreError::Failed { message };
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -470,8 +471,7 @@ impl HubServer {
             allowed_origins: Vec::new(),
             ocr_command: (!ocr_command.is_empty()).then_some(ocr_command),
             lan: lan.map(|lan| gc_link::LanConfig {
-                // Every interface, IPv6 and IPv4 alike.
-                bind: std::net::SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, lan.port)),
+                bind: std::net::SocketAddr::from((lan_address, lan.port)),
                 identity_pem: lan.identity_pem,
                 name: lan.name,
             }),
@@ -497,7 +497,26 @@ impl HubServer {
             hub,
         }))
     }
+
+    /// As `start_with_lan`, with the network side on one address instead of
+    /// on every interface. For tests: a test that listens on every interface
+    /// makes Windows Firewall ask about the test program, every time the
+    /// program is rebuilt. `127.0.0.1` keeps the whole test on this computer.
+    #[doc(hidden)]
+    pub fn start_with_lan_at(
+        port: u16,
+        token: String,
+        data_dir: String,
+        ocr_command: Vec<String>,
+        lan: HubLan,
+        lan_address: std::net::IpAddr,
+    ) -> Result<Arc<Self>, CoreError> {
+        Self::launch(port, token, data_dir, ocr_command, Some(lan), lan_address)
+    }
 }
+
+/// Every interface of this computer, IPv6 and IPv4 alike.
+const EVERY_INTERFACE: std::net::IpAddr = std::net::IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED);
 
 #[uniffi::export]
 impl HubServer {
@@ -509,7 +528,7 @@ impl HubServer {
     /// empty the hub refuses document jobs.
     #[uniffi::constructor]
     pub fn start(port: u16, token: String, data_dir: String, ocr_command: Vec<String>) -> Result<Arc<Self>, CoreError> {
-        Self::launch(port, token, data_dir, ocr_command, None)
+        Self::launch(port, token, data_dir, ocr_command, None, EVERY_INTERFACE)
     }
 
     /// Start the hub on loopback, as `start` does, and on the local network
@@ -522,7 +541,7 @@ impl HubServer {
         ocr_command: Vec<String>,
         lan: HubLan,
     ) -> Result<Arc<Self>, CoreError> {
-        Self::launch(port, token, data_dir, ocr_command, Some(lan))
+        Self::launch(port, token, data_dir, ocr_command, Some(lan), EVERY_INTERFACE)
     }
 
     /// Where the hub listens on loopback, as a URL.

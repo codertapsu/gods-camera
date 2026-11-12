@@ -62,7 +62,7 @@ fn a_device_pairs_and_uploads_from_the_command_line() {
     let pairing = dir.join("pairing.json");
     let (pairing_arg, photos_arg) = (pairing.to_str().unwrap(), photos.to_str().unwrap());
 
-    let mut hub = HubProcess::start(&data, &["--lan", "--lan-port", "0", "--pair", "--name", "Máy thử"]);
+    let mut hub = HubProcess::start(&data, &["--lan", "--lan-addr", "127.0.0.1", "--lan-port", "0", "--pair", "--name", "Máy thử"]);
     let listening = hub.wait_for("hub (paired devices) listening on https://");
     let port = listening.rsplit(':').next().unwrap().to_string();
     let fingerprint = hub.wait_for("certificate fingerprint ");
@@ -119,7 +119,7 @@ fn a_device_pairs_and_uploads_from_the_command_line() {
 
     // After a restart the hub has the same certificate and still knows the device.
     drop(hub);
-    let mut hub = HubProcess::start(&data, &["--lan", "--lan-port", &port]);
+    let mut hub = HubProcess::start(&data, &["--lan", "--lan-addr", "127.0.0.1", "--lan-port", &port]);
     assert_eq!(hub.wait_for("certificate fingerprint "), fingerprint);
     let (ok, said) = gc(&["upload", photos_arg, "--paired", pairing_arg]);
     assert!(ok, "{said}");

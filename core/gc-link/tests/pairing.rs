@@ -612,7 +612,11 @@ async fn a_hub_refuses_an_identity_it_cannot_read_and_an_address_off_loopback() 
     std::fs::remove_dir_all(dir).ok();
 }
 
+// On Windows this one is run by hand: a program that listens on every
+// interface makes Windows Firewall ask about it, and a test program gets a new
+// name with every build. `cargo test -p gc-link --test pairing -- --ignored`.
 #[tokio::test]
+#[cfg_attr(windows, ignore = "listens on every interface, which makes Windows Firewall ask")]
 async fn the_any_address_takes_ipv4_and_ipv6() {
     gc_link::tls::install_crypto_provider();
     let dir = std::env::temp_dir().join(format!("gc-pairing-test-{}", uuid::Uuid::new_v4()));

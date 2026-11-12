@@ -1,6 +1,10 @@
 //! The hub as the Mac app drives it: started, paired with and managed through
 //! the same interface UniFFI turns into Swift.
 
+/// The network side of every test hub listens here only. Listening on every
+/// interface would make Windows Firewall ask about the test program.
+const THIS_COMPUTER: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
+
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use gc_ffi::{generate_hub_identity, hub_identity_fingerprint, HubLan, HubServer, PairingOutcome};
@@ -63,7 +67,7 @@ fn the_app_pairs_lists_and_removes_a_device() {
 
     let dir = folder("lan");
     let lan = HubLan { port: 0, identity_pem: identity.clone(), name: "Máy Mac".into() };
-    let server = HubServer::start_with_lan(0, TOKEN.into(), dir.clone(), vec![], lan).unwrap();
+    let server = HubServer::start_with_lan_at(0, TOKEN.into(), dir.clone(), vec![], lan, THIS_COMPUTER).unwrap();
     assert!(server.address().starts_with("http://127.0.0.1:"));
     let port = server.lan_port().expect("the hub listens on the network");
     assert_eq!(server.identity_fingerprint(), Some(fingerprint.clone()));
@@ -124,7 +128,7 @@ fn the_app_pairs_lists_and_removes_a_device() {
     server.stop();
     drop(server);
     let lan = HubLan { port: 0, identity_pem: identity, name: "Máy Mac".into() };
-    let server = HubServer::start_with_lan(0, TOKEN.into(), dir.clone(), vec![], lan).unwrap();
+    let server = HubServer::start_with_lan_at(0, TOKEN.into(), dir.clone(), vec![], lan, THIS_COMPUTER).unwrap();
     assert_eq!(server.identity_fingerprint(), Some(fingerprint.clone()));
     assert_eq!(server.devices().iter().map(|device| device.name.as_str()).collect::<Vec<_>>(), ["phone"]);
     assert_eq!(device.block_on(health(server.lan_port().unwrap(), &fingerprint, &again.token)), 200);
@@ -146,6 +150,6 @@ fn a_hub_started_for_this_computer_only_cannot_pair() {
 
     // A broken identity is reported, not ignored.
     let lan = HubLan { port: 0, identity_pem: "nonsense".into(), name: "Mac".into() };
-    assert!(HubServer::start_with_lan(0, TOKEN.into(), dir.clone(), vec![], lan).is_err());
+    assert!(HubServer::start_with_lan_at(0, TOKEN.into(), dir.clone(), vec![], lan, THIS_COMPUTER).is_err());
     std::fs::remove_dir_all(dir).ok();
 }
