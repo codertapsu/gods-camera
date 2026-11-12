@@ -28,6 +28,8 @@ internal sealed class SettingsScreen : UserControl, IScreen
 {
     private readonly Shell shell;
     private readonly TextBlock cameraState = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly Button remove;
+    private readonly Hint removeHint = new();
 
     public SettingsScreen(Shell shell)
     {
@@ -35,10 +37,18 @@ internal sealed class SettingsScreen : UserControl, IScreen
         var column = new StackPanel { Spacing = 16, Padding = new Thickness(24), MaxWidth = 720, HorizontalAlignment = HorizontalAlignment.Left };
         column.Children.Add(new ScreenHeader(T("Settings"), T("The camera, your data and help.")));
 
+        remove = Ui.PlainButton(T("Remove the camera…"), async () =>
+        {
+            remove!.IsEnabled = false;
+            await shell.InstallCamera(true);
+            remove.IsEnabled = true;
+        });
+        removeHint.Set(T("Other apps no longer list God's Camera. Windows asks for an administrator's permission."));
         column.Children.Add(new Card(
             T("The camera"), Ui.IconCamera,
             Labelled(T("State"), cameraState),
-            Labelled(T("Version"), new TextBlock { Text = shell.Version })));
+            Labelled(T("Version"), new TextBlock { Text = shell.Version }),
+            remove, removeHint));
 
         var delete = Ui.PlainButton(T("Delete all my data…"), DeleteEverything);
         column.Children.Add(new Card(
@@ -87,6 +97,9 @@ internal sealed class SettingsScreen : UserControl, IScreen
 
     public void Update(AppState state)
     {
+        var removable = state.VirtualCamera == VirtualCamera.Ready && shell.CarriesCamera;
+        remove.Visible(removable);
+        removeHint.Visible(removable);
         cameraState.Text = state.VirtualCamera switch
         {
             VirtualCamera.Ready => T("Installed"),

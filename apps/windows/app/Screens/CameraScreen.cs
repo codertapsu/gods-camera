@@ -38,6 +38,7 @@ internal sealed class CameraScreen : UserControl, IScreen
     private readonly Hint meeting = new();
     private readonly Hint meetingMore = new();
     private readonly Button openSettings;
+    private readonly Button install;
     private readonly Hint readers = new();
     private bool showing;
 
@@ -74,7 +75,14 @@ internal sealed class CameraScreen : UserControl, IScreen
 
         openSettings = Ui.PlainButton(T("Open Windows Settings"), () =>
             _ = Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:privacy-webcam")));
-        layout.Controls.Children.Add(new Card(T("In your meeting app"), Ui.IconPeople, meeting, meetingMore, openSettings));
+        install = Ui.PlainButton(T("Install the camera"), async () =>
+        {
+            install!.IsEnabled = false;
+            await shell.InstallCamera(false);
+            install.IsEnabled = true;
+        });
+        install.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+        layout.Controls.Children.Add(new Card(T("In your meeting app"), Ui.IconPeople, meeting, install, meetingMore, openSettings));
         layout.Controls.Children.Add(new Card(T("Apps using the camera"), Ui.IconApps, readers));
         Content = layout;
     }
@@ -154,6 +162,7 @@ internal sealed class CameraScreen : UserControl, IScreen
         }
 
         openSettings.Visible(state.VirtualCamera == VirtualCamera.Refused);
+        install.Visible(state.VirtualCamera == VirtualCamera.NotInstalled && shell.CarriesCamera);
         meetingMore.Visible(state.VirtualCamera is VirtualCamera.Ready or VirtualCamera.NotInstalled or VirtualCamera.Failed);
         switch (state.VirtualCamera)
         {
@@ -163,7 +172,9 @@ internal sealed class CameraScreen : UserControl, IScreen
                 break;
             case VirtualCamera.NotInstalled:
                 meeting.Set(T("Other apps cannot see God's Camera until it is installed."), Ui.IconWarning, Tone.Warning);
-                meetingMore.Set(T("The camera is installed together with the app, by its installer. This copy was started without it."));
+                meetingMore.Set(shell.CarriesCamera
+                    ? T("Windows asks for an administrator's permission. One file is copied to Program Files and registered as a camera.")
+                    : T("This copy of the app does not carry the camera's file, so it cannot install it."));
                 break;
             case VirtualCamera.Refused:
                 meeting.Set(T("Windows does not let desktop apps use cameras. Turn that on under Privacy & security, Camera."), Ui.IconWarning, Tone.Warning);

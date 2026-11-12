@@ -32,6 +32,10 @@
     <!-- The shared core and the graphics library it loads, beside the program. -->
     <Content Include="$(CoreDir)gc_ffi.dll" Link="gc_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="$(CoreDir)DirectML.dll" Link="DirectML.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The camera's media source and the script that installs it, for the
+         "Install the camera" button. Built by tools/build-windows.ps1. -->
+    <Content Include="$(MSBuildProjectDirectory)/../build/bin/GodsCameraSource.dll" Link="Camera/GodsCameraSource.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(MSBuildProjectDirectory)/../build/bin/GodsCameraSource.dll')" />
+    <Content Include="$(MSBuildProjectDirectory)/../../../tools/register-windows-camera.ps1" Link="Camera/register-windows-camera.ps1" CopyToOutputDirectory="PreserveNewest" />
     <!-- The app's Vietnamese, written by tools/sync-windows-strings.py. -->
     <Content Update="Assets/vi.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

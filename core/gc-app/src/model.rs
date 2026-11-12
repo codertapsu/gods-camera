@@ -90,6 +90,9 @@ pub trait Platform: Send + Sync {
     /// The present moment in nanoseconds, on the clock the output's pictures are stamped by.
     fn clock(&self) -> u64;
     fn virtual_camera(&self) -> (VirtualCamera, String);
+    /// Ask the system for the virtual camera again, if it is not there: its
+    /// driver may have been installed since the app started.
+    fn retry_virtual_camera(&self) {}
     fn key_store(&self) -> Box<dyn KeyStore>;
     /// The cameras attached to this computer. Asking opens none of them.
     fn cameras(&self) -> Vec<CameraChoice> {
@@ -876,6 +879,12 @@ impl DesktopApp {
         if changed && inner.settings.source == SourceKind::Camera && inner.source.is_none() && inner.settings.camera_allowed {
             self.core.restart_source(&mut inner);
         }
+    }
+
+    /// Ask the system for the virtual camera again. Call it after the camera's
+    /// driver was installed or removed; the next state says how it went.
+    pub fn retry_virtual_camera(&self) {
+        self.core.platform.retry_virtual_camera();
     }
 
     /// Flip the live picture left to right.

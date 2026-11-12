@@ -12,6 +12,7 @@
  "Not in this version yet": "Chưa có trong phiên bản này",
  "Open Windows Settings": "Mở Cài đặt Windows",
  "Open the data folder": "Mở thư mục dữ liệu",
+ "Other apps no longer list God's Camera. Windows asks for an administrator's permission.": "Các ứng dụng khác sẽ không còn thấy God's Camera. Windows sẽ hỏi quyền quản trị viên.",
  "Right-click to remove this photo": "Bấm chuột phải để bỏ ảnh này",
  "Sample face": "Khuôn mặt mẫu",
  "Saved faces and loops stay on this PC. Saved faces are encrypted, with the key in Windows Credential Manager.": "Khuôn mặt và vòng lặp đã lưu chỉ nằm trên máy tính này. Khuôn mặt đã lưu được mã hóa, khóa nằm trong Credential Manager của Windows.",
@@ -19,8 +20,9 @@
  "Saved faces, their encryption key, saved loops and what the app remembered are removed from this PC. This cannot be undone.": "Khuôn mặt đã lưu, khóa mã hóa của chúng, vòng lặp đã lưu và những gì ứng dụng ghi nhớ sẽ bị xóa khỏi máy tính này. Không thể hoàn tác.",
  "That file cannot be shown.": "Không hiển thị được tệp đó.",
  "The camera cannot be used. Another app may have it, or it was unplugged.": "Không dùng được camera. Có thể một ứng dụng khác đang dùng, hoặc camera đã bị rút ra.",
- "The camera is installed together with the app, by its installer. This copy was started without it.": "Camera được cài cùng ứng dụng, bằng trình cài đặt. Bản này được mở mà chưa cài camera.",
  "The scanner works in the Mac app today. The Windows app gets it once reading text from pictures is built for Windows.": "Hiện máy quét hoạt động trong ứng dụng trên Mac. Ứng dụng Windows sẽ có khi phần đọc chữ từ ảnh được làm xong cho Windows.",
+ "This copy of the app does not carry the camera's file, so it cannot install it.": "Bản ứng dụng này không kèm tệp của camera nên không thể cài camera.",
+ "Windows asks for an administrator's permission. One file is copied to Program Files and registered as a camera.": "Windows sẽ hỏi quyền quản trị viên. Một tệp được chép vào Program Files và được đăng ký làm camera.",
  "Windows could not make the camera.": "Windows không tạo được camera.",
  "Windows does not let desktop apps use cameras. Turn that on under Privacy & security, Camera.": "Windows đang không cho ứng dụng máy tính dùng camera. Hãy bật trong Quyền riêng tư & bảo mật, Camera.",
  "Your own camera, with whatever this app adds to it.": "Camera của chính bạn, cùng những gì ứng dụng này thêm vào."

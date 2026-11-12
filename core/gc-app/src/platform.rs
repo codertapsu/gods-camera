@@ -16,7 +16,7 @@ mod windows {
     use crate::model::{CameraChoice, CaptureFrom, OnFrame, Platform, SourceProblem, VirtualCamera};
     use gc_camera::Output;
     use gc_win::{CameraKeeper, CameraOutput, Capture, CaptureSource, Credential, Feed, FeedError};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     /// The name the key for saved faces goes under in Credential Manager.
     const FACE_KEY: &str = "GodsCamera.FaceStore";
@@ -40,12 +40,33 @@ mod windows {
         }
     }
 
+    /// The virtual camera as it stands: held if Windows made it, and what to tell the user.
+    struct Held {
+        /// Holds the camera in every app's list for as long as the app runs.
+        camera: Option<CameraKeeper>,
+        state: (VirtualCamera, String),
+    }
+
     struct Windows {
         /// The pipe the camera's media source fetches pictures from, if this app could make it.
         feed: Option<Arc<Feed>>,
-        /// Holds the camera in every app's list for as long as the app runs.
-        _camera: Option<CameraKeeper>,
-        state: (VirtualCamera, String),
+        held: Mutex<Held>,
+    }
+
+    impl Windows {
+        /// Ask Windows for the camera, and say how that went.
+        fn ask(feed: &Feed) -> Held {
+            match CameraKeeper::start(feed.pipe_name()) {
+                Ok(camera) => Held { camera: Some(camera), state: (VirtualCamera::Ready, String::new()) },
+                Err(error) if error.not_installed() => Held { camera: None, state: (VirtualCamera::NotInstalled, error.to_string()) },
+                Err(error) if error.refused() => Held { camera: None, state: (VirtualCamera::Refused, error.to_string()) },
+                Err(error) => Held { camera: None, state: (VirtualCamera::Failed, error.to_string()) },
+            }
+        }
+
+        fn held(&self) -> std::sync::MutexGuard<'_, Held> {
+            self.held.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        }
     }
 
     impl Platform for Windows {
@@ -58,7 +79,15 @@ mod windows {
         }
 
         fn virtual_camera(&self) -> (VirtualCamera, String) {
-            self.state.clone()
+            self.held().state.clone()
+        }
+
+        fn retry_virtual_camera(&self) {
+            let Some(feed) = &self.feed else { return };
+            let mut held = self.held();
+            // Let the old camera go first: Windows keeps one of a name for one app.
+            held.camera = None;
+            *held = Self::ask(feed);
         }
 
         fn key_store(&self) -> Box<dyn KeyStore> {
@@ -86,21 +115,15 @@ mod windows {
     /// Make the pipe and ask Windows for the camera. Neither failing stops
     /// the app: it then runs with a preview and says why other apps see no camera.
     pub fn native() -> Result<Arc<dyn Platform>, String> {
+        let without = |state: VirtualCamera, detail: String| -> Result<Arc<dyn Platform>, String> {
+            Ok(Arc::new(Windows { feed: None, held: Mutex::new(Held { camera: None, state: (state, detail) }) }))
+        };
         let feed = match Feed::open() {
             Ok(feed) => Arc::new(feed),
-            Err(FeedError::Taken) => {
-                return Ok(Arc::new(Windows { feed: None, _camera: None, state: (VirtualCamera::Busy, String::new()) }));
-            }
-            Err(error) => {
-                return Ok(Arc::new(Windows { feed: None, _camera: None, state: (VirtualCamera::Failed, error.to_string()) }));
-            }
+            Err(FeedError::Taken) => return without(VirtualCamera::Busy, String::new()),
+            Err(error) => return without(VirtualCamera::Failed, error.to_string()),
         };
-        let (camera, state) = match CameraKeeper::start(feed.pipe_name()) {
-            Ok(camera) => (Some(camera), (VirtualCamera::Ready, String::new())),
-            Err(error) if error.not_installed() => (None, (VirtualCamera::NotInstalled, error.to_string())),
-            Err(error) if error.refused() => (None, (VirtualCamera::Refused, error.to_string())),
-            Err(error) => (None, (VirtualCamera::Failed, error.to_string())),
-        };
-        Ok(Arc::new(Windows { feed: Some(feed), _camera: camera, state }))
+        let held = Windows::ask(&feed);
+        Ok(Arc::new(Windows { feed: Some(feed), held: Mutex::new(held) }))
     }
 }

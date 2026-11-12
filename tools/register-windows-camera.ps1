@@ -1,7 +1,11 @@
 # Put God's Camera's media source where Windows' camera service can load it,
 # and tell Windows about it. Or, with -Unregister, take both away again.
 #
-#   powershell -File tools\register-windows-camera.ps1 [-Unregister]
+#   powershell -File tools\register-windows-camera.ps1 [-Unregister] [-Source FILE]
+#
+# -Source names the built GodsCameraSource.dll. Without it, the one in this
+# repository's build folder is taken. The app carries a copy of this script
+# and of the file, and starts the script when "Install the camera" is clicked.
 #
 # Run it in a PowerShell window opened with "Run as administrator". The camera
 # service runs as a system account, and only looks for camera sources in the
@@ -18,7 +22,8 @@
 # Works in Windows PowerShell 5 and in PowerShell 7.
 
 param(
-    [switch]$Unregister
+    [switch]$Unregister,
+    [string]$Source
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,7 +34,7 @@ $fileName = 'GodsCameraSource.dll'
 $installFolder = Join-Path $env:ProgramFiles 'GodsCamera'
 $installed = Join-Path $installFolder $fileName
 $root = Split-Path -Parent $PSScriptRoot
-$built = Join-Path $root "apps\windows\build\bin\$fileName"
+$built = if ($Source) { $Source } else { Join-Path $root "apps\windows\build\bin\$fileName" }
 $regsvr32 = Join-Path $env:SystemRoot 'System32\regsvr32.exe'
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

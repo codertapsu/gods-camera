@@ -52,6 +52,11 @@ if (-not (Get-Command uniffi-bindgen-cs -ErrorAction SilentlyContinue)) {
     throw 'uniffi-bindgen-cs was not found. See the top of this script for how to install it.'
 }
 
+Write-Host '== the camera driver =='
+# The app carries it, for its "Install the camera" button.
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'build-windows.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'the camera driver did not build' }
+
 Write-Host "== the shared core ($CoreBuild) =="
 Push-Location $core
 try {

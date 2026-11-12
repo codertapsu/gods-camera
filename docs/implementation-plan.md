@@ -665,7 +665,7 @@ Build
 - [ ] A fixed video-memory budget for the live pipeline. S3 measured about 0.7 GB for `inswapper_128` with the detector and the mask, and 1 GB with HyperSwap, of the card's 8 GB.
 - [ ] OCR with PP-OCRv5; Vietnamese accuracy measured against the corpus.
 - [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it.
-- [ ] Installer that registers the camera; file logging; single-instance guard.
+- [ ] Installer that registers the camera; file logging; single-instance guard. Until there is an installer, the app carries the driver and installs or removes it itself when asked, with Windows' own administrator question.
 - [ ] App matrix: Zoom, Teams, Meet in Chrome and Edge, Slack, Discord, OBS, Camera.
 
 Exit: the exit criteria of Phases 1–3 are met on the Windows PC, against the Windows targets in section 7.

@@ -207,6 +207,40 @@ internal sealed class Shell : Window
         return chosen;
     }
 
+    /// <summary>The camera's file and its install script are beside the program.</summary>
+    public bool CarriesCamera => File.Exists(CameraFile) && File.Exists(CameraScript);
+
+    private static string CameraFile => System.IO.Path.Combine(AppContext.BaseDirectory, "Camera", "GodsCameraSource.dll");
+    private static string CameraScript => System.IO.Path.Combine(AppContext.BaseDirectory, "Camera", "register-windows-camera.ps1");
+
+    /// <summary>
+    /// Install the camera for other apps, or remove it. Windows asks for an
+    /// administrator's permission: the camera service only loads a camera that
+    /// is registered for the whole computer. Nothing happens if the user says no.
+    /// </summary>
+    public async Task InstallCamera(bool remove)
+    {
+        var arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{CameraScript}\" -Source \"{CameraFile}\"" + (remove ? " -Unregister" : "");
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("powershell.exe", arguments)
+            {
+                // "runas" is what brings up Windows' own question.
+                Verb = "runas",
+                UseShellExecute = true,
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+            };
+            using var process = System.Diagnostics.Process.Start(start);
+            if (process != null) await process.WaitForExitAsync();
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // The user said no to Windows' question.
+        }
+        App.RetryVirtualCamera();
+        Poll();
+    }
+
     public void OpenFolder(string folder)
     {
         try

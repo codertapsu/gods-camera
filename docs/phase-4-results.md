@@ -6,11 +6,13 @@ Windows work began on 2026-11-12, when you brought the PC in. That is earlier th
 
 ## What you need to do
 
-1. **Register the camera driver.** This is the one step that needs administrator rights, so I have not done it. Open PowerShell with "Run as administrator", go to the repository folder, and run:
+1. **Install the camera driver.** This is the one step that needs administrator rights, so I have not done it. Any of these does it:
 
-   `powershell -ExecutionPolicy Bypass -File tools\register-windows-camera.ps1`
+   - Start the app (`tools\build-windows-app.ps1 -Run` builds and starts it) and click "Install the camera" on the Camera screen. Windows asks for an administrator's permission; on this PC it grants it without a prompt.
+   - Or open PowerShell with "Run as administrator", go to the repository folder, and run `powershell -ExecutionPolicy Bypass -File tools\register-windows-camera.ps1`.
+   - Or tell me to run it.
 
-   It copies one DLL to `C:\Program Files\GodsCamera\` and registers it. Nothing else changes. `-Unregister` undoes it. You can also tell me to run it; this PC grants administrator rights without a prompt, which is why I wait for your word.
+   Either way one DLL is copied to `C:\Program Files\GodsCamera\` and registered, and nothing else changes. "Remove the camera" on the Settings screen, or the script with `-Unregister`, undoes it. The button has not been clicked by anyone yet: what it starts is the same script, which passes its own checks with every protected place redirected.
 2. **Say whether I may turn on your USB camera, or try it yourself.** A camera named "HD Web Camera" was attached during the day. I have not opened it. The app can now use a camera, but that part is tested only with a video file, which comes through the same reader. To try it yourself: start the app, and on the Camera screen click "Allow camera access". If I am to test it, I would turn it on for a few seconds at a time, read frame sizes and rates, and keep no picture.
 
 After step 1, I can check the camera in Windows' own camera service, in Chrome and in Edge without you. Zoom, Teams, Discord, Slack and OBS are not installed on this PC; a check in those needs you.
@@ -192,7 +194,7 @@ The window is WinUI 3 in C#, as planned, with the Rust core beside it as one DLL
 | Loop | Works: record, play, how it repeats, the LOOP badge, save, saved loops, the warning when the room's light has changed |
 | Face | Works: add a face from photos, the question whose face it is, choose, rename, remove a photo, delete, the swap's switch with its rules shown first, quality, the options, the "AI" badge |
 | Scanner | A placeholder. It waits for text reading on Windows |
-| Settings | The camera's state, "Delete all my data", and the folders, under "For development" |
+| Settings | The camera's state, "Remove the camera", "Delete all my data", and the folders, under "For development" |
 
 - **Checked by looking.** `tools\snapshot-windows-app.ps1 -Demo` starts the app on a data folder of its own, records and plays a loop, adds the sample photo as a face through the same code the buttons call, turns the swap on, and saves a picture of every screen. I looked at them in English and Vietnamese, light and dark. On the Face screen the swap ran on the graphics card: a new face every 37 ms, 54 ms behind the picture.
 - **Vietnamese.** The window uses the Mac app's translations, plus 23 texts that only Windows has. The build fails if a text has no Vietnamese.
