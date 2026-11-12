@@ -23,6 +23,13 @@
       "sha256": "c4862cfb1ecd51ff2fe125f7af866769f7cbd63830b436f700398ea5a8aac4e1",
       "bytes": 277289795,
       "role": "swap model, 128 px, half precision without reflect padding, for the Neural Engine"
+    },
+    {
+      "path": "inswapper_128.mixed.onnx",
+      "source_url": "derived from inswapper_128.onnx by tools/modelkit/mixed_precision.py half --keep ReduceMean Sub Mul Add Sqrt Div",
+      "sha256": "67d73ad49ece14a30e22dc871d372e5dd51b0eb14dbed84d3a6fdcfe4972f336",
+      "bytes": 277305362,
+      "role": "swap model, 128 px, half precision with its normalisation arithmetic in full precision, for graphics cards through DirectML"
     }
   ]
 }

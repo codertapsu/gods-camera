@@ -17,7 +17,8 @@ Usage:
     python tools/fetch-packs.py --check          download nothing, only report
 
 It needs Python 3.9 or later and nothing else for downloading. The derived
-files are made with the scripts in tools/modelkit, run through uv.
+files are made with the scripts in tools/modelkit, run through uv with the
+package versions that folder pins, so every machine makes the same bytes.
 """
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 import zipfile
@@ -36,11 +38,30 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 CHUNK = 1 << 20
 
-# How each derived file is made: the modelkit script and the packages it needs.
-# The half-precision model is for the Mac's Neural Engine only.
+MODELKIT = REPO / "tools" / "modelkit"
+
+# How each derived file is made: modelkit scripts and their arguments, run in
+# order. {store} is the model store and {work} a folder for files in between.
 DERIVED = {
-    "inswapper_128.emap.bin": {"script": "extract_emap.py", "with": ["onnx", "numpy<3"], "platforms": None},
-    "inswapper_128.reflectfree.fp16.onnx": {"script": None, "with": [], "platforms": ["darwin"]},
+    "inswapper_128.emap.bin": [
+        ["extract_emap.py", "--packs", "{store}"],
+    ],
+    # Half precision, with reflect padding rewritten. The Mac's Neural Engine
+    # needs both; on a graphics card half precision alone makes it three times faster.
+    "inswapper_128.reflectfree.fp16.onnx": [
+        ["rewrite_reflect_pad.py", "{store}/inswapper_128.onnx", "{work}/inswapper_128.reflectfree.onnx"],
+        ["convert_fp16.py", "{work}/inswapper_128.reflectfree.onnx", "{store}/inswapper_128.reflectfree.fp16.onnx"],
+    ],
+    # For graphics cards through DirectML, which gets a wholly half-precision
+    # swap model wrong: the normalisation stays in full precision.
+    "inswapper_128.mixed.onnx": [
+        ["mixed_precision.py", "half", "{store}/inswapper_128.onnx", "{store}/inswapper_128.mixed.onnx",
+         "--keep", "ReduceMean", "Sub", "Mul", "Add", "Sqrt", "Div"],
+    ],
+    "hyperswap_1b_256.mixed.onnx": [
+        ["mixed_precision.py", "full", "{store}/hyperswap_1b_256.onnx", "{store}/hyperswap_1b_256.mixed.onnx",
+         "--ops", "InstanceNormalization"],
+    ],
 }
 
 
@@ -101,21 +122,18 @@ def from_archive(archive: Path, member_name: str, target: Path) -> None:
 
 def derive(name: str, store: Path) -> str | None:
     """Make a derived file. Returns a reason if it was not made."""
-    recipe = DERIVED.get(name)
-    if recipe is None:
+    steps = DERIVED.get(name)
+    if steps is None:
         return "no recipe in this script"
-    if recipe["platforms"] is not None and sys.platform not in recipe["platforms"]:
-        return "not needed on this system"
-    if recipe["script"] is None:
-        return "made by hand on the Mac; see its manifest entry"
     if shutil.which("uv") is None:
         return "uv is not installed"
-    command = ["uv", "run", "--no-project"]
-    for package in recipe["with"]:
-        command += ["--with", package]
-    command += ["python", str(REPO / "tools" / "modelkit" / recipe["script"]), "--packs", str(store)]
-    done = subprocess.run(command, cwd=store)
-    return None if done.returncode == 0 else f"{recipe['script']} failed"
+    with tempfile.TemporaryDirectory(prefix="fetch-packs-") as work:
+        for script, *arguments in steps:
+            filled = [argument.format(store=store.as_posix(), work=Path(work).as_posix()) for argument in arguments]
+            command = ["uv", "run", "--project", str(MODELKIT), "python", str(MODELKIT / script), *filled]
+            if subprocess.run(command, cwd=store).returncode != 0:
+                return f"{script} failed"
+    return None
 
 
 def main() -> int:

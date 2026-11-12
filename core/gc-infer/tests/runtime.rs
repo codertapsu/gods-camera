@@ -217,3 +217,89 @@ fn occlusion_speed() {
         );
     }
 }
+
+/// On Windows the models run on the graphics card through DirectML. Speed is
+/// measured elsewhere; this checks that the card gives the same pictures as
+/// the processor, for every model the live engine puts on it.
+#[cfg(windows)]
+#[test]
+fn graphics_card_gives_the_same_pictures_as_the_processor() {
+    let Some(packs) = packs() else { return };
+    let runtime = Runtime::shared(None).expect("runtime");
+    let (frame_rgb, width, height) = rgb("input.png");
+    let frame = ImageView::new(&frame_rgb, width, height, width as usize * 3, PixelFormat::Rgb).unwrap();
+
+    // Detector: the same faces, within a pixel.
+    let model = packs.join("buffalo_l/det_10g.onnx");
+    let mut on_cpu = Detector::load(runtime, &model, 640, Accelerator::Cpu).expect("detector");
+    let mut on_card = Detector::load(runtime, &model, 640, Accelerator::Gpu).expect("detector on the card");
+    let by_x = |mut faces: Vec<gc_infer::Detection>| {
+        faces.sort_by(|a, b| a.bbox[0].total_cmp(&b.bbox[0]));
+        faces
+    };
+    let faces = by_x(on_cpu.detect(&frame, 0.5).expect("detect"));
+    let card_faces = by_x(on_card.detect(&frame, 0.5).expect("detect on the card"));
+    assert_eq!(faces.len(), card_faces.len());
+    for (a, b) in faces.iter().zip(&card_faces) {
+        for (p, q) in a.kps.iter().zip(&b.kps) {
+            assert!((p[0] - q[0]).abs() < 1.0 && (p[1] - q[1]).abs() < 1.0, "keypoint {p:?} vs {q:?}");
+        }
+    }
+
+    // Identity: the same direction.
+    let (target, source) = (&faces[0], &faces[faces.len() - 1]);
+    let model = packs.join("buffalo_l/w600k_r50.onnx");
+    let embedding = IdentityEncoder::load(runtime, &model, Accelerator::Cpu).expect("encoder").embed(&frame, &source.kps).unwrap();
+    let card_embedding =
+        IdentityEncoder::load(runtime, &model, Accelerator::Gpu).expect("encoder on the card").embed(&frame, &source.kps).unwrap();
+    let dot: f32 = embedding.iter().zip(&card_embedding).map(|(a, b)| a * b).sum();
+    let norms = embedding.iter().map(|v| v * v).sum::<f32>().sqrt() * card_embedding.iter().map(|v| v * v).sum::<f32>().sqrt();
+    assert!(dot / norms > 0.9995, "identity vectors differ: cosine {}", dot / norms);
+
+    // inswapper_128, as downloaded and as the mixed-precision copy the engine
+    // uses on a card, against InsightFace's own swapped crop. A wholly
+    // half-precision copy is 14 levels off here, which is why it is not used.
+    let crop = image::warp_to_crop(&frame, &gc_align::estimate_norm(&target.kps, 128).unwrap(), 128);
+    let (golden_swap, _, _) = rgb("swap_128.png");
+    let emap = packs.join("inswapper_128.emap.bin");
+    for file in ["inswapper_128.onnx", "inswapper_128.mixed.onnx"] {
+        let model = packs.join(file);
+        if !model.is_file() {
+            eprintln!("{file} not found; skipping");
+            continue;
+        }
+        let mut swapper =
+            Swapper::load(runtime, &model, SwapperContract::INSWAPPER_128, Some(&emap), Accelerator::Gpu).expect("swapper on the card");
+        let latent = swapper.identity(&embedding).unwrap();
+        let swapped = swapper.swap(&crop, &latent).expect("swap on the card");
+        let difference = mean_difference(&swapped.rgb, &golden_swap);
+        eprintln!("{file} on the card: {difference:.2} levels from InsightFace's crop");
+        assert!(difference < 1.5, "{file} on the card differs by {difference:.2}");
+    }
+
+    // HyperSwap 256 has no reference picture: its mixed-precision copy on the
+    // card against the downloaded file on the processor.
+    let (downloaded, mixed) = (packs.join("hyperswap_1b_256.onnx"), packs.join("hyperswap_1b_256.mixed.onnx"));
+    if downloaded.is_file() && mixed.is_file() {
+        let big = image::warp_to_crop(&frame, &gc_align::estimate_norm(&target.kps, 256).unwrap(), 256);
+        let mut results = Vec::new();
+        for (model, accelerator) in [(&downloaded, Accelerator::Cpu), (&mixed, Accelerator::Gpu)] {
+            let mut swapper = Swapper::load(runtime, model, SwapperContract::HYPERSWAP_256, None, accelerator).expect("hyperswap");
+            let latent = swapper.identity(&embedding).unwrap();
+            results.push(swapper.swap(&big, &latent).expect("hyperswap").rgb);
+        }
+        let difference = mean_difference(&results[0], &results[1]);
+        eprintln!("hyperswap, mixed copy on the card against the processor: {difference:.2} levels");
+        assert!(difference < 1.0, "hyperswap on the card differs by {difference:.2}");
+    }
+    let model = packs.join("xseg_3.onnx");
+    if model.is_file() {
+        let mut masks = Vec::new();
+        for accelerator in [Accelerator::Cpu, Accelerator::Gpu] {
+            masks.push(gc_infer::runtime::Occluder::load(runtime, &model, accelerator).expect("occluder").mask(&crop, 128).unwrap());
+        }
+        let difference = mean_difference(&masks[0], &masks[1]);
+        eprintln!("occlusion mask, card against processor: {difference:.2} levels");
+        assert!(difference < 1.0, "the occlusion mask on the card differs by {difference:.2}");
+    }
+}

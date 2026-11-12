@@ -9,6 +9,13 @@
       "sha256": "5124031789c42f71b9558fb71954ef7aedb6da7ed9fac79293e23c61a792a73e",
       "bytes": 402742682,
       "role": "swap model, 256 px"
+    },
+    {
+      "path": "hyperswap_1b_256.mixed.onnx",
+      "source_url": "derived from hyperswap_1b_256.onnx by tools/modelkit/mixed_precision.py full --ops InstanceNormalization",
+      "sha256": "1fd4957820f3ff3f2aceacf1147fdebb0b2751eaf34c6b2318c68f0e3bfc6265",
+      "bytes": 402763258,
+      "role": "swap model, 256 px, with its normalisation in full precision, for graphics cards through DirectML"
     }
   ]
 }

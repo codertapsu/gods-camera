@@ -41,9 +41,10 @@ fn runtime_error<E: std::fmt::Display>(error: E) -> InferError {
 
 /// Which part of the machine runs a model.
 ///
-/// On Apple devices these select Core ML compute units. Elsewhere only `Cpu`
-/// has an effect so far; the other platforms get their own providers when
-/// their phases begin.
+/// On Apple devices these select Core ML compute units. On Windows every
+/// choice but `Cpu` means the graphics card, through DirectML: a PC has no
+/// second accelerator to tell apart. On Android only `Cpu` has an effect so
+/// far; it gets its own providers when its phase begins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Accelerator {
     Cpu,
@@ -90,6 +91,14 @@ impl Runtime {
         if !model.is_file() {
             return Err(InferError::Model(format!("{} is missing", model.display())));
         }
+        #[cfg(windows)]
+        if accelerator != Accelerator::Cpu {
+            // A PC without a usable graphics card still gets a session, on the processor.
+            match self.directml_session(model, pinned) {
+                Ok(session) => return Ok(session),
+                Err(error) => eprintln!("gc-infer: {} runs on the processor, DirectML refused it: {error}", model.display()),
+            }
+        }
         let mut builder = Session::builder(&self.environment).map_err(runtime_error)?;
         for (name, size) in pinned {
             builder = builder.with_dimension_override(name, *size).map_err(runtime_error)?;
@@ -111,6 +120,24 @@ impl Runtime {
         }
         #[cfg(not(target_vendor = "apple"))]
         let _ = accelerator;
+        builder.commit_from_file(model).map_err(runtime_error)
+    }
+
+    /// Open a model on the graphics card through DirectML.
+    #[cfg(windows)]
+    fn directml_session(&self, model: &Path, pinned: &[(&str, i64)]) -> Result<Session, InferError> {
+        use ort::ep::directml::{DirectML, PerformancePreference};
+        let mut builder = Session::builder(&self.environment).map_err(runtime_error)?;
+        for (name, size) in pinned {
+            builder = builder.with_dimension_override(name, *size).map_err(runtime_error)?;
+        }
+        // DirectML takes a session only with these two switched off.
+        builder = builder.with_memory_pattern(false).map_err(runtime_error)?;
+        builder = builder.with_parallel_execution(false).map_err(runtime_error)?;
+        // On a machine with two graphics cards, the fast one. A failure is
+        // reported instead of quietly running on the processor, so the caller decides.
+        let provider = DirectML::default().with_performance_preference(PerformancePreference::HighPerformance);
+        builder = builder.with_execution_providers([provider.build().error_on_failure()]).map_err(runtime_error)?;
         builder.commit_from_file(model).map_err(runtime_error)
     }
 }

@@ -5,6 +5,14 @@ the output is from the full-precision CPU output, in 8-bit pixel levels. It
 also writes the outputs as PNG files so they can be looked at.
 
 Usage: uv run python check_swap.py --packs ../../../packs --golden ../../core/gc-infer/tests/golden --out <dir>
+
+Copies of the models made by convert_fp16.py or mixed_precision.py are checked
+too when `--variants` names the folder they are in; a file belongs to the
+model its name starts with.
+
+The providers are whatever the installed ONNX Runtime offers: Core ML on a
+Mac; on Windows DirectML, or CUDA and TensorRT with the NVIDIA build:
+    uv run --no-project --with onnxruntime-directml --with insightface --with onnx         --with opencv-python-headless --with scikit-image --with "numpy<3" python check_swap.py ...
 """
 import argparse
 import json
@@ -26,7 +34,24 @@ def coreml(units: str):
     return [("CoreMLExecutionProvider", {"ModelFormat": "MLProgram", "MLComputeUnits": units}), "CPUExecutionProvider"]
 
 
-PROVIDERS = {"cpu": CPU, "coreml-gpu": coreml("CPUAndGPU"), "coreml-all": coreml("ALL"), "coreml-ane": coreml("CPUAndNeuralEngine")}
+def providers() -> dict:
+    """Every way of running a model that this build of ONNX Runtime offers."""
+    available = set(ort.get_available_providers())
+    found = {"cpu": CPU}
+    if "CoreMLExecutionProvider" in available:
+        found.update({"coreml-gpu": coreml("CPUAndGPU"), "coreml-all": coreml("ALL"), "coreml-ane": coreml("CPUAndNeuralEngine")})
+    if "DmlExecutionProvider" in available:
+        found["directml"] = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        # Without the card maker's own fast paths: slower, and a way to tell whose arithmetic is at fault.
+        found["directml-plain"] = [("DmlExecutionProvider", {"disable_metacommands": "true"}), "CPUExecutionProvider"]
+    if "CUDAExecutionProvider" in available:
+        found["cuda"] = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    if "TensorrtExecutionProvider" in available:
+        found["tensorrt"] = [("TensorrtExecutionProvider", {"trt_fp16_enable": False}), "CUDAExecutionProvider", "CPUExecutionProvider"]
+        found["tensorrt-fp16"] = [("TensorrtExecutionProvider", {"trt_fp16_enable": True}), "CUDAExecutionProvider", "CPUExecutionProvider"]
+    if "NvTensorRTRTXExecutionProvider" in available:
+        found["tensorrt-rtx"] = ["NvTensorRTRTXExecutionProvider", "CPUExecutionProvider"]
+    return found
 
 
 def timed(sess, feeds, runs: int):
@@ -55,8 +80,13 @@ def main() -> None:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--runs", type=int, default=40)
     ap.add_argument("--only", default="", help="run only variants whose label contains this text")
+    ap.add_argument("--variants", type=Path, help="folder with other copies of the models to check")
+    ap.add_argument("--providers", nargs="*", help="providers to run; the default is all")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
+    if hasattr(ort, "preload_dlls"):
+        ort.preload_dlls()
+    found = providers()
 
     img = cv2.imread(str(args.golden / "input.png"))
     golden = json.loads((args.golden / "golden.json").read_text())
@@ -90,6 +120,14 @@ def main() -> None:
         # HyperSwap already stores half-precision weights, so it has no separate fp16 variant.
         ("hyperswap_1b_256", "hyperswap_1b_256.onnx", {"target": blob256, "source": normed}, 0.5, 0.5),
     ]
+    if args.variants:
+        feeds_of = {"inswapper_128": ({"target": blob128, "source": latent}, 0.0, 1.0), "hyperswap_1b_256": ({"target": blob256, "source": normed}, 0.5, 0.5)}
+        for extra in sorted(args.variants.glob("*.onnx")):
+            for family, (feeds, mean, std) in feeds_of.items():
+                if extra.name.startswith(family + "."):
+                    label = family + " " + extra.name[len(family) + 1 : -len(".onnx")]
+                    if label not in [v[0] for v in variants]:
+                        variants.append((label, extra, feeds, mean, std))
     reference = {}
     rows = []
     if args.only:
@@ -99,16 +137,23 @@ def main() -> None:
                 sess = ort.InferenceSession(str(args.packs / file), providers=CPU)
                 reference[family] = to_u8(sess.run(None, feeds)[0][0], mean, std)
     for label, file, feeds, mean, std in variants:
-        path = args.packs / file
+        path = file if isinstance(file, Path) else args.packs / file
         if not path.exists() or args.only not in label:
             continue
         family = label.split()[0]
-        for cfg, providers in PROVIDERS.items():
+        for cfg, chosen in found.items():
+            if args.providers and cfg not in args.providers:
+                continue
             row = {"model": label, "provider": cfg}
             try:
                 so = ort.SessionOptions()
                 so.log_severity_level = 3
-                sess = ort.InferenceSession(str(path), sess_options=so, providers=providers)
+                if cfg.startswith("directml"):
+                    # DirectML takes a session only with these two switched off.
+                    so.enable_mem_pattern = False
+                    so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+                sess = ort.InferenceSession(str(path), sess_options=so, providers=chosen)
+                row["ran_on"] = sess.get_providers()[0].replace("ExecutionProvider", "")
                 out, median, p95 = timed(sess, feeds, args.runs)
                 image = to_u8(out[0][0], mean, std)
                 if family not in reference:  # the first run of a family is fp32 on the CPU

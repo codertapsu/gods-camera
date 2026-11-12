@@ -22,8 +22,10 @@ ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, fea
 [target.'cfg(target_os = "android")'.dependencies]
 ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["nnapi"] }
 
+# DirectML comes as a DLL of its own, newer than the one inside Windows. The
+# build copies it beside every program it makes, which is where Windows looks first.
 [target.'cfg(windows)'.dependencies]
-ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["directml"] }
+ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["directml", "copy-dylibs"] }
 
 [dev-dependencies]
 serde_json = "1.0.154"
