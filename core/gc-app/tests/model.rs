@@ -21,11 +21,13 @@ const PATIENCE: Duration = Duration::from_secs(20);
 struct Camera {
     sent: Arc<AtomicU64>,
     last_size: Arc<Mutex<(u32, u32)>>,
+    /// No app reads the camera.
+    unwatched: Arc<AtomicBool>,
 }
 
 impl Output for Camera {
     fn wanted(&self) -> Option<(u32, u32)> {
-        Some((640, 360))
+        (!self.unwatched.load(Ordering::Relaxed)).then_some((640, 360))
     }
 
     fn send(&mut self, nv12: &[u8], width: u32, height: u32, _: u64) {
@@ -91,6 +93,10 @@ impl Platform for Stand {
 
     fn virtual_camera(&self) -> (VirtualCamera, String) {
         (VirtualCamera::Ready, String::new())
+    }
+
+    fn watched(&self) -> bool {
+        !self.camera.unwatched.load(Ordering::Relaxed)
     }
 
     fn key_store(&self) -> Box<dyn KeyStore> {
@@ -562,4 +568,54 @@ fn a_video_file_is_a_source_of_its_own() {
     fixture.app.set_source(SourceKind::Video, None);
     let state = fixture.until("the film again", |_| fixture.shown() == 230);
     assert_eq!(state.file_name.as_deref(), Some("holiday.mp4"));
+}
+
+#[test]
+fn the_camera_is_switched_off_while_nobody_looks() {
+    let fixture = Fixture::new("resting");
+    *fixture.attached.cameras.lock().unwrap() = vec![CameraChoice { id: "a".into(), name: "Desk camera".into() }];
+    fixture.app.allow_camera();
+    fixture.until("the camera's picture", |state| state.mode == EngineMode::Live && fixture.shown() == 100);
+    let opened = || fixture.attached.opened.lock().unwrap().len();
+    assert_eq!(opened(), 1);
+
+    // The window is hidden, and an app still reads the camera: it stays on.
+    fixture.app.set_preview_wanted(false);
+    let state = fixture.app.state();
+    assert!(!state.resting && state.mode == EngineMode::Live);
+
+    // That app stops reading: nobody looks, so the camera goes off.
+    fixture.camera.unwatched.store(true, Ordering::Relaxed);
+    let state = fixture.until("the camera to be switched off", |state| state.resting && state.mode == EngineMode::Idle);
+    assert_eq!(state.source_problem, None);
+    let sent = fixture.camera.sent.load(Ordering::Relaxed);
+    std::thread::sleep(Duration::from_millis(80));
+    assert_eq!(fixture.camera.sent.load(Ordering::Relaxed), sent);
+    assert_eq!(opened(), 1, "nothing opens the camera while it rests");
+
+    // An app starts reading: the camera comes back on by itself.
+    fixture.camera.unwatched.store(false, Ordering::Relaxed);
+    let state = fixture.until("the camera to come back", |state| !state.resting && state.mode == EngineMode::Live);
+    assert!(state.watched);
+    assert_eq!(opened(), 2);
+
+    // Nobody reads, and the window is shown again: on as well.
+    fixture.camera.unwatched.store(true, Ordering::Relaxed);
+    fixture.until("the camera to rest again", |state| state.resting);
+    fixture.app.set_preview_wanted(true);
+    fixture.until("the camera for the window", |state| !state.resting && state.mode == EngineMode::Live);
+
+    // A loop that plays keeps going with the window hidden, and so does a recording.
+    fixture.app.toggle_recording();
+    fixture.until("some recording", |state| state.recorded_seconds >= 0.3);
+    fixture.app.set_preview_wanted(false);
+    assert!(!fixture.app.state().resting, "a recording under way is somebody looking");
+    fixture.app.toggle_recording();
+    fixture.until("the clip, and then rest", |state| state.clip.is_some() && state.resting);
+
+    // The choice to keep running is remembered, and is on unless turned off.
+    assert!(fixture.app.state().keep_running);
+    fixture.app.set_keep_running(false);
+    let fixture = fixture.reopen();
+    assert!(!fixture.app.state().keep_running);
 }

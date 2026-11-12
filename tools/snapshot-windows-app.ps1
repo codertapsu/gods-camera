@@ -24,13 +24,15 @@ param(
     [ValidateSet('light', 'dark')] [string] $Theme = 'light',
     [switch] $Demo,
     [string] $Out,
+    # The built program to take pictures of, if not the one in the usual place.
+    [string] $Program,
     # A data folder to show instead of an empty one, for pictures with saved faces and loops in them.
     [string] $Data
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$program = Join-Path $repo 'apps\windows\app\bin\Release\net10.0-windows10.0.26100.0\win-x64\GodsCamera.exe'
+$program = if ($Program) { $Program } else { Join-Path $repo 'apps\windows\app\bin\Release\net10.0-windows10.0.26100.0\win-x64\GodsCamera.exe' }
 if (-not (Test-Path $program)) { throw 'The app is not built. Run tools\build-windows-app.ps1 first.' }
 
 $work = Join-Path $env:TEMP ('gc-app-shots-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))

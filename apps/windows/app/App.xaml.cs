@@ -13,6 +13,8 @@ namespace GodsCamera;
 ///                may be given more than once
 ///   --language   show the app in this language instead of the one Windows is shown in
 ///   --theme      show the app light or dark instead of as Windows is set
+///   --status     write what the app is doing to this file, once a second, as JSON:
+///                for development and for tests that cannot look at the window
 ///   --snapshots  save a picture of every screen into the folder as PNG, then close
 ///   --demo       with --snapshots: first record a loop and add this photo as a face
 ///
@@ -22,6 +24,7 @@ namespace GodsCamera;
 public partial class App : Application
 {
     private Window? window;
+    private Mutex? onlyCopy;
 
     public App()
     {
@@ -59,7 +62,24 @@ public partial class App : Application
         }
 
         var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GodsCamera");
-        var data = Value(arguments, "--data") ?? home;
+        var data = Path.GetFullPath(Value(arguments, "--data") ?? home);
+        // One copy at a time on one data folder: a second start brings the
+        // first copy's window forward and leaves. A copy on a data folder of
+        // its own, as for pictures or a try-out, runs beside it and never
+        // disturbs it. A run that only takes pictures is over in seconds and
+        // is let through.
+        var folderMark = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(data.ToLowerInvariant())))[..16];
+        if (Value(arguments, "--snapshots") == null)
+        {
+            onlyCopy = new Mutex(true, $"Local\\GodsCamera.OneCopy.{folderMark}", out var first);
+            if (!first)
+            {
+                Native.PostMessageW(Native.HWND_BROADCAST, Shell.ShowYourselfMessage(folderMark), IntPtr.Zero, IntPtr.Zero);
+                Exit();
+                return;
+            }
+        }
         // Model files: the folders named on the command line, then the ones
         // that came with the app, then the ones added to it later.
         var packs = Values(arguments, "--packs")
@@ -68,11 +88,22 @@ public partial class App : Application
             .Select(Path.GetFullPath)
             .ToArray();
         Texts.Load(Value(arguments, "--language"));
+        Log.Start(data);
+        // Whatever goes wrong unnoticed is at least written down.
+        UnhandledException += (_, problem) => Log.Problem("the window", problem.Exception);
         var launch = new Launch(
-            Path.GetFullPath(data), packs, Path.Combine(Path.GetFullPath(data), "Cache", "Models"),
+            data, packs, Path.Combine(data, "Cache", "Models"),
             Value(arguments, "--language"), Value(arguments, "--theme"), Value(arguments, "--snapshots"),
-            Value(arguments, "--demo"));
-        window = new Shell(launch);
-        window.Activate();
+            Value(arguments, "--demo"), folderMark, Value(arguments, "--status"));
+        try
+        {
+            window = new Shell(launch);
+            window.Activate();
+        }
+        catch (Exception problem)
+        {
+            Log.Problem("starting", problem);
+            throw;
+        }
     }
 }

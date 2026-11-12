@@ -15,7 +15,7 @@ namespace GodsCamera;
 /// <summary>How the app was started.</summary>
 internal sealed record Launch(
     string DataFolder, string[] PackFolders, string CacheFolder, string? Language, string? Theme, string? SnapshotFolder,
-    string? DemoPhoto);
+    string? DemoPhoto, string FolderMark, string? StatusFile);
 
 /// <summary>The window: a list of screens at the left, and the chosen screen beside it.</summary>
 internal sealed class Shell : Window
@@ -35,19 +35,65 @@ internal sealed class Shell : Window
     private readonly DispatcherQueueTimer stateTimer;
     private readonly DispatcherQueueTimer pictureTimer;
     private IScreen? current;
+    private AppState? last;
 
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr window);
+    // The notification-area icon, the hot keys, and what closing the window means.
+    private readonly IntPtr handle;
+    private readonly bool resident;
+    private readonly Native.WindowProc messages;
+    private IntPtr previousMessages;
+    private readonly uint taskbarCreated = Native.RegisterWindowMessageW("TaskbarCreated");
+    private TrayIcon? tray;
+    private bool hidden;
+    private bool quitting;
+    private bool toldAboutTray;
+    private int pollsWhileHidden;
+
+    /// <summary>
+    /// The message a second copy of the app sends to the first: "show
+    /// yourself". It carries the mark of the data folder in its name, so only
+    /// the copy on the same data hears it.
+    /// </summary>
+    public static uint ShowYourselfMessage(string folderMark) => Native.RegisterWindowMessageW($"GodsCamera.ShowYourself.{folderMark}");
+
+    /// <summary>
+    /// The message that asks the running copy to end, as Quit in the icon's
+    /// menu does: for an installer that is about to replace the app's files.
+    /// </summary>
+    public static uint QuitMessage(string folderMark) => Native.RegisterWindowMessageW($"GodsCamera.Quit.{folderMark}");
+
+    private readonly uint showYourself;
+    private readonly uint quitMessage;
+    private readonly string? statusFile;
+    private int pollsSinceStatus;
+
+    private const int HotKeyRecord = 1, HotKeyLoop = 2;
+
+    /// <summary>Which hot keys Windows gave the app. Another program may hold one already.</summary>
+    public bool RecordKeyWorks { get; private set; }
+    public bool LoopKeyWorks { get; private set; }
+
+    /// <summary>The app asked for hot keys at all. A run that only takes pictures of the screens does not.</summary>
+    public bool AskedForHotKeys => resident;
 
     public Shell(Launch launch)
     {
         DataFolder = launch.DataFolder;
         PackFolders = launch.PackFolders;
         App = new DesktopApp(new AppConfig(launch.DataFolder, launch.PackFolders, launch.CacheFolder));
+        handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        // A run that only takes pictures of the app stays out of the notification area.
+        resident = launch.SnapshotFolder == null;
+        messages = OnMessage;
+        showYourself = ShowYourselfMessage(launch.FolderMark);
+        quitMessage = QuitMessage(launch.FolderMark);
+        statusFile = launch.StatusFile;
 
         Title = "God's Camera";
+        var iconFile = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        if (File.Exists(iconFile)) AppWindow.SetIcon(iconFile);
         // 1180 by 780 at the size text is shown on this screen.
-        var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+        var scale = Native.GetDpiForWindow(handle) / 96.0;
         AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(1180 * scale), (int)(780 * scale)));
 
         navigation.PaneDisplayMode = NavigationViewPaneDisplayMode.Left;
@@ -89,10 +135,38 @@ internal sealed class Shell : Window
         pictureTimer.Interval = TimeSpan.FromMilliseconds(33);
         pictureTimer.Tick += (_, _) => Preview.Refresh();
         pictureTimer.Start();
+        Log.Write($"started: version {Version}, camera for other apps: {App.State().VirtualCamera}, pictures of the screens only: {!resident}");
+        if (resident)
+        {
+            previousMessages = Native.SetWindowLongPtrW(
+                handle, Native.GWLP_WNDPROC, System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(messages));
+            tray = new TrayIcon(handle, iconFile);
+            tray.Add("God's Camera");
+            // Control, Alt and Shift with R or L: free in the meeting apps, and reachable with one hand.
+            const uint together = Native.MOD_CONTROL | Native.MOD_ALT | Native.MOD_SHIFT | Native.MOD_NOREPEAT;
+            RecordKeyWorks = Native.RegisterHotKey(handle, HotKeyRecord, together, 'R');
+            LoopKeyWorks = Native.RegisterHotKey(handle, HotKeyLoop, together, 'L');
+            Log.Write($"hot keys: record {(RecordKeyWorks ? "ours" : "taken by another program")}, loop {(LoopKeyWorks ? "ours" : "taken by another program")}");
+            // Closing the window leaves the app running, so that other apps keep
+            // their camera. Quit, in the icon's menu, ends it.
+            AppWindow.Closing += (_, closing) =>
+            {
+                if (quitting || last is not { KeepRunning: true }) return;
+                closing.Cancel = true;
+                HideToTray();
+            };
+        }
         Closed += (_, _) =>
         {
             stateTimer.Stop();
             pictureTimer.Stop();
+            if (resident)
+            {
+                Native.UnregisterHotKey(handle, HotKeyRecord);
+                Native.UnregisterHotKey(handle, HotKeyLoop);
+                if (previousMessages != IntPtr.Zero) Native.SetWindowLongPtrW(handle, Native.GWLP_WNDPROC, previousMessages);
+                tray?.Dispose();
+            }
             App.Dispose();
         };
         Poll();
@@ -144,8 +218,111 @@ internal sealed class Shell : Window
         };
     }
 
+    // The notification area, the hot keys, and one copy at a time
+
+    private void HideToTray()
+    {
+        hidden = true;
+        AppWindow.Hide();
+        pictureTimer.Stop();
+        // With the window gone, the picture is made only while an app reads the camera.
+        App.SetPreviewWanted(false);
+        if (!toldAboutTray)
+        {
+            toldAboutTray = true;
+            tray?.Tell(
+                T("God's Camera is still running"),
+                T("Other apps can keep using the camera. To end it, right-click this icon and choose Quit."));
+        }
+    }
+
+    private void ShowWindow()
+    {
+        hidden = false;
+        App.SetPreviewWanted(true);
+        AppWindow.Show();
+        if (Native.IsIconic(handle)) Native.ShowWindow(handle, Native.SW_RESTORE);
+        Native.SetForegroundWindow(handle);
+        pictureTimer.Start();
+        Poll();
+    }
+
+    private void Quit()
+    {
+        quitting = true;
+        Close();
+    }
+
+    private void TrayMenu()
+    {
+        if (tray == null || last == null) return;
+        var recording = last.IsRecording;
+        var looping = last.Mode == EngineMode.Looping;
+        var chosen = tray.Menu(
+            (1, T("Open God's Camera")),
+            (0, ""),
+            (2, recording ? T("Stop recording") : T("Record a loop")),
+            (3, looping ? T("Back to live") : T("Play the loop")),
+            (0, ""),
+            (4, T("Quit")));
+        switch (chosen)
+        {
+            case 1: ShowWindow(); break;
+            case 2: App.ToggleRecording(); break;
+            case 3: App.ToggleLoop(); break;
+            case 4: Quit(); break;
+        }
+    }
+
+    /// <summary>The window's messages, for the few that WinUI does not hand on.</summary>
+    private IntPtr OnMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam)
+    {
+        // Nothing thrown here may reach Windows: it called this, and would end the app.
+        try
+        {
+            if (message == Native.WM_HOTKEY)
+            {
+                var key = wParam.ToInt64();
+                if (key == HotKeyRecord) App.ToggleRecording();
+                if (key == HotKeyLoop) App.ToggleLoop();
+                return IntPtr.Zero;
+            }
+            if (message == TrayIcon.Message)
+            {
+                // What happened to the icon is in the low half of the last number.
+                var what = (uint)(lParam.ToInt64() & 0xFFFF);
+                if (what == Native.WM_LBUTTONUP) ShowWindow();
+                if (what == Native.WM_RBUTTONUP || what == Native.WM_CONTEXTMENU) TrayMenu();
+                return IntPtr.Zero;
+            }
+            if (message == showYourself)
+            {
+                ShowWindow();
+                return IntPtr.Zero;
+            }
+            if (message == quitMessage)
+            {
+                Quit();
+                return IntPtr.Zero;
+            }
+            if (message == taskbarCreated)
+            {
+                // Explorer was started again and has forgotten every icon.
+                tray?.Add("God's Camera");
+            }
+        }
+        catch (Exception problem)
+        {
+            Log.Problem("a window message", problem);
+        }
+        return Native.CallWindowProcW(previousMessages, window, message, wParam, lParam);
+    }
+
     private void Poll()
     {
+        // Hidden, the state is asked only twice a second: enough to notice
+        // that an app has started to read the camera.
+        if (hidden && ++pollsWhileHidden % 5 != 0) return;
         AppState state;
         try
         {
@@ -156,6 +333,10 @@ internal sealed class Shell : Window
             // The window is closing and the app is gone.
             return;
         }
+        last = state;
+        tray?.SetTip(TrayWords(state));
+        WriteStatus(state);
+        if (hidden) return;
         statusDot.Fill = new SolidColorBrush(state.Mode switch
         {
             EngineMode.Live => Ui.Green,
@@ -170,6 +351,52 @@ internal sealed class Shell : Window
         };
         watchersText.Text = state.Watched ? T("An app is using the camera") : T("No app is using the camera");
         current?.Update(state);
+    }
+
+    /// <summary>What the app is doing, into the file named with --status, about once a second.</summary>
+    private void WriteStatus(AppState state)
+    {
+        if (statusFile == null || (++pollsSinceStatus % (hidden ? 2 : 10) != 0)) return;
+        var status = new Dictionary<string, object?>
+        {
+            ["mode"] = state.Mode.ToString(),
+            ["source"] = state.Source.ToString(),
+            ["source_problem"] = state.SourceProblem?.ToString(),
+            ["frames_out"] = state.FramesOut,
+            ["source_fps"] = Math.Round(state.SourceFps, 1),
+            ["recording"] = state.IsRecording,
+            ["has_clip"] = state.Clip != null,
+            ["watched"] = state.Watched,
+            ["resting"] = state.Resting,
+            ["virtual_camera"] = state.VirtualCamera.ToString(),
+            ["swap"] = state.SwapState.ToString(),
+            ["window_hidden"] = hidden,
+            ["tray_icon"] = tray != null,
+            ["record_key"] = RecordKeyWorks,
+            ["loop_key"] = LoopKeyWorks,
+        };
+        try
+        {
+            var partial = statusFile + ".partial";
+            File.WriteAllText(partial, System.Text.Json.JsonSerializer.Serialize(status));
+            File.Move(partial, statusFile, true);
+        }
+        catch (IOException)
+        {
+            // Whoever reads the file had it open; the next second writes it again.
+        }
+    }
+
+    private static string TrayWords(AppState state)
+    {
+        var doing = state.Mode switch
+        {
+            EngineMode.Live => state.Swapping ? T("Live, face swapped") : T("Live"),
+            EngineMode.Looping => T("Playing a loop"),
+            _ => T("Camera off"),
+        };
+        var watched = state.Watched ? T("An app is using the camera") : T("No app is using the camera");
+        return $"God's Camera\n{doing}\n{watched}";
     }
 
     // What screens ask of the window

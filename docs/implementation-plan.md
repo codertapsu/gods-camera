@@ -648,7 +648,7 @@ State: the toolchain is in place, the core passes its tests on the PC, and the m
 Start
 
 - [x] Toolchain on the PC, as in section 5.3. Windows 11 Pro 25H2 build 26200.8655, NVIDIA driver 616.92. .NET 10 is still to be installed for the app shell.
-- [x] The core's unit and parity tests pass on the PC: 224 in a full run.
+- [x] The core's unit and parity tests pass on the PC: 225 in a full run.
 - [x] **S2 Windows driver.** Custom media source under Frame Server. Measured with the driver loaded into a test tool: 1 to 3 ms from the app to the reader through a named pipe, so neither shared memory nor a shared texture was built. Registered on 2026-11-12 and verified under Windows' own camera service, in Chrome and in Edge. Zoom, Teams, Camera and OBS are in the app matrix below.
 - [x] **S3 on the RTX 3050.** `inswapper_128` and HyperSwap 256 at full, half and mixed precision, through DirectML and CUDA, with milliseconds, video memory and the error of each picture. DirectML with mixed-precision copies was chosen. TensorRT did not load in the comparison and was not pursued.
 - [x] **S8 Shared renderer.** Decided without the wgpu test: on Windows the outgoing picture is drawn on the processor (`gc-render`), 3 to 10 ms a frame. The camera wants its pictures in ordinary memory, and the one graphics card is busy with the models. To be looked at again for Android.
@@ -664,8 +664,8 @@ Build
 - [x] Core inference on the card through DirectML, with separate sessions and queues per stage and no global inference lock. A model the card refuses runs on the processor instead.
 - [ ] A fixed video-memory budget for the live pipeline. S3 measured about 0.7 GB for `inswapper_128` with the detector and the mask, and 1 GB with HyperSwap, of the card's 8 GB.
 - [ ] OCR with PP-OCRv5; Vietnamese accuracy measured against the corpus.
-- [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it.
-- [ ] Installer that registers the camera; file logging; single-instance guard. Until there is an installer, the app carries the driver and installs or removes it itself when asked, with Windows' own administrator question.
+- [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it. Built: the shell, the tray icon and the hot keys. Open: the hub.
+- [ ] Installer that registers the camera; file logging; single-instance guard. Built: the log and the guard. Until there is an installer, the app carries the driver and installs or removes it itself when asked, with Windows' own administrator question.
 - [ ] App matrix: Zoom, Teams, Meet in Chrome and Edge, Slack, Discord, OBS, Camera.
 
 Exit: the exit criteria of Phases 1–3 are met on the Windows PC, against the Windows targets in section 7.

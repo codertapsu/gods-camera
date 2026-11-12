@@ -82,6 +82,10 @@ mod windows {
             self.held().state.clone()
         }
 
+        fn watched(&self) -> bool {
+            self.feed.as_ref().is_some_and(|feed| feed.watched().is_some())
+        }
+
         fn retry_virtual_camera(&self) {
             let Some(feed) = &self.feed else { return };
             let mut held = self.held();

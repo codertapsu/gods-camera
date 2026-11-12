@@ -23,7 +23,10 @@ param(
     [ValidateSet('release', 'debug')] [string] $CoreBuild = 'release',
     # Start the app after building it, on the user's own data and with the
     # model files beside the repository.
-    [switch] $Run
+    [switch] $Run,
+    # Put the program into this folder instead of the usual one: for building
+    # while the app is running from the usual one, whose files are then in use.
+    [string] $OutputFolder
 )
 
 $ErrorActionPreference = 'Stop'
@@ -80,10 +83,17 @@ python (Join-Path $repo 'tools\sync-windows-strings.py')
 if ($LASTEXITCODE -ne 0) { throw 'some texts have no Vietnamese' }
 
 Write-Host '== the window =='
-& $dotnet build (Join-Path $app 'GodsCamera.csproj') -c Release "-p:CoreBuild=$CoreBuild"
-if ($LASTEXITCODE -ne 0) { throw 'the app did not build' }
-
 $program = Join-Path $app 'bin\Release\net10.0-windows10.0.26100.0\win-x64\GodsCamera.exe'
+if ($OutputFolder) {
+    & $dotnet build (Join-Path $app 'GodsCamera.csproj') -c Release "-p:CoreBuild=$CoreBuild" -o $OutputFolder
+    $program = Join-Path $OutputFolder 'GodsCamera.exe'
+    # The compiled App.xaml, which carries the app's styles, is only put into
+    # the usual folder. Without it the app ends as it starts.
+    Copy-Item (Join-Path $app 'obj\Release\net10.0-windows10.0.26100.0\win-x64\App.xbf') $OutputFolder -Force
+} else {
+    & $dotnet build (Join-Path $app 'GodsCamera.csproj') -c Release "-p:CoreBuild=$CoreBuild"
+}
+if ($LASTEXITCODE -ne 0) { throw 'the app did not build' }
 Write-Host "Built $program"
 if ($Run) {
     # The model files are not inside the app yet. Point it at the ones beside

@@ -63,6 +63,8 @@ pub struct Settings {
     pub keep_objects_in_front: bool,
     pub real_mouth: bool,
     pub blur_when_unswapped: bool,
+    /// Closing the window leaves the app running, so other apps keep their camera.
+    pub keep_running: bool,
 }
 
 impl Default for Settings {
@@ -87,6 +89,7 @@ impl Default for Settings {
             keep_objects_in_front: true,
             real_mouth: false,
             blur_when_unswapped: false,
+            keep_running: true,
         }
     }
 }

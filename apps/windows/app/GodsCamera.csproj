@@ -8,6 +8,8 @@
     <RootNamespace>GodsCamera</RootNamespace>
     <AssemblyName>GodsCamera</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Drawn by tools/make-windows-icon.py. -->
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
@@ -38,6 +40,7 @@
     <Content Include="$(MSBuildProjectDirectory)/../../../tools/register-windows-camera.ps1" Link="Camera/register-windows-camera.ps1" CopyToOutputDirectory="PreserveNewest" />
     <!-- The app's Vietnamese, written by tools/sync-windows-strings.py. -->
     <Content Update="Assets/vi.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="Assets/app.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />

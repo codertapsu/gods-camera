@@ -44,7 +44,7 @@ Your account is an administrator, and this PC approves administrator requests wi
 
 The core had only ever been cross-compiled for Windows from the Mac. It now builds and runs here.
 
-- **Tests.** 224 pass in a full run on the PC. Four more are run by hand: three print speeds, and one listens on every network interface (see the firewall note below).
+- **Tests.** 225 pass in a full run on the PC. Four more are run by hand: three print speeds, and one listens on every network interface (see the firewall note below).
 - **Same pictures as the Mac.** The parity tests compare the Rust pipeline with InsightFace's own on its sample photo, and pass here. The reference numbers made on this PC differ from the Mac's by at most 0.19 pixels for a detected keypoint, which is ordinary difference between processors.
 - **What had to change for Windows.** The hub's tests used a shell script as their stand-in text reader; they now use PowerShell here. Development builds optimise the tracker, the image code, the live engine and the camera pipeline, because unoptimised they are seven times slower on this processor and the tests that time them failed for that reason alone.
 
@@ -203,7 +203,12 @@ The window is WinUI 3 in C#, as planned, with the Rust core beside it as one DLL
 - **Vietnamese.** The window uses the Mac app's translations, plus 23 texts that only Windows has. The build fails if a text has no Vietnamese.
 - **Not checked.** I pressed no button with a mouse. The pictures show that the screens draw and that the model behind them works; whether every button is wired to the right call is for you to try, or for a test that clicks.
 - **A camera or a video file as the source.** Windows decodes either and hands the app one picture at a time. A test writes a short film, reads it back and checks that it is the right way up, has the right colours, plays at 30 pictures a second and starts again at its end. I also started the real app with that film as its source and looked at the picture: it plays. The camera goes through the same reader; it has not been turned on. Of the modes a camera offers, the app takes the one nearest to 1280×720 at 30 a second.
-- **Not in the window yet:** the tray icon, hot keys, going back to live when you start to speak, and the installer.
+- **Beside the clock.** Closing the window leaves the app running with an icon in the notification area, so other apps keep their camera; its menu opens the window, records, plays the loop and quits. While the window is hidden and no app reads God's Camera, no picture is made and your own camera is switched off; it comes back by itself when an app starts reading. A setting turns this off, and closing then ends the app.
+- **Hot keys.** Ctrl+Alt+Shift+R records or stops, Ctrl+Alt+Shift+L plays the loop or goes back to live, also while another app has the keyboard.
+- **One copy at a time.** Starting the app again brings the running copy's window forward.
+- **A log.** `Logs\gods-camera.log` in the app's data folder holds what the app did and what went wrong, never a picture or a file name. It found its first fault on the day it was added.
+- **Checked without a person.** `apps\windows\tests\check-app.ps1` starts the app on a data folder of its own and checks 22 things about the above by sending the window the messages a hot key, a click on the icon and a second copy cause. All hold. No key was pressed and no mouse moved: pressing the hot keys and using the icon's menu are for you to try.
+- **Not in the window yet:** going back to live when you start to speak, the diagnostics report, and the installer.
 - **The model files are not inside the app yet.** The installer will put them there. Until then, the build script's `-Run` points the app at the ones beside the repository.
 
 For the window I installed two tools for your user account only, without administrator rights: the .NET 10 SDK, and the program that writes the C# description of the core. `tools\build-windows-app.ps1` builds everything.
@@ -211,7 +216,7 @@ For the window I installed two tools for your user account only, without adminis
 ## Open
 
 - **The camera in a normal browser window and in meeting apps**, and the uneven timing with the real camera. See the top of this note.
-- **The rest of the Windows app.** The tray icon, hot keys, the hub with a firewall rule made by the installer, the scanner, and the installer that registers the camera.
+- **The rest of the Windows app.** The hub with a firewall rule made by the installer, the scanner, and the installer that registers the camera and carries the model files.
 - Text reading on Windows (PP-OCRv5) and its Vietnamese accuracy.
 - The occlusion mask at half rate on machines with one accelerator.
 - The core changes made here still have to pass `tools/check.sh` on the Mac.

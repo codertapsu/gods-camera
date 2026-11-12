@@ -90,6 +90,10 @@ pub trait Platform: Send + Sync {
     /// The present moment in nanoseconds, on the clock the output's pictures are stamped by.
     fn clock(&self) -> u64;
     fn virtual_camera(&self) -> (VirtualCamera, String);
+    /// Something is reading the virtual camera right now.
+    fn watched(&self) -> bool {
+        false
+    }
     /// Ask the system for the virtual camera again, if it is not there: its
     /// driver may have been installed since the app started.
     fn retry_virtual_camera(&self) {}
@@ -265,6 +269,11 @@ pub struct AppState {
     pub mirror: bool,
     pub virtual_camera: VirtualCamera,
     pub virtual_camera_detail: String,
+    /// No picture is being made because the window is hidden and no app reads
+    /// the camera. A camera is switched off meanwhile.
+    pub resting: bool,
+    /// Closing the window leaves the app running.
+    pub keep_running: bool,
 
     // Loop.
     pub clip: Option<ClipInfo>,
@@ -351,6 +360,11 @@ struct Inner {
     source_problem: Option<SourceProblem>,
     /// The cameras attached when the app last looked.
     cameras: Vec<CameraChoice>,
+    /// The window shows the picture. While it does not, and nothing reads the
+    /// virtual camera, no picture is made and a camera is switched off.
+    preview_wanted: bool,
+    /// The source was stopped because nobody looks at its picture.
+    resting: bool,
 
     clip: Option<Arc<Clip>>,
     clip_saved: bool,
@@ -420,10 +434,29 @@ impl Core {
 
     // The source
 
+    /// Whether anybody looks at the picture: the window, an app reading the
+    /// virtual camera, or a recording or a loop that is under way.
+    fn picture_needed(&self, inner: &Inner) -> bool {
+        let status = self.engine.status();
+        inner.preview_wanted || self.platform.watched() || status.is_recording || status.mode == Mode::Looping
+    }
+
+    /// Switch the source off while nobody looks, and on again when somebody does.
+    fn rest_or_wake(self: &Arc<Self>, inner: &mut Inner) {
+        let needed = self.picture_needed(inner);
+        if needed && inner.resting {
+            self.restart_source(inner);
+        } else if !needed && !inner.resting && inner.source.is_some() {
+            inner.source = None;
+            inner.resting = true;
+        }
+    }
+
     /// Stop the source that runs, and start the one the settings name.
     fn restart_source(self: &Arc<Self>, inner: &mut Inner) {
         inner.source = None;
         inner.source_problem = None;
+        inner.resting = false;
         let frames: Draw = match inner.settings.source {
             SourceKind::Pattern => {
                 let pattern = Pattern::new(1280, 720);
@@ -479,14 +512,16 @@ impl Core {
     /// Have the platform fetch pictures and hand them to the engine.
     fn capture(self: &Arc<Self>, inner: &mut Inner, from: CaptureFrom) {
         let core = Arc::clone(self);
-        self.engine.source_started();
         let started = self.platform.capture(from, Box::new(move |picture, taken| core.engine.push_frame(picture, taken)));
         match started {
-            Ok(capture) => inner.source = Some(Box::new(Captured { capture: Some(capture), core: Arc::clone(self) })),
-            Err(problem) => {
-                self.engine.source_stopped();
-                inner.source_problem = Some(problem);
+            Ok(capture) => {
+                // Told only now, so that a source that will not open never
+                // looks live for a moment. A picture that came before this is
+                // passed over; the next one is a thirtieth of a second away.
+                self.engine.source_started();
+                inner.source = Some(Box::new(Captured { capture: Some(capture), core: Arc::clone(self) }));
             }
+            Err(problem) => inner.source_problem = Some(problem),
         }
     }
 
@@ -664,6 +699,8 @@ impl DesktopApp {
                 source: None,
                 source_problem: None,
                 cameras: Vec::new(),
+                preview_wanted: true,
+                resting: false,
                 clip: None,
                 clip_saved: false,
                 clips: ClipLibrary::new(data_dir.join("Loops")).ok(),
@@ -730,6 +767,7 @@ impl DesktopApp {
             inner.clip = Some(clip);
             inner.clip_saved = false;
         }
+        core.rest_or_wake(&mut inner);
         let (virtual_camera, virtual_camera_detail) = core.platform.virtual_camera();
         let clip = inner.clip.as_ref().map(|clip| ClipInfo {
             id: clip.id.clone(),
@@ -777,6 +815,8 @@ impl DesktopApp {
             mirror: settings.mirror,
             virtual_camera,
             virtual_camera_detail,
+            resting: inner.resting,
+            keep_running: settings.keep_running,
 
             can_record: status.mode == Mode::Live,
             can_loop: clip.is_some() && status.mode != Mode::Idle || status.mode == Mode::Looping,
@@ -885,6 +925,23 @@ impl DesktopApp {
     /// driver was installed or removed; the next state says how it went.
     pub fn retry_virtual_camera(&self) {
         self.core.platform.retry_virtual_camera();
+    }
+
+    /// Say whether the window shows the picture. While it does not, and no
+    /// app reads the virtual camera, the source is switched off: a camera's
+    /// light goes out. `state` has to be asked now and then for this to follow
+    /// what reads the camera.
+    pub fn set_preview_wanted(&self, wanted: bool) {
+        let mut inner = self.core.lock();
+        inner.preview_wanted = wanted;
+        self.core.rest_or_wake(&mut inner);
+    }
+
+    /// Whether closing the window leaves the app running.
+    pub fn set_keep_running(&self, keep: bool) {
+        let mut inner = self.core.lock();
+        inner.settings.keep_running = keep;
+        self.core.save_settings(&inner);
     }
 
     /// Flip the live picture left to right.
@@ -1237,6 +1294,7 @@ impl DesktopApp {
             source: inner.settings.source,
             camera: inner.settings.camera.clone(),
             camera_allowed: inner.settings.camera_allowed,
+            keep_running: inner.settings.keep_running,
             ..Settings::default()
         };
         self.core.save_settings(&inner);
