@@ -986,6 +986,7 @@ dependencies = [
 name = "gc-win"
 version = "0.1.0"
 dependencies = [
+ "gc-app",
  "gc-camera",
  "windows",
 ]

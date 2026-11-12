@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The God's Camera window for Windows 11: WinUI 3, not packaged, with
+       everything it needs beside it. Built by tools\build-windows-app.ps1. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <RootNamespace>GodsCamera</RootNamespace>
+    <AssemblyName>GodsCamera</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Not a Store package: an ordinary program in a folder. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- Everything the app needs to run is bundled with it: the .NET runtime
+         and the Windows App SDK's own libraries. -->
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Where the shared core was built: core/target/release, or debug with -p:CoreBuild=debug. -->
+    <CoreBuild Condition="'$(CoreBuild)' == ''">release</CoreBuild>
+    <CoreDir>$(MSBuildProjectDirectory)/../../../core/target/$(CoreBuild)/</CoreDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The shared core and the graphics library it loads, beside the program. -->
+    <Content Include="$(CoreDir)gc_ffi.dll" Link="gc_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(CoreDir)DirectML.dll" Link="DirectML.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
+  </ItemGroup>
+</Project>

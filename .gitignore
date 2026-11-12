@@ -26,3 +26,7 @@ apps/android/build/
 apps/android/app/src/main/jniLibs/
 apps/android/app/src/main/java/uniffi/
 apps/android/.kotlin/
+# Built by tools/build-windows-app.ps1
+apps/windows/app/bin/
+apps/windows/app/obj/
+apps/windows/app/Core/gc_ffi.cs

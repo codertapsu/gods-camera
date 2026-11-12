@@ -180,13 +180,15 @@ Two faults showed in these runs and are fixed:
 
 A test also reads 330 pictures across live, recording and loop with a stand-in for the media source: one every 33 ms throughout, none missing, no pause at either change. I looked at a live picture and a loop picture from that run: the swapped face is clean, and the "AI" badge is in the corner of both.
 
-Saved faces are encrypted on disk, as on the Mac. The key is kept apart from the files; on Windows it will go into Credential Manager. The part that stores the key there is not written yet.
+Saved faces are encrypted on disk, as on the Mac. The key is kept apart from the files, in Windows' Credential Manager, where only your account can read it.
+
+**The window.** The app's shell is WinUI 3 in C#, as planned, with the Rust core beside it as one DLL. That chain is proven: a first window opens, calls the core and gets its answer. It has no screens yet. For it I installed two tools for your user account only, without administrator rights: the .NET 10 SDK, and the program that writes the C# description of the core. `tools\build-windows-app.ps1` builds everything.
 
 ## Open
 
 - **Registration**, then the check in Windows' camera service and in real apps. See the top of this note.
 - **Capture from the USB camera**, once you say I may turn it on.
-- **The Windows app itself.** The engine, the loop and the saved faces exist. The window does not: screens, tray icon, hot keys, the hub with a firewall rule made by the installer, and the installer that registers the camera.
+- **The Windows app itself.** The engine, the loop and the saved faces exist, and a first window that reaches them. Still to build: the screens, tray icon, hot keys, the hub with a firewall rule made by the installer, and the installer that registers the camera.
 - Text reading on Windows (PP-OCRv5) and its Vietnamese accuracy.
 - The occlusion mask at half rate on machines with one accelerator.
 - The core changes made here still have to pass `tools/check.sh` on the Mac.
