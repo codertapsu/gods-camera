@@ -13,6 +13,7 @@ Windows 11 only. `MFCreateVirtualCamera` does not exist before it.
 | `vcam-host/` | `gc-vcam-host.exe` | Stands in for the app. Makes the pipe and the camera and sends a test picture |
 | `vcam-probe/` | `gc-vcam-probe.exe` | Reads the camera as a meeting app would and reports what arrived, as one line of JSON |
 | `shared/` | | The contract between the two ends (`gc_vcam_protocol.h`), the test picture and the slate |
+| `tests/check.ps1` | | Every check that can be made without registering the camera, in one run |
 
 The same contract is repeated for Rust in `core/gc-win`; a test there compares it with `shared/gc_vcam_protocol.h`.
 
@@ -41,6 +42,14 @@ powershell -ExecutionPolicy Bypass -File tools\build-windows.ps1
 Needs the Visual Studio 2022 Build Tools with the C++ tools, CMake and Ninja; no administrator. Everything goes to `apps\windows\build\bin`. The build fails on any compiler warning (`/W4 /WX`). The C++ runtime is linked into each binary, so the DLL needs nothing but Windows inside the camera service.
 
 ## Test without registering anything
+
+One command runs everything below and says what held:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File apps\windows\tests\check.ps1
+```
+
+It takes a minute and a half, needs no administrator and changes nothing on the computer. It refuses to run while the app or a test host holds the camera's pipe. The rest of this section is what it does, by hand.
 
 The probe can load the DLL into its own process. That tests the media source, the pipe and the pacing, and needs no administrator. It does not test the camera service.
 
