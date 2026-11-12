@@ -2,7 +2,7 @@
 
 Date: 2026-11-12 · Plan: [implementation-plan.md](implementation-plan.md)
 
-Windows work began on 2026-11-12, when you brought the PC in. That is earlier than the plan's start point, so Phase 4 now runs beside what is left of Phase 3. This note covers the first day: the toolchain, the shared core on Windows, the models on the RTX 3050, the virtual camera, and the engine that will feed it.
+Windows work began on 2026-11-12, when you brought the PC in. That is earlier than the plan's start point, so Phase 4 now runs beside what is left of Phase 3. This note covers the first day: the toolchain, the shared core on Windows, the models on the RTX 3050, the virtual camera, the engine that feeds it, and the app's window.
 
 ## What you need to do
 
@@ -201,6 +201,7 @@ The window is WinUI 3 in C#, as planned, with the Rust core beside it as one DLL
 - **Not checked.** I pressed no button with a mouse. The pictures show that the screens draw and that the model behind them works; whether every button is wired to the right call is for you to try, or for a test that clicks.
 - **A camera or a video file as the source.** Windows decodes either and hands the app one picture at a time. A test writes a short film, reads it back and checks that it is the right way up, has the right colours, plays at 30 pictures a second and starts again at its end. I also started the real app with that film as its source and looked at the picture: it plays. The camera goes through the same reader; it has not been turned on. Of the modes a camera offers, the app takes the one nearest to 1280×720 at 30 a second.
 - **Not in the window yet:** the tray icon, hot keys, going back to live when you start to speak, and the installer.
+- **The model files are not inside the app yet.** The installer will put them there. Until then, the build script's `-Run` points the app at the ones beside the repository.
 
 For the window I installed two tools for your user account only, without administrator rights: the .NET 10 SDK, and the program that writes the C# description of the core. `tools\build-windows-app.ps1` builds everything.
 

@@ -21,7 +21,8 @@
 param(
     # Which build of the core to use: release, or debug for a quicker turn-around.
     [ValidateSet('release', 'debug')] [string] $CoreBuild = 'release',
-    # Start the app after building it.
+    # Start the app after building it, on the user's own data and with the
+    # model files beside the repository.
     [switch] $Run
 )
 
@@ -84,4 +85,9 @@ if ($LASTEXITCODE -ne 0) { throw 'the app did not build' }
 
 $program = Join-Path $app 'bin\Release\net10.0-windows10.0.26100.0\win-x64\GodsCamera.exe'
 Write-Host "Built $program"
-if ($Run) { Start-Process $program }
+if ($Run) {
+    # The model files are not inside the app yet. Point it at the ones beside
+    # the repository, where tools\fetch-packs.py puts them.
+    $packs = Join-Path (Split-Path -Parent $repo) 'packs'
+    Start-Process $program -ArgumentList @('--packs', $packs)
+}
