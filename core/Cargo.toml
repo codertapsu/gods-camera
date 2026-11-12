@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-doc", "gc-pair", "gc-link", "gc-live", "gc-ffi", "gc-mobile", "gc-cli"]
+members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-doc", "gc-pair", "gc-link", "gc-live", "gc-render", "gc-ffi", "gc-mobile", "gc-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,7 +15,7 @@ lto = "thin"
 # their tests check how well a face is followed at camera speed. Unoptimised,
 # the frame thread takes 17 ms a frame on the Windows PC instead of 2.5, and
 # those tests fail for a reason that has nothing to do with the code. So these
-# four crates are optimised in development builds too.
+# crates are optimised in development builds too.
 [profile.dev.package.gc-align]
 opt-level = 3
 [profile.dev.package.gc-track]
@@ -23,4 +23,6 @@ opt-level = 3
 [profile.dev.package.gc-infer]
 opt-level = 3
 [profile.dev.package.gc-live]
+opt-level = 3
+[profile.dev.package.gc-render]
 opt-level = 3

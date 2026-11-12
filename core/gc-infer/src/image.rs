@@ -26,7 +26,7 @@ impl PixelFormat {
     }
 
     /// Byte offsets of red, green and blue within a pixel.
-    fn rgb_offsets(self) -> [usize; 3] {
+    pub fn rgb_offsets(self) -> [usize; 3] {
         match self {
             PixelFormat::Bgra | PixelFormat::Bgr => [2, 1, 0],
             PixelFormat::Rgba | PixelFormat::Rgb => [0, 1, 2],

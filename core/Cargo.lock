@@ -924,6 +924,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gc-render"
+version = "0.1.0"
+dependencies = [
+ "gc-align",
+ "gc-infer",
+]
+
+[[package]]
 name = "gc-track"
 version = "0.1.0"
 dependencies = [

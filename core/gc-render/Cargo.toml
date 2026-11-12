@@ -1,0 +1,10 @@
+[package]
+name = "gc-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gc-align = { version = "0.1.0", path = "../gc-align" }
+gc-infer = { version = "0.1.0", path = "../gc-infer" }
