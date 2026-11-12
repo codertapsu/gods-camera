@@ -118,7 +118,7 @@ pub struct ReplayArgs {
     pub json: Option<PathBuf>,
 }
 
-fn percentile(sorted: &[f32], fraction: f32) -> f32 {
+pub(crate) fn percentile(sorted: &[f32], fraction: f32) -> f32 {
     if sorted.is_empty() {
         return 0.0;
     }

@@ -7,6 +7,8 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+#[cfg(windows)]
+mod camera;
 mod face;
 mod paired;
 
@@ -182,6 +184,57 @@ enum Command {
         #[arg(long)]
         json: Option<PathBuf>,
     },
+    /// Windows only: show the live face swap through the camera "God's Camera", from a moving-face clip made from a photo.
+    #[cfg(windows)]
+    Camera {
+        #[arg(long)]
+        packs: PathBuf,
+        /// A photo with a face. Its leftmost face moves in the clip.
+        #[arg(long)]
+        photo: PathBuf,
+        /// Picture of the face to swap in. Defaults to the rightmost face in the photo.
+        #[arg(long)]
+        source: Option<PathBuf>,
+        #[arg(long, default_value = "inswapper")]
+        model: String,
+        /// still, talking or fast.
+        #[arg(long, default_value = "talking")]
+        motion: String,
+        /// Stop after this many seconds. Without it, run until Ctrl+C.
+        #[arg(long)]
+        seconds: Option<f32>,
+        /// Stop once the first app that watched the camera has stopped watching.
+        #[arg(long)]
+        once: bool,
+        /// Only make the pipe: for tests that load the camera's media source themselves.
+        #[arg(long)]
+        no_camera: bool,
+        /// A pipe name of the caller's own instead of the camera's. The media
+        /// source never opens it; a test that stands in for the source does.
+        #[arg(long, hide = true, requires = "no_camera")]
+        pipe: Option<String>,
+        /// Send the clip as it is, without the face swap.
+        #[arg(long)]
+        no_swap: bool,
+        /// Leave the occlusion mask out.
+        #[arg(long)]
+        no_occlusion: bool,
+        /// Folder for compiled models, so later runs start faster.
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+        /// Also write the report to this file.
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
+}
+
+fn parse_motion(name: &str) -> Result<gc_live::synthetic::Motion> {
+    Ok(match name {
+        "still" => gc_live::synthetic::Motion::Still,
+        "talking" => gc_live::synthetic::Motion::Talking,
+        "fast" => gc_live::synthetic::Motion::Fast,
+        other => bail!("unknown motion '{other}'; use still, talking or fast"),
+    })
 }
 
 /// The hub token comes from the environment so it never appears in shell history.
@@ -267,12 +320,7 @@ async fn main() -> Result<()> {
                     other => bail!("unknown detector '{other}'; use large or small"),
                 },
                 detector_size,
-                motion: match motion.as_str() {
-                    "still" => gc_live::synthetic::Motion::Still,
-                    "talking" => gc_live::synthetic::Motion::Talking,
-                    "fast" => gc_live::synthetic::Motion::Fast,
-                    other => bail!("unknown motion '{other}'; use still, talking or fast"),
-                },
+                motion: parse_motion(&motion)?,
                 seconds,
                 width,
                 height,
@@ -284,6 +332,35 @@ async fn main() -> Result<()> {
                 json,
             };
             tokio::task::spawn_blocking(move || face::replay(args)).await??;
+        }
+        #[cfg(windows)]
+        Command::Camera {
+            packs, photo, source, model, motion, seconds, once, no_camera, pipe, no_swap, no_occlusion, cache_dir, json,
+        } => {
+            let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let args = camera::CameraArgs {
+                packs,
+                photo,
+                source,
+                model: face::parse_model(&model)?,
+                motion: parse_motion(&motion)?,
+                seconds,
+                once,
+                no_camera,
+                pipe,
+                no_swap,
+                no_occlusion,
+                cache_dir,
+                json,
+                stop: stop.clone(),
+            };
+            // Ctrl+C ends the run in order: the camera leaves the list and the report is printed.
+            tokio::spawn(async move {
+                if tokio::signal::ctrl_c().await.is_ok() {
+                    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            });
+            tokio::task::spawn_blocking(move || camera::run(args)).await??;
         }
     }
     Ok(())

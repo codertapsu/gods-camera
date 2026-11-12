@@ -19,7 +19,11 @@ gc-models = { version = "0.1.0", path = "../gc-models" }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "rustls-no-provider"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "fs"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "fs", "signal"] }
+
+# `gc camera` shows the live face swap through the Windows camera.
+[target.'cfg(windows)'.dependencies]
+gc-win = { version = "0.1.0", path = "../gc-win" }
 
 [[bin]]
 name = "gc"
