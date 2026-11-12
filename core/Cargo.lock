@@ -809,6 +809,7 @@ dependencies = [
  "gc-link",
  "gc-live",
  "gc-models",
+ "gc-render",
  "image",
  "reqwest",
  "serde",

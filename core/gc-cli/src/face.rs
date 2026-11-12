@@ -184,6 +184,11 @@ pub fn replay(args: ReplayArgs) -> Result<()> {
         std::fs::create_dir_all(folder)?;
     }
     let frames = (args.seconds * FPS) as usize;
+    // The picture that would go out is drawn for every frame, as an app does,
+    // so the time for it is part of the report.
+    let mut compositor = gc_render::Compositor::new(args.width, args.height);
+    let mut outgoing = Vec::new();
+    let mut compose_ms = Vec::with_capacity(frames);
     let mut frame_ms = Vec::with_capacity(frames);
     let mut patch_ages = Vec::with_capacity(frames);
     let mut on_photo: Vec<[[f32; 2]; 5]> = Vec::with_capacity(frames);
@@ -215,17 +220,23 @@ pub fn replay(args: ReplayArgs) -> Result<()> {
             visible += 1;
             patch_ages.push(result.patch_age_frames as f32);
         }
-        if let (Some(folder), Some(patch), true) = (&args.dump, engine.patch(), i % 15 == 0) {
-            let mut out = frame.clone();
-            let mut picture = ImageMut {
-                data: &mut out,
-                width: args.width,
-                height: args.height,
-                stride,
-                format: PixelFormat::Bgra,
-            };
-            gc_live::paste_patch(&mut picture, &patch.rgba, patch.size, &result.crop_to_frame, result.opacity);
-            let rgb: Vec<u8> = out.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect();
+        let composing = Instant::now();
+        let patch = engine.patch().filter(|_| result.patch_sequence > 0 && result.opacity > 0.0);
+        let mut scene = gc_render::Scene::of(view);
+        scene.blur = result.blur;
+        scene.patch = patch.as_ref().map(|patch| gc_render::Patch {
+            rgba: &patch.rgba,
+            size: patch.size,
+            crop_to_frame: result.crop_to_frame,
+            opacity: result.opacity,
+        });
+        let canvas = compositor.draw(&scene);
+        // Writing a picture file is not part of what an app does for a frame.
+        let saved = (args.dump.is_some() && i % 15 == 0)
+            .then(|| canvas.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect::<Vec<u8>>());
+        compositor.nv12(&mut outgoing);
+        compose_ms.push(composing.elapsed().as_secs_f32() * 1000.0);
+        if let (Some(folder), Some(rgb)) = (&args.dump, saved) {
             image::save_buffer(folder.join(format!("frame-{i:04}.png")), &rgb, args.width, args.height, image::ColorType::Rgb8)?;
         }
         if !args.unpaced {
@@ -248,6 +259,7 @@ pub fn replay(args: ReplayArgs) -> Result<()> {
     }
     let wobble = wobble.sqrt() * zoom;
     frame_ms.sort_by(f32::total_cmp);
+    compose_ms.sort_by(f32::total_cmp);
     patch_ages.sort_by(f32::total_cmp);
     let swaps = stats.swaps - before.swaps;
     let detections = stats.detections - before.detections;
@@ -266,6 +278,7 @@ pub fn replay(args: ReplayArgs) -> Result<()> {
         "run_s": run_s,
         "frames_per_second": frames as f32 / run_s,
         "frame_thread_ms": { "median": percentile(&frame_ms, 0.5), "p95": percentile(&frame_ms, 0.95), "max": percentile(&frame_ms, 1.0) },
+        "compose_ms": { "median": percentile(&compose_ms, 0.5), "p95": percentile(&compose_ms, 0.95), "max": percentile(&compose_ms, 1.0) },
         "detector_runs_per_second": detections as f32 / run_s,
         "detector_ms": stats.detect_ms,
         "swaps_per_second": swaps as f32 / run_s,
