@@ -69,10 +69,7 @@ class AsterNet:
 
         self.name = "AsterNet"
         self.chars = json.load(io.open(store + "/asternet_vi.vocab.json", encoding="utf-8"))["chars"]
-        options = ort.SessionOptions()
-        # The library's plain kernels on every processor, as the app's reader has them.
-        options.add_session_config_entry("mlas.disable_kleidiai", "1")
-        self.session = ort.InferenceSession(store + "/asternet_vi.onnx", options, providers=["CPUExecutionProvider"])
+        self.session = ort.InferenceSession(store + "/asternet_vi.onnx", providers=["CPUExecutionProvider"])
         self.input = self.session.get_inputs()[0].name
 
     def read(self, picture: Image.Image) -> str:

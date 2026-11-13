@@ -59,11 +59,21 @@ Which machine does what:
 
 Text files have LF line endings on both machines (`.gitattributes`). Shell scripts run in Git Bash on Windows.
 
+### Running something on the other machine
+
+A session can run a command on the other machine through Mother Claude (`machine_run`), once that machine's Computers page gives this one the Run permission.
+
+- The command runs in a work folder of its own there, at the calling session's files as they are, uncommitted changes included. That machine's checkout is not touched, and does not get the changes: it still has to `git pull`.
+- The work folder has no model files and no reference pictures beside it. Point the tests at the real ones: `GC_PACKS_DIR` for the model store, `GC_GOLDEN_DIR` for `core/gc-infer/tests/golden`. The Swift tests look for the reference pictures inside the repository, so copy the PNG files into the work folder first.
+- A call comes back after about half a minute whether the command has ended or not, and the command goes on. For anything longer, send its output to a file under `/tmp` and read the end of that file in later calls.
+- Whatever a command starts is stopped when the command ends, so nothing can be left running in the background.
+- Every call moves the work folder to the calling session's files of that moment. Change nothing here while a long command is still running there.
+
 ### Waiting for the other machine
 
 Work done on one machine that the other still has to check. Remove a line when it is done.
 
-- **For the Mac:** on 2026-11-13 `tools/check.sh` stopped in `gc-ocr`'s reader tests: the three that compare the text it reads failed, the crates before it passed, and nothing after it has run (the remaining tests, the lint, the Android and Windows builds). Suspected, not confirmed: the M4 has the SME instructions, and ONNX Runtime 1.31 computes with other kernels there (KleidiAI). `gc_infer::runtime::Model` now switches them off (`mlas.disable_kleidiai`), for the reader's two models. Run `tools/check.sh` again after pulling; then, in `core`, `cargo test -p gc-ocr --test reader -- --ignored --nocapture`, which prints what each way reads and fails if they differ, and write the outcome here. `swift test` is run in `apps/apple/GodsCameraKit`, after `tools/build-core-apple.sh`. The core changed on the PC on 2026-11-12: a face is shown only once its place is confirmed (expect a smaller keypoint offset and wobble in the live test, and the first swapped face a frame or two later), the real-time crates are optimised in development builds, and the hub's tests share one stand-in reader. Four crates are new: `gc-render`, `gc-camera` and `gc-app` build and are tested on every system; `gc-win` is empty outside Windows, and the Windows cross-build compiles it with Microsoft's `windows` crate for the first time. Then rebuild the Mac app's core with `tools/build-core-apple.sh` and run the app's self-test.
+- **For the Mac:** on 2026-11-13 the PC's session ran `tools/check.sh`, `tools/build-core-apple.sh` and `swift test` on the Mac through Mother Claude, in a work folder at the PC's code, and all three pass there. The Mac's own checkout has not pulled since, and the Mac app has not been rebuilt: after `git pull`, run `tools/install-mac-app.sh` when the user is not using the app, and its self-test. `swift test` is run in `apps/apple/GodsCameraKit`, after `tools/build-core-apple.sh`.
 - **For the Mac:** `core/gc-ocr` is new on 2026-11-12: the text reader for Windows, built and tested on every system. Run `python tools/fetch-packs.py` for its two model files (52 MB); without them four of its tests pass with a note instead of reading anything. `gc merge-ocr` now says which photos joined when not all did, and `tools/modelkit/make_document.py` finds its font on Windows too.
 - **For the Mac:** the Windows app has its scanner since 2026-11-12, so a hub can be a PC. The Android app's texts say "Mac" wherever they mean the computer (`connect_to_mac`, `macs_nearby` and about forty more, in both languages): make them say "computer", and then change the two texts in the PC's code dialog that quote them (`ScannerScreen.cs`, "Connect to a Mac" and "Enter the Mac's address instead"). `gc-app` now starts a hub (`scanner.rs`) and is built with `gc-link`, `gc-ocr` and `tokio`; `AppConfig` has a new field, `try_out`.
 - **For the Mac:** `apps/android`'s unit test that starts `gc hub --lan` can pass `--lan-addr 127.0.0.1` now.
@@ -77,6 +87,7 @@ Work done on one machine that the other still has to check. Remove a line when i
 - An app that was open while the camera extension was replaced does not list the camera until it is reopened. Change the extension's version only when its code changes.
 - Do not probe the screen with AppleScript; it stalls on a permission prompt. Idle time: `ioreg -c IOHIDSystem | awk '/HIDIdleTime/'`.
 - Measure speed only on a quiet machine, with a baseline from the same minute.
+- A model opened without naming where it runs does not run on the processor here: the inference library (`ort`) then picks Core ML by itself, which computes in half precision where it can. For a model that must give the same numbers as on the PC, say so: `AutoDevicePolicy::PreferCPU`, as `gc_infer::runtime::Model` does.
 
 ## The Windows PC
 

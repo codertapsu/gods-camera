@@ -10,15 +10,14 @@ use std::process::ExitCode;
 
 use gc_ocr::{Settings, TextReader};
 
-const USAGE: &str = "usage: gc-ocr [--packs <folder>]... [--threads <count>] [--timing] [--arm-kernels] <picture>...
+const USAGE: &str = "usage: gc-ocr [--packs <folder>]... [--threads <count>] [--timing] [--save-lines <folder>] <picture>...
 
 Reads the text in each picture and prints one JSON list of pages.
 The model files are looked for in the --packs folders; without any, in the
 folder named by GC_PACK_STORE, and then in the folder Packs beside this program.
 
---arm-kernels lets the inference library use its faster kernels for Arm
-processors with the SME instructions. They are off otherwise, so that a
-picture reads the same on every machine; this is for comparing the two.";
+--save-lines keeps every line as the recogniser is shown it, as PNG files in
+the folder: for looking at when a reading is wrong.";
 
 fn usage() -> ExitCode {
     eprintln!("{USAGE}");
@@ -30,6 +29,7 @@ fn main() -> ExitCode {
     let mut pictures: Vec<PathBuf> = Vec::new();
     let mut settings = Settings::default();
     let mut timing = false;
+    let mut save_lines: Option<PathBuf> = None;
     let mut arguments = std::env::args_os().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.to_str() {
@@ -42,7 +42,10 @@ fn main() -> ExitCode {
                 None => return usage(),
             },
             Some("--timing") => timing = true,
-            Some("--arm-kernels") => settings.arm_sme_kernels = true,
+            Some("--save-lines") => match arguments.next() {
+                Some(folder) => save_lines = Some(folder.into()),
+                None => return usage(),
+            },
             Some("--help" | "-h") => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
@@ -66,6 +69,12 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Some(folder) = &save_lines {
+        if let Err(error) = reader.keep_lines(folder) {
+            eprintln!("gc-ocr: the lines cannot be kept in {}: {error}", folder.display());
+            return ExitCode::FAILURE;
+        }
+    }
     let pages: Vec<gc_doc::OcrPage> = pictures.iter().map(|picture| reader.read_file(picture)).collect();
     let mut out = std::io::stdout().lock();
     let printed = serde_json::to_writer(&mut out, &pages).map_err(std::io::Error::from).and_then(|()| writeln!(out));

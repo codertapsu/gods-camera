@@ -138,41 +138,6 @@ fn the_program_prints_what_the_hub_expects() {
     let _ = std::fs::remove_dir_all(folder);
 }
 
-/// The inference library has faster kernels for Arm processors with the SME
-/// instructions, such as Apple's M4, and uses them unless told not to. The
-/// reader tells it not to. This says what they would change: run it by hand
-/// on such a machine,
-///
-///     cargo test -p gc-ocr --test reader -- --ignored --nocapture
-///
-/// and it prints both readings and fails if they differ. On any other
-/// processor the two are the same thing and it passes.
-#[test]
-#[ignore = "compares two ways of computing on Arm processors with SME; run by hand"]
-fn the_arm_kernels_read_the_same_text() {
-    let Some(packs) = packs() else { return };
-    let mut differences = 0;
-    for name in ["page.png", "long-line.png"] {
-        let plain = TextReader::load(std::slice::from_ref(&packs), Settings::default()).expect("the reader loads").read_file(&picture(name));
-        let other = TextReader::load(std::slice::from_ref(&packs), Settings { arm_sme_kernels: true, ..Settings::default() })
-            .expect("the reader loads with the Arm kernels")
-            .read_file(&picture(name));
-        println!("{name}: {} lines without the Arm kernels, {} with them", plain.lines.len(), other.lines.len());
-        differences += plain.lines.len().abs_diff(other.lines.len());
-        for (plain, other) in plain.lines.iter().zip(&other.lines) {
-            let moved = plain.quad.iter().zip(&other.quad).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
-            if plain.text == other.text && moved < 0.5 {
-                println!("  same     {:.3} {}", plain.confidence, plain.text);
-            } else {
-                differences += 1;
-                println!("  without  {:.3} {}", plain.confidence, plain.text);
-                println!("  with     {:.3} {}   (box moved by {moved:.1} px)", other.confidence, other.text);
-            }
-        }
-    }
-    assert_eq!(differences, 0, "the Arm kernels read {differences} line(s) differently");
-}
-
 #[test]
 fn the_program_says_which_model_file_is_missing() {
     let folder = scratch("no-models");

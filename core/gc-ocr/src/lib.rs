@@ -6,7 +6,8 @@
 //! takes the same arguments and prints the same thing, so the hub can use
 //! either. Windows' built-in reader does not know Vietnamese.
 //!
-//! Two models work in turn, both on the processor:
+//! Two models work in turn, both on the processor, so that a picture reads
+//! the same on every machine:
 //!
 //! - **PP-OCRv6's small detector** finds the lines, whatever the language
 //!   (see [`lines`]).
@@ -25,7 +26,7 @@ pub mod reading;
 use std::path::{Path, PathBuf};
 
 use gc_doc::{OcrLine, OcrPage};
-use gc_infer::runtime::{InferError, Model, ModelOptions, Runtime};
+use gc_infer::runtime::{InferError, Model, Runtime};
 
 pub use lines::Finding;
 pub use picture::Picture;
@@ -56,16 +57,11 @@ pub struct Settings {
     /// Processor threads one model run may use. The reader shares the
     /// computer with the live picture, so it does not take every core.
     pub threads: usize,
-    /// Let the inference library use the faster kernels it has for Arm
-    /// processors with the SME instructions, such as Apple's M4. They compute
-    /// another way, and the reader's accuracy was measured without them, so
-    /// they stay off: the same picture then reads the same on every machine.
-    pub arm_sme_kernels: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { longest: 1920, finding: Finding::default(), least_sure: 0.5, threads: 4, arm_sme_kernels: false }
+        Self { longest: 1920, finding: Finding::default(), least_sure: 0.5, threads: 4 }
     }
 }
 
@@ -112,6 +108,8 @@ pub struct TextReader {
     alphabet: Alphabet,
     settings: Settings,
     timing: Timing,
+    /// Where the pieces of lines are kept as pictures, and how many there are.
+    kept: Option<(PathBuf, usize)>,
 }
 
 /// The first of `folders` that holds `name`.
@@ -133,10 +131,18 @@ impl TextReader {
             .map_err(|error| ReadError::Alphabet(format!("{}: {error}", alphabet_file.display())))
             .and_then(|text| Alphabet::from_json(&text).map_err(ReadError::Alphabet))?;
         let runtime = Runtime::shared(None)?;
-        let options = ModelOptions { threads: settings.threads, arm_sme_kernels: settings.arm_sme_kernels };
-        let detector = Model::load(runtime, &locate(folders, DETECTOR_FILE)?, options)?;
-        let recogniser = Model::load(runtime, &locate(folders, READER_FILE)?, options)?;
-        Ok(Self { detector, recogniser, alphabet, settings, timing: Timing::default() })
+        let detector = Model::load(runtime, &locate(folders, DETECTOR_FILE)?, settings.threads)?;
+        let recogniser = Model::load(runtime, &locate(folders, READER_FILE)?, settings.threads)?;
+        Ok(Self { detector, recogniser, alphabet, settings, timing: Timing::default(), kept: None })
+    }
+
+    /// Keep every piece of a line exactly as the recogniser is shown it, as
+    /// `line-001.png` and so on in `folder`: for looking at when a reading is
+    /// wrong, and for comparing two machines.
+    pub fn keep_lines(&mut self, folder: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(folder)?;
+        self.kept = Some((folder.to_path_buf(), 0));
+        Ok(())
     }
 
     pub fn timing(&self) -> Timing {
@@ -266,6 +272,11 @@ impl TextReader {
             let mut piece = small.columns(edges[0], edges[1]);
             if piece.width > WIDEST_LINE {
                 piece = piece.resized(WIDEST_LINE, LINE_HEIGHT);
+            }
+            if let Some((folder, count)) = &mut self.kept {
+                *count += 1;
+                let file = folder.join(format!("line-{count:03}.png"));
+                let _ = image::save_buffer(file, &piece.rgb, piece.width as u32, LINE_HEIGHT as u32, image::ExtendedColorType::Rgb8);
             }
             // Red, green and blue planes, 0 to 1.
             let plane = piece.width * LINE_HEIGHT;
