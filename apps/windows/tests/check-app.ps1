@@ -9,7 +9,9 @@
 # turned on. Its window shows for about half a minute, and a second God's
 # Camera icon sits beside the clock for that time. If the user's own app is
 # running, it is left alone: it holds the camera's pipe, and the copy started
-# here then simply has no camera for other apps.
+# here then simply has no camera for other apps. It holds the two hot keys as
+# well, and Windows gives a key to one program at a time: that the copy got
+# none is then said as a note, and is no failure.
 #
 # The scanner of a copy on a data folder of its own stays on this computer:
 # its hub takes ports the system picks and listens on 127.0.0.1 only, so no
@@ -84,6 +86,8 @@ function Send($window, [int] $message, [int] $w = 0, [int] $l = 0) {
 }
 
 Write-Host 'The window, its icon and its hot keys'
+# The user's own app, if it is running: it was there first and keeps what it holds.
+$others = @(Get-Process GodsCamera -ErrorAction SilentlyContinue).Count
 $app = Start-App 'first' '{"source": "pattern"}'
 try {
     $live = Wait-Status $app { param($s) $s.mode -eq 'Live' } 60
@@ -93,7 +97,11 @@ try {
     $window = $app.Process.MainWindowHandle
     Say ($window -ne [IntPtr]::Zero) 'it has a window'
     Say ($live.tray_icon) 'it put its icon beside the clock'
-    Say ($live.record_key -and $live.loop_key) "Windows gave it both hot keys (record: $($live.record_key), loop: $($live.loop_key))"
+    if ($others -gt 0 -and -not ($live.record_key -or $live.loop_key)) {
+        Write-Host "  note  Windows gave it neither hot key: another God's Camera is running and has them. Not counted."
+    } else {
+        Say ($live.record_key -and $live.loop_key) "Windows gave it both hot keys (record: $($live.record_key), loop: $($live.loop_key))"
+    }
 
     Write-Host 'The hot keys'
     Send $window $WM_HOTKEY 1
