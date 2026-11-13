@@ -27,6 +27,19 @@ import numpy as np
 from PIL import Image, ImageOps
 
 
+def session_options(threads: int):
+    """How both models are run: on a few threads, and with the library's plain
+    kernels on every processor. On Arm processors with the SME instructions,
+    Apple's M4 among them, ONNX Runtime would otherwise compute convolutions
+    with other kernels (KleidiAI), and the same picture could read differently."""
+    import onnxruntime as ort
+
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = threads
+    options.add_session_config_entry("mlas.disable_kleidiai", "1")
+    return options
+
+
 class Detector:
     """Finds lines of text. A PP-OCR detection model: one number per pixel, how
     likely it is to be inside a line. Each island of likely pixels is a line."""
@@ -37,9 +50,7 @@ class Detector:
     def __init__(self, file: str, longest: int, inside: float, sure: float, grow: float, threads: int):
         import onnxruntime as ort
 
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = threads
-        self.session = ort.InferenceSession(file, options, providers=["CPUExecutionProvider"])
+        self.session = ort.InferenceSession(file, session_options(threads), providers=["CPUExecutionProvider"])
         self.input = self.session.get_inputs()[0].name
         self.longest, self.inside, self.sure, self.grow = longest, inside, sure, grow
 
@@ -120,10 +131,8 @@ class AsterNet:
     def __init__(self, model: str, characters: str, threads: int, stretch: float, shrink: str):
         import onnxruntime as ort
 
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = threads
         self.chars = json.load(io.open(characters, encoding="utf-8"))["chars"]
-        self.session = ort.InferenceSession(model, options, providers=["CPUExecutionProvider"])
+        self.session = ort.InferenceSession(model, session_options(threads), providers=["CPUExecutionProvider"])
         self.input = self.session.get_inputs()[0].name
         self.stretch = stretch
         self.shrink = {"area": cv2.INTER_AREA, "cubic": cv2.INTER_CUBIC, "linear": cv2.INTER_LINEAR}[shrink]

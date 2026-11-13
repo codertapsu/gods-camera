@@ -23,7 +23,7 @@ Still open here:
 
 - **The browsers were run without a window**, on a profile folder of their own. Meet in a normal Chrome window, the Windows Camera app, and Zoom or Teams, are for you to try; the last two are not installed on this PC.
 - **Uneven timing with the real camera.** Pictures arrived 32 ms apart at the median and 48 ms at the 95th percentile. With the test clip it was 33 and 35. Either the camera delivers unevenly, which dim light causes, or the app adds it. The preview's "pictures a second" tells which; the app writes no log yet that I could read it from.
-- **The Mac.** I could not reach it from this PC: the only other God's Camera session I can see is on this PC too. What `tools/check.sh` and `swift test` printed there has to come from you, or from a session on the Mac.
+- **The Mac.** You ran its checks on 2026-11-13 and sent me what they printed. `tools/check.sh` stopped in the new text reader's tests: the three that compare the text it reads failed, and everything before them passed, the scanner's model among it. What comes after them has not run yet: the remaining tests, the lint, and the builds for Android and Windows. "Reading text" below says what I think it is and what I changed. `swift test` found no package because it was run at the top of the repository; it is run in `apps/apple/GodsCameraKit`, after `tools/build-core-apple.sh`. My instruction did not say so.
 
 ## The PC
 
@@ -263,6 +263,7 @@ The target is 98 %.
 
 **Not verified**
 
+- **The reader on the Mac.** Three of its tests failed there on 2026-11-13, the ones that compare text. I have not seen what it read. On the PC the same code and files read the same text whichever way the inference library computes, so rounding is not the reason. What differs is the processor: the Mac's M4 has the SME instructions, and ONNX Runtime 1.31 computes convolutions with other kernels there (Arm's KleidiAI) unless it is told not to. The reader now tells it not to, on every machine, so a picture is computed the same way everywhere. Whether that was the reason is not known until the Mac's checks run again. `cargo test -p gc-ocr --test reader -- --ignored --nocapture`, run in `core` on the Mac, prints what each way reads.
 - **Photos of real pages.** Everything above is the generator's pages: clean print, slightly turned, skewed, unevenly lit and blurred. Real photos from your tablet will show what the reader does with curved paper, shadows and small print.
 - **HEIC photos are not read.** JPEG, PNG, WebP, TIFF and BMP are. A HEIC photo is reported as unreadable and the others in the job are still read.
 - **AsterNet is new and little used**: three weeks old, from a publisher I know nothing else about. Its file is a plain model file that the inference library runs; it cannot run code of its own. Its hash is fixed in the manifest.
@@ -293,11 +294,15 @@ The Scanner screen is built, and the app runs the hub that phones and tablets se
 - **By looking**: pictures of the Scanner screen off, on with documents, with the code dialog, asking for the firewall to be opened, and on a public network, in English and Vietnamese. `tools\snapshot-windows-app.ps1 -ScannerDemo` takes them; it needs neither the model files nor the graphics card.
 - **A copy started on a data folder of its own keeps to itself.** Its hub takes free ports on this computer only, and its secrets are files in that folder. Before, such a copy shared the key for saved faces with your own app in Credential Manager, and deleting everything in it would have deleted yours. No check ever did that; now none can.
 
-**Not verified: these need you**
+**What you checked on 2026-11-13, and what is left**
 
-- **"Allow devices on my network".** I looked at the request on the screen and did not click the button: it changes the firewall for the whole PC. The script behind it was only run without administrator rights, where it changes nothing and says so.
-- **Connecting your tablet with the code**, over Wi-Fi, and a scan sent from it. The tablet is with the Mac's session, and the PC's hub has never met a real device.
-- **Whether the tablet finds the PC by itself.** Windows accepted the announcement; whether Android sees it on your network is not known until you try.
+You built the app, turned the scanner on, allowed devices in, and connected the tablet with the code. This is what the PC shows of it:
+
+- **The firewall** has the two rules, as the script makes them: private networks in, public networks out, for the app's program and port 47801.
+- **The hub** listens on the network since the moment you allowed it, and its token and certificate are in Credential Manager.
+- **One device is connected**, since 19:09, and the hub has heard from it once. So the code works over your Wi-Fi.
+- **No page has arrived yet.** The hub holds no upload and no document. A scan sent from the tablet, and how its text compares with the paper, is still to do.
+- **Whether the tablet found the PC by itself**, or needed the address, only you saw.
 
 ## Open
 

@@ -403,6 +403,21 @@ impl Swapper {
     }
 }
 
+/// How a [`Model`] is run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModelOptions {
+    /// How many processor threads one run may use; 0 leaves it to the
+    /// library, which takes every core.
+    pub threads: usize,
+    /// Let the library use Arm's KleidiAI kernels where the processor has the
+    /// SME instructions, as Apple's M4 has. ONNX Runtime 1.31 does that by
+    /// default. They compute convolutions another way than its plain
+    /// kernels, so the same model can give another answer on such a
+    /// processor than on every other. Off, every processor takes the plain
+    /// kernels, and an answer measured on one machine holds on the next.
+    pub arm_sme_kernels: bool,
+}
+
 /// A model with one picture-shaped input and one output, run on the
 /// processor. For crates that bring their own work before and after the
 /// model, such as the text reader.
@@ -411,15 +426,18 @@ pub struct Model {
 }
 
 impl Model {
-    /// Open `model`. `threads` is how many processor threads one run may
-    /// use; 0 leaves it to the library, which takes every core.
-    pub fn load(runtime: &Runtime, model: &Path, threads: usize) -> Result<Self, InferError> {
+    pub fn load(runtime: &Runtime, model: &Path, options: ModelOptions) -> Result<Self, InferError> {
         if !model.is_file() {
             return Err(InferError::Model(format!("{} is missing", model.display())));
         }
         let mut builder = Session::builder(&runtime.environment).map_err(runtime_error)?;
-        if threads > 0 {
-            builder = builder.with_intra_threads(threads).map_err(runtime_error)?;
+        if options.threads > 0 {
+            builder = builder.with_intra_threads(options.threads).map_err(runtime_error)?;
+        }
+        if !options.arm_sme_kernels {
+            // The library's own name for the switch; it means nothing to a
+            // processor without those kernels.
+            builder = builder.with_config_entry("mlas.disable_kleidiai", "1").map_err(runtime_error)?;
         }
         Ok(Self { session: builder.commit_from_file(model).map_err(runtime_error)? })
     }

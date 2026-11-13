@@ -25,7 +25,7 @@ pub mod reading;
 use std::path::{Path, PathBuf};
 
 use gc_doc::{OcrLine, OcrPage};
-use gc_infer::runtime::{InferError, Model, Runtime};
+use gc_infer::runtime::{InferError, Model, ModelOptions, Runtime};
 
 pub use lines::Finding;
 pub use picture::Picture;
@@ -56,11 +56,16 @@ pub struct Settings {
     /// Processor threads one model run may use. The reader shares the
     /// computer with the live picture, so it does not take every core.
     pub threads: usize,
+    /// Let the inference library use the faster kernels it has for Arm
+    /// processors with the SME instructions, such as Apple's M4. They compute
+    /// another way, and the reader's accuracy was measured without them, so
+    /// they stay off: the same picture then reads the same on every machine.
+    pub arm_sme_kernels: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { longest: 1920, finding: Finding::default(), least_sure: 0.5, threads: 4 }
+        Self { longest: 1920, finding: Finding::default(), least_sure: 0.5, threads: 4, arm_sme_kernels: false }
     }
 }
 
@@ -128,8 +133,9 @@ impl TextReader {
             .map_err(|error| ReadError::Alphabet(format!("{}: {error}", alphabet_file.display())))
             .and_then(|text| Alphabet::from_json(&text).map_err(ReadError::Alphabet))?;
         let runtime = Runtime::shared(None)?;
-        let detector = Model::load(runtime, &locate(folders, DETECTOR_FILE)?, settings.threads)?;
-        let recogniser = Model::load(runtime, &locate(folders, READER_FILE)?, settings.threads)?;
+        let options = ModelOptions { threads: settings.threads, arm_sme_kernels: settings.arm_sme_kernels };
+        let detector = Model::load(runtime, &locate(folders, DETECTOR_FILE)?, options)?;
+        let recogniser = Model::load(runtime, &locate(folders, READER_FILE)?, options)?;
         Ok(Self { detector, recogniser, alphabet, settings, timing: Timing::default() })
     }
 

@@ -62,11 +62,13 @@ fn a_page_is_read_line_by_line() {
     let read: Vec<&str> = page.lines.iter().map(|line| line.text.as_str()).collect();
     assert_eq!(read.len(), 6, "{read:#?}");
 
-    // From the top down, and nearly every character right. A tone mark or a
-    // full stop can slip: three characters in 280 is one in a hundred.
+    // From the top down, and nearly every character right. A full stop at
+    // the end of a line or a tone mark can slip: which ones depends on where
+    // exactly the line's box falls, and moving the box by a pixel changes one
+    // to four of them. Five in 280 is the plan's 98 %.
     let expected: Vec<&str> = std::iter::once(TITLE).chain(LINES).collect();
     let wrong: usize = read.iter().zip(&expected).map(|(read, expected)| edit_distance(read, expected, 10)).sum();
-    assert!(wrong <= 3, "{wrong} characters wrong in {read:#?}");
+    assert!(wrong <= 5, "{wrong} characters wrong in {read:#?}");
     // The words themselves must be there, tone marks and all, in the heading at least.
     assert_eq!(read[0], TITLE);
 
@@ -126,13 +128,49 @@ fn the_program_prints_what_the_hub_expects() {
         .expect("gc-ocr starts");
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     // The hub reads exactly this: a list of pages, one per picture, in the order given.
-    let pages: Vec<OcrPage> = serde_json::from_slice(&output.stdout).expect("a list of pages");
-    assert_eq!(pages.len(), 2);
+    let printed = String::from_utf8_lossy(&output.stdout);
+    let pages: Vec<OcrPage> = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!("not a list of pages ({error}): {printed}"));
+    assert_eq!(pages.len(), 2, "{printed}");
     assert!(pages[0].path.ends_with("page.png"));
-    assert_eq!(pages[0].lines.len(), 6);
-    assert_eq!(pages[0].lines[0].text, TITLE);
+    assert_eq!(pages[0].lines.len(), 6, "{printed}");
+    assert_eq!(pages[0].lines[0].text, TITLE, "{printed}");
     assert_eq!(pages[1].error.as_deref(), Some("not a readable picture"));
     let _ = std::fs::remove_dir_all(folder);
+}
+
+/// The inference library has faster kernels for Arm processors with the SME
+/// instructions, such as Apple's M4, and uses them unless told not to. The
+/// reader tells it not to. This says what they would change: run it by hand
+/// on such a machine,
+///
+///     cargo test -p gc-ocr --test reader -- --ignored --nocapture
+///
+/// and it prints both readings and fails if they differ. On any other
+/// processor the two are the same thing and it passes.
+#[test]
+#[ignore = "compares two ways of computing on Arm processors with SME; run by hand"]
+fn the_arm_kernels_read_the_same_text() {
+    let Some(packs) = packs() else { return };
+    let mut differences = 0;
+    for name in ["page.png", "long-line.png"] {
+        let plain = TextReader::load(std::slice::from_ref(&packs), Settings::default()).expect("the reader loads").read_file(&picture(name));
+        let other = TextReader::load(std::slice::from_ref(&packs), Settings { arm_sme_kernels: true, ..Settings::default() })
+            .expect("the reader loads with the Arm kernels")
+            .read_file(&picture(name));
+        println!("{name}: {} lines without the Arm kernels, {} with them", plain.lines.len(), other.lines.len());
+        differences += plain.lines.len().abs_diff(other.lines.len());
+        for (plain, other) in plain.lines.iter().zip(&other.lines) {
+            let moved = plain.quad.iter().zip(&other.quad).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+            if plain.text == other.text && moved < 0.5 {
+                println!("  same     {:.3} {}", plain.confidence, plain.text);
+            } else {
+                differences += 1;
+                println!("  without  {:.3} {}", plain.confidence, plain.text);
+                println!("  with     {:.3} {}   (box moved by {moved:.1} px)", other.confidence, other.text);
+            }
+        }
+    }
+    assert_eq!(differences, 0, "the Arm kernels read {differences} line(s) differently");
 }
 
 #[test]

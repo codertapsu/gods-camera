@@ -10,11 +10,15 @@ use std::process::ExitCode;
 
 use gc_ocr::{Settings, TextReader};
 
-const USAGE: &str = "usage: gc-ocr [--packs <folder>]... [--threads <count>] [--timing] <picture>...
+const USAGE: &str = "usage: gc-ocr [--packs <folder>]... [--threads <count>] [--timing] [--arm-kernels] <picture>...
 
 Reads the text in each picture and prints one JSON list of pages.
 The model files are looked for in the --packs folders; without any, in the
-folder named by GC_PACK_STORE, and then in the folder Packs beside this program.";
+folder named by GC_PACK_STORE, and then in the folder Packs beside this program.
+
+--arm-kernels lets the inference library use its faster kernels for Arm
+processors with the SME instructions. They are off otherwise, so that a
+picture reads the same on every machine; this is for comparing the two.";
 
 fn usage() -> ExitCode {
     eprintln!("{USAGE}");
@@ -38,6 +42,7 @@ fn main() -> ExitCode {
                 None => return usage(),
             },
             Some("--timing") => timing = true,
+            Some("--arm-kernels") => settings.arm_sme_kernels = true,
             Some("--help" | "-h") => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
