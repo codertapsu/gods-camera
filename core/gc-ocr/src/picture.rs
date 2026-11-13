@@ -141,7 +141,90 @@ impl Picture {
 
     /// How bright each pixel is, 0 to 255.
     fn brightness(&self) -> Vec<u8> {
-        self.rgb.as_chunks::<3>().0.iter().map(|p| (0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32).round() as u8).collect()
+        self.rgb.as_chunks::<3>().0.iter().map(bright).collect()
+    }
+
+    /// How speckled the picture is: the share of its pixels, 0 to 1, that
+    /// stand apart from the eight around them.
+    ///
+    /// A pixel stands apart when it is much darker or much lighter than the
+    /// middle one of the nine, taken by brightness. A stroke three pixels
+    /// wide has none of these, and neither has a photo; a scan whose grain a
+    /// filter has turned into specks has many. Every third pixel of every
+    /// third row is looked at, which is enough to tell.
+    pub fn speckle(&self) -> f32 {
+        /// How far apart, of 255.
+        const APART: i32 = 80;
+        if self.width < 3 || self.height < 3 {
+            return 0.0;
+        }
+        let (mut looked, mut apart) = (0usize, 0usize);
+        for y in (1..self.height - 1).step_by(3) {
+            for x in (1..self.width - 1).step_by(3) {
+                let mut nine = [0u8; 9];
+                for (place, value) in nine.iter_mut().enumerate() {
+                    *value = bright(self.rgb[((y + place / 3 - 1) * self.width + x + place % 3 - 1) * 3..].first_chunk().expect("inside the picture"));
+                }
+                let own = nine[4] as i32;
+                let middle = *nine.select_nth_unstable(4).1 as i32;
+                looked += 1;
+                apart += usize::from((own - middle).abs() > APART);
+            }
+        }
+        apart as f32 / looked.max(1) as f32
+    }
+
+    /// The picture in grey with its specks washed out: blurred by `blur`
+    /// pixels (the width of the bell curve, its standard deviation), then
+    /// stretched so that what is darker than `ink` turns black and what is
+    /// lighter than `paper` turns white. Both are brightnesses from 0 to 1.
+    ///
+    /// The blur spreads a speck thin over the paper around it, while a
+    /// stroke, being wider, stays dark down its middle. The stretch then
+    /// takes the faint grey off the paper and gives the strokes their edges
+    /// back.
+    pub fn cleaned(&self, blur: f32, ink: f32, paper: f32) -> Picture {
+        let (width, height) = (self.width, self.height);
+        let blur = blur.max(0.05);
+        let reach = ((3.0 * blur).ceil() as usize).max(1);
+        let mut weights: Vec<f32> = (0..=2 * reach).map(|tap| bell((tap as f64 - reach as f64) / blur as f64) as f32).collect();
+        let whole: f32 = weights.iter().sum();
+        weights.iter_mut().for_each(|weight| *weight /= whole);
+
+        // Along the rows first. Past either end, the end pixel is repeated.
+        let mut along = vec![0.0f32; width * height];
+        let mut row = vec![0.0f32; width + 2 * reach];
+        for (pixels, blurred) in self.rgb.chunks_exact(width * 3).zip(along.chunks_exact_mut(width)) {
+            for (value, pixel) in row[reach..].iter_mut().zip(pixels.as_chunks::<3>().0) {
+                *value = bright(pixel) as f32;
+            }
+            let (first, last) = (row[reach], row[reach + width - 1]);
+            row[..reach].fill(first);
+            row[reach + width..].fill(last);
+            for (x, value) in blurred.iter_mut().enumerate() {
+                *value = weights.iter().zip(&row[x..]).map(|(weight, pixel)| weight * pixel).sum();
+            }
+        }
+
+        // Then down the columns, a whole row at a time, and the stretch.
+        let stretch = if paper > ink { 1.0 / (paper - ink) } else { 1.0 };
+        let dark = if paper > ink { ink } else { 0.0 };
+        let mut rgb = Vec::with_capacity(width * height * 3);
+        let mut down = vec![0.0f32; width];
+        for y in 0..height {
+            down.fill(0.0);
+            for (tap, weight) in weights.iter().enumerate() {
+                let from = (y + tap).saturating_sub(reach).min(height - 1);
+                for (value, pixel) in down.iter_mut().zip(&along[from * width..][..width]) {
+                    *value += weight * pixel;
+                }
+            }
+            for value in &down {
+                let grey = (((value / 255.0 - dark) * stretch).clamp(0.0, 1.0) * 255.0).round() as u8;
+                rgb.extend_from_slice(&[grey, grey, grey]);
+            }
+        }
+        Picture { width, height, rgb }
     }
 
     /// Which columns hold no ink at all: the gaps between words, and more.
@@ -172,6 +255,30 @@ impl Picture {
         }
         (0..self.width).map(|x| (0..self.height).all(|y| bright[y * self.width + x] as usize > split)).collect()
     }
+}
+
+/// How bright a pixel is, 0 to 255.
+#[inline]
+fn bright(pixel: &[u8; 3]) -> u8 {
+    (0.299 * pixel[0] as f32 + 0.587 * pixel[1] as f32 + 0.114 * pixel[2] as f32).round() as u8
+}
+
+/// The bell curve, `x` widths from its middle: e to the power of minus half
+/// of x squared.
+///
+/// Worked out with sums and products only, which give the same digits on
+/// every machine. The system's own `exp` may differ in the last digit from
+/// one system to the next, and a cleaned picture is to be the same picture
+/// everywhere.
+fn bell(x: f64) -> f64 {
+    // e to a small power by the first terms of its series, then squared ten
+    // times over, which makes the power 1024 times as large.
+    let power = -x * x / 2.0 / 1024.0;
+    let mut value = 1.0 + power * (1.0 + power / 2.0 * (1.0 + power / 3.0 * (1.0 + power / 4.0)));
+    for _ in 0..10 {
+        value *= value;
+    }
+    value
 }
 
 /// For each pixel of a side's new length, the old pixels it is made of and
@@ -301,6 +408,84 @@ mod tests {
         let empty = picture.empty_columns();
         assert!(empty[..10].iter().all(|e| *e) && empty[40..60].iter().all(|e| *e) && empty[90..].iter().all(|e| *e));
         assert!(empty[10..40].iter().all(|e| !*e) && empty[60..90].iter().all(|e| !*e));
+    }
+
+    /// White paper with a grey speck on one pixel in 23, none of them touching.
+    fn speckled_paper(width: usize, height: usize) -> Picture {
+        let mut picture = flat(width, height, [255, 255, 255]);
+        for y in 0..height {
+            for x in (0..width).filter(|x| (x * 7 + y * 13) % 23 == 0) {
+                paint(&mut picture, x..x + 1, y..y + 1, [110, 110, 110]);
+            }
+        }
+        picture
+    }
+
+    #[test]
+    fn specks_are_counted_and_strokes_are_not() {
+        assert_eq!(flat(60, 40, [240, 238, 230]).speckle(), 0.0);
+        // Strokes three pixels wide, across and down, as close together as letters have them.
+        let mut strokes = flat(90, 60, [255, 255, 255]);
+        for x in (6..84).step_by(9) {
+            paint(&mut strokes, x..x + 3, 5..55, [0, 0, 0]);
+        }
+        paint(&mut strokes, 3..87, 28..31, [0, 0, 0]);
+        assert_eq!(strokes.speckle(), 0.0);
+        // Light that falls off towards a corner, as in a photo.
+        let mut photo = flat(90, 60, [0, 0, 0]);
+        for y in 0..60 {
+            for x in 0..90 {
+                let level = (250 - x - y) as u8;
+                paint(&mut photo, x..x + 1, y..y + 1, [level, level, level]);
+            }
+        }
+        assert_eq!(photo.speckle(), 0.0);
+        // One pixel in 23 is a speck.
+        let share = speckled_paper(230, 115).speckle();
+        assert!((share - 1.0 / 23.0).abs() < 0.004, "{share}");
+        // Too small a picture to have surroundings.
+        assert_eq!(flat(2, 9, [0, 0, 0]).speckle(), 0.0);
+    }
+
+    #[test]
+    fn cleaning_takes_the_specks_and_leaves_the_strokes() {
+        let mut picture = speckled_paper(120, 60);
+        paint(&mut picture, 40..46, 5..55, [20, 20, 20]);
+        assert!(picture.speckle() > 0.03);
+        let cleaned = picture.cleaned(1.6, 0.3, 0.7);
+        assert_eq!((cleaned.width, cleaned.height), (120, 60));
+        // The paper is white again, to its corners,
+        for (x, y) in [(0, 0), (10, 10), (80, 30), (110, 50), (119, 59), (30, 30), (56, 30)] {
+            assert_eq!(pixel(&cleaned, x, y), [255, 255, 255], "at {x}, {y}");
+        }
+        // the stroke is black down its middle, with an edge on either side,
+        for y in [10, 30, 50] {
+            assert_eq!([pixel(&cleaned, 42, y)[0], pixel(&cleaned, 43, y)[0]], [0, 0], "row {y}");
+            assert!(pixel(&cleaned, 39, y)[0] > pixel(&cleaned, 40, y)[0], "row {y}");
+            assert!(pixel(&cleaned, 46, y)[0] > pixel(&cleaned, 45, y)[0], "row {y}");
+        }
+        // and nothing stands alone any more.
+        assert_eq!(cleaned.speckle(), 0.0);
+        assert!(cleaned.rgb.as_chunks::<3>().0.iter().all(|p| p[0] == p[1] && p[1] == p[2]));
+    }
+
+    #[test]
+    fn cleaning_keeps_flat_paper_flat_and_colour_out() {
+        // Without a stretch, a flat picture stays what it was, in grey.
+        let cleaned = flat(20, 10, [200, 200, 200]).cleaned(1.5, 0.0, 1.0);
+        assert!(cleaned.rgb.iter().all(|v| *v == 200), "{:?}", &cleaned.rgb[..6]);
+        let cleaned = flat(7, 5, [255, 0, 0]).cleaned(0.8, 0.0, 1.0);
+        assert!(cleaned.rgb.iter().all(|v| *v == 76));
+        // A picture narrower than the blur reaches.
+        assert_eq!(flat(1, 1, [9, 9, 9]).cleaned(3.0, 0.0, 1.0).rgb, [9, 9, 9]);
+    }
+
+    #[test]
+    fn the_bell_curve_is_the_bell_curve() {
+        assert_eq!(bell(0.0), 1.0);
+        for (x, value) in [(1.0, 0.606_530_659_712_633_4), (2.0, 0.135_335_283_236_612_7), (3.0, 0.011_108_996_538_242_306)] {
+            assert!((bell(x) - value).abs() < 1e-10 && (bell(-x) - value).abs() < 1e-10, "{x}: {}", bell(x));
+        }
     }
 
     #[test]

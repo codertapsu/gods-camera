@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-12, revision 12 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, its text reader is built and measured, and its scanner is built; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-13, revision 13 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, its text reader is built and measured, its scanner is built, and the tablet has sent it a first real page; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -613,7 +613,7 @@ State: the scanner works from end to end. Pictures sent from the Android app are
 3b. With the Tab S9+ connected for debugging, by USB cable or Wi-Fi
 
 - [x] A script that sets up `adb reverse`; a debug-only setting that allows unencrypted traffic to localhost.
-- [x] Single documents with the ML Kit document scanner: edge detection, clean-up, gallery import. The scanner opens on the tablet; a real page has not been photographed with it yet.
+- [x] Single documents with the ML Kit document scanner: edge detection, clean-up, gallery import. A real page was scanned with it on 2026-11-13 and sent to the PC: it arrived in black and white and sprinkled with specks, as the scanner's filter makes a page in poor light.
 - [ ] Long-document mode with CameraX: guided overlapping shots for newspapers and scrolls.
 - [x] Import through the system photo picker; a share target so screenshots can be sent from any app. Batch auto-capture is open.
 - [ ] On-device OCR preview with ML Kit, whose Latin model covers Vietnamese, so a page can be checked before moving on.
@@ -663,7 +663,7 @@ Build
 - [ ] The window: WinUI 3 in C#. The Camera, Loop, Face, Scanner and Settings screens are built, in English and Vietnamese, and checked by pictures of a scripted run. Open: a check by hand.
 - [x] Core inference on the card through DirectML, with separate sessions and queues per stage and no global inference lock. A model the card refuses runs on the processor instead.
 - [ ] A fixed video-memory budget for the live pipeline. S3 measured about 0.7 GB for `inswapper_128` with the detector and the mask, and 1 GB with HyperSwap, of the card's 8 GB.
-- [x] OCR: `gc-ocr`, with PP-OCRv6's line detector and the AsterNet recogniser, because no PP-OCR recogniser can write Vietnamese. Measured on the test documents: 99.7 to 99.8 % of characters right in Vietnamese, 99.9 to 100 % in English. Photos of real pages are still to be read.
+- [x] OCR: `gc-ocr`, with PP-OCRv6's line detector and the AsterNet recogniser, because no PP-OCR recogniser can write Vietnamese. Measured on the test documents: 99.7 to 99.8 % of characters right in Vietnamese, 99.9 to 100 % in English. The tablet's first real page, a speckled scan, read at 93 %; the reader now cleans such a scan first and reads it at 98.5 %. More real pages are still to be read.
 - [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it. Built: the shell, the tray icon, the hot keys, and the hub, which the app runs for its scanner. Until there is an installer, the app adds the firewall's rules itself when asked, with Windows' own administrator question. Open: a scan from the tablet over Wi-Fi.
 - [ ] Installer that registers the camera; file logging; single-instance guard. Built: the log and the guard. Until there is an installer, the app carries the driver and installs or removes it itself when asked, with Windows' own administrator question.
 - [ ] App matrix: Zoom, Teams, Meet in Chrome and Edge, Slack, Discord, OBS, Camera.

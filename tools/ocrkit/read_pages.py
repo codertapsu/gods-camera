@@ -3,8 +3,8 @@
     uv run python -I read_pages.py --store ../../../packs <picture>... > pages.json
 
 Two models work in turn: one finds the lines of text, whatever the language,
-and one reads each line. This is where the models were chosen and the
-settings measured. The reader the Windows app uses, core/gc-ocr, does the same
+and one reads each line. A speckled scan is cleaned first. This is where the
+models were chosen and the settings measured. The reader the Windows app uses, core/gc-ocr, does the same
 steps in Rust; the two agree to within a character or two a page.
 
 Measure the result against a test page from tools/modelkit/make_document.py:
@@ -17,6 +17,7 @@ with -I, so that nothing beside them is taken for Python code.
 import argparse
 import io
 import json
+import math
 import sys
 import time
 import unicodedata
@@ -108,6 +109,33 @@ def straightened(picture: np.ndarray, corners: np.ndarray) -> np.ndarray:
     level = np.array([[0, 0], [width, 0], [width, height], [0, height]], dtype=np.float32)
     move = cv2.getPerspectiveTransform(corners, level)
     return cv2.warpPerspective(picture, move, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+
+
+def speckle(picture: np.ndarray) -> float:
+    """How speckled a picture is: the share of its pixels that stand apart from
+    the eight around them, much darker or much lighter than the middle one of
+    the nine. A photo has none; a scan whose grain a filter has turned into
+    specks has many. Every third pixel of every third row is looked at."""
+    grey = cv2.cvtColor(picture, cv2.COLOR_BGR2GRAY)
+    if min(grey.shape) < 3:
+        return 0.0
+    apart = np.abs(grey.astype(np.int16) - cv2.medianBlur(grey, 3).astype(np.int16)) > 80
+    return float(apart[1:-1:3, 1:-1:3].mean())
+
+
+def cleaned(picture: np.ndarray, blur: float, ink: float, paper: float) -> np.ndarray:
+    """The picture in grey with its specks washed out: blurred by `blur` pixels,
+    then stretched so that what is darker than `ink` turns black and what is
+    lighter than `paper` turns white (both 0 to 1). The blur spreads a speck
+    thin while a stroke stays dark down its middle; the stretch takes the faint
+    grey off the paper and gives the strokes their edges back."""
+    blur = max(blur, 0.05)
+    reach = max(1, math.ceil(3 * blur))
+    grey = cv2.cvtColor(picture, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    grey = cv2.GaussianBlur(grey, (2 * reach + 1, 2 * reach + 1), blur, borderType=cv2.BORDER_REPLICATE) / 255.0
+    if paper > ink:
+        grey = np.clip((grey - ink) / (paper - ink), 0, 1)
+    return cv2.cvtColor(np.rint(grey * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
 
 
 class AsterNet:
@@ -212,6 +240,12 @@ def main() -> int:
     parser.add_argument("--stretch", type=float, default=1.0, help="widen each line by this much before reading it")
     parser.add_argument("--shrink", choices=["area", "cubic", "linear"], default="area", help="how a line is made 32 pixels high")
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--as-it-is", action="store_true", help="read every picture as it is, without cleaning a speckled scan first")
+    parser.add_argument("--speckled", type=float, default=0.02, help="a picture with this share of specks is cleaned first")
+    parser.add_argument("--smallest-line", type=float, default=32.0, help="but only if its lines are this many pixels high")
+    parser.add_argument("--blur", type=float, default=0.02, help="the blur that cleans, as a share of the line height")
+    parser.add_argument("--ink", type=float, default=0.3, help="after the blur, what is darker than this turns black")
+    parser.add_argument("--paper", type=float, default=0.7, help="and what is lighter than this turns white")
     parser.add_argument("--save-lines", type=Path, help="folder to keep every cut-out line in, for looking at")
     args = parser.parse_args()
     detector_file = args.detector or (args.store and args.store + "/PP-OCRv6_small_det.onnx")
@@ -227,6 +261,15 @@ def main() -> int:
         reader = AsterNet(args.store + "/asternet_vi.onnx", args.store + "/asternet_vi.vocab.json", args.threads, args.stretch, args.shrink)
     pages = []
     finding = reading = 0.0
+    cleaned_first = 0
+
+    def placed(found, page):
+        """What is reported lies inside the picture (a line is cut out where it
+        was found), and how high a line usually is."""
+        inside = [np.clip(corners, 0, [page["width"] - 1, page["height"] - 1]) for corners, _ in found]
+        heights = sorted(float(np.linalg.norm(quad[0] - quad[3])) for quad in inside)
+        return inside, (heights[len(heights) // 2] if heights else 0.0)
+
     for number, path in enumerate(args.pictures):
         page = {"path": path, "width": 0, "height": 0, "lines": []}
         try:
@@ -239,12 +282,16 @@ def main() -> int:
         page["height"], page["width"] = picture.shape[:2]
         started = time.perf_counter()
         found = detector.lines(picture)
+        inside, usual = placed(found, page)
+        # A speckled scan is cleaned, and its lines are looked for again:
+        # they too are found better without the specks.
+        if not args.as_it_is and usual >= args.smallest_line and speckle(picture) >= args.speckled:
+            picture = cleaned(picture, math.floor(args.blur * usual * 20 + 0.5) / 20, args.ink, args.paper)
+            found = detector.lines(picture)
+            inside, usual = placed(found, page)
+            cleaned_first += 1
         finding += time.perf_counter() - started
         started = time.perf_counter()
-        # What is reported lies inside the picture; the line is cut out where it was found.
-        inside = [np.clip(corners, 0, [page["width"] - 1, page["height"] - 1]) for corners, _ in found]
-        heights = sorted(float(np.linalg.norm(quad[0] - quad[3])) for quad in inside)
-        usual = heights[len(heights) // 2] if heights else 0.0
         for index, ((corners, _), quad) in enumerate(zip(found, inside)):
             line = straightened(picture, corners)
             if line.shape[0] > 1.5 * line.shape[1]:
@@ -271,7 +318,7 @@ def main() -> int:
         pages.append(page)
     sys.stdout.buffer.write(json.dumps(pages, ensure_ascii=False).encode("utf-8") + b"\n")
     lines = sum(len(page["lines"]) for page in pages)
-    print(f"{len(pages)} pictures, {lines} lines; finding {1000 * finding / len(pages):.0f} ms a picture, reading {1000 * reading / max(lines, 1):.0f} ms a line", file=sys.stderr)
+    print(f"{len(pages)} pictures, {lines} lines; finding {1000 * finding / len(pages):.0f} ms a picture, reading {1000 * reading / max(lines, 1):.0f} ms a line; {cleaned_first} cleaned of specks first", file=sys.stderr)
     return 0
 
 

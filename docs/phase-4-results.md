@@ -241,6 +241,7 @@ The scanner needs a reader that turns a photo of a page into lines of text. The 
 - **`tools/ocrkit`** has the same steps in Python. That is where the models were chosen and the settings measured, and it holds the comparison above.
 - **A line too wide for the recogniser** is cut between words and read in pieces. AsterNet takes a line up to 32 times as wide as it is high; a line across a whole A4 page is about that.
 - **Two kinds of nonsense are dropped**: the sliver of a line that a photo's top or bottom edge leaves over, and a shadow taken for text, which the recogniser reads with little confidence.
+- **A speckled scan is cleaned before it is read.** This came from your tablet's first page; see "The first real page" below.
 
 **Measured** on the seven test documents of Phase 3, made again on the PC with the same generator. The last column is what the Mac's reader scored on its copies:
 
@@ -259,13 +260,44 @@ The target is 98 %.
 - **What is still wrong.** Most slips are a full stop in the middle of a line read as a comma. The rest are one tone mark each: "đê" read as "để", "lẩu" as "lầu".
 - **One page does not come out as one document**: the three-column Vietnamese page in a 3 × 3 grid. Its bottom row of shots shows only the last line or two of text, too little to place them. The text is right all the same, because lines read twice are dropped. The Mac has the same weak spot with this generator.
 - **Through the hub.** `gc hub` on this PC with `gc-ocr` as its reader, and `gc scan` sending the shots to it: the six-shot Vietnamese document came back with the same 4 words wrong, and the four-shot English one with none.
-- **Speed.** About 1 second a photo: 0.45 s to find the lines and 0.03 s to read each, on 4 processor threads, plus 1 s to start. The six-shot document takes 6 seconds, where the Mac takes 1. Another project's build was running on the PC while I measured, so a quiet machine may do better. Not tried yet: finding the lines on the graphics card, reading several lines at once, and keeping the models loaded between photos.
-- **Tests.** 27 for the reader: 21 on its own steps and 6 on the program as a whole, four of those with the real models on two small pictures in the repository.
+- **Speed.** About 1 second a photo: 0.45 s to find the lines and 0.03 s to read each, on 4 processor threads, plus 1 s to start. A speckled scan takes 0.7 to 1 s longer. The six-shot document takes 6 seconds, where the Mac takes 1. Another project's build was running on the PC while I measured, so a quiet machine may do better. Not tried yet: finding the lines on the graphics card, reading several lines at once, and keeping the models loaded between photos.
+- **Tests.** 33 for the reader: 25 on its own steps and 8 on the program as a whole, six of those with the real models on three small pictures in the repository.
+
+**The first real page, and what it changed**
+
+On 2026-11-13 your tablet sent one page of a printed book through your own app. It read badly, and the reader now does one thing more because of it.
+
+- **The picture.** The tablet's scanner had turned the page to black and white, and the paper was sprinkled with small grey specks. One pixel in eighteen stood alone against its neighbours. In a photo, fewer than one in two thousand do.
+- **Read as it came: 92.97 % of the characters right**, 108 of the page's 456 words wrong. The specks were read as full stops, commas and tone marks. I typed the page out myself to have something to compare with.
+- **What the reader does now.** It counts the pixels that stand alone. When they are 2 % of the picture or more, and the lines are at least 32 pixels high, it blurs the picture by a fiftieth of the line height and stretches its brightness, so that the faint grey left of a speck turns white and the strokes turn black again. It then finds the lines a second time, in the cleaned picture, and reads them from it.
+- **Read that way: 98.55 %**, 28 words wrong. The target is 98 %. What is left is what the generator's pages show too: a full stop read as a comma, a tone mark, a d for a đ.
+- **Photos are left alone.** None of the 47 shots of the seven test documents counts as speckled, and all seven documents read exactly as before. The same cleaning would cost a clean photo 2 to 5 characters in a thousand, which is why it is not done to every picture.
+- **One page is one page.** To have more than one, I made 18 imitations of such a scan from three of the generator's pages: three kinds of speckle, lighter and heavier than yours, at two sizes of writing. All 18 read better cleaned:
+
+| | As they come | Cleaned first |
+|---|---|---|
+| Your tablet's page | 92.97 % | 98.55 % |
+| The 18 imitations, on average | 93.2 % | 96.5 % |
+| The worst of them | 82.4 % | 90.9 % |
+| The least gained, and the most | | 0.3 and 9.9 points |
+
+- **Small writing is not cleaned.** In imitations with lines under about 25 pixels high the cleaning did more harm than good: a stroke there is no wider than a speck. And a sharp picture of small writing, a screenshot, has thin strokes that count as specks. Hence the limit of 32 pixels. The lines of your page are 83 pixels high.
+- **`gc-ocr --as-it-is`** reads without the cleaning, and `--timing` says how many pictures were cleaned. `tools/ocrkit/read_pages.py` does the same steps in Python.
+
+**Found on the way: two columns read as one**
+
+- **What happened.** In 6 of the 171 readings I made of the imitations, a page of two columns came out with 28 % of its characters right. Every line had been read well. One line's box had come out too wide and reached into the empty strip between the columns. The layout wanted that strip empty, took the page for a single column, and read straight across both.
+- **The change**, in `gc-doc`, which the Mac's hub uses too. Where a region has twelve lines or more, one line in twelve may reach into the strip between two columns. Such a line goes to the column its middle is in. With fewer lines the layout is as strict as before.
+- **Measured.** The six readings now come out at 82 to 98 %. The other 165 are unchanged, and so are the seven test documents. Three new tests.
+- **Still rough.** A line that reaches into the strip also moves its column's left edge, and the line after it can start a new paragraph where there is none. The text is in the right order; a paragraph break may be one too many.
 
 **Not verified**
 
 - **On the Mac the reader first read wrongly, and why.** Three of its tests failed there on 2026-11-13: it read the test page's heading as "Chợ mổi buỗi sớm" and got 46 of the page's 280 characters wrong. The reason was not in the reader's steps. A model that is opened without naming where it runs is given a place by the inference library, and on a Mac that place is Apple's Core ML, which computes in half precision where it can. The line finder then drew other boxes and the recogniser misread. The reader now says "the processor" when it opens its models. With that, the Mac draws the same boxes as the PC and cuts out the same lines, pixel for pixel, and reads the same text. My first guess, the M4's special kernels in ONNX Runtime, was wrong: on the Mac the reader reads the same with them and without.
-- **Photos of real pages.** Everything above is the generator's pages: clean print, slightly turned, skewed, unevenly lit and blurred. Real photos from your tablet will show what the reader does with curved paper, shadows and small print.
+- **More real pages.** One page is all there is so far: print from a book, flat, scanned by the tablet in poor light. Curved paper, shadows, small print, colour and handwriting are untried. The imitations are my own guess at what such scans look like, tuned to resemble your page; only your page is real.
+- **Your page is not in the repository**, and neither is my typed copy of it. The page is from a book and the scan is yours. Both are in this PC's temporary folder, and the tests use a drawn page with drawn specks instead.
+- **The Mac's reader on a speckled scan.** Not tried. The Mac reads with Apple's Vision, and it may or may not mind the specks.
+- **Whether the tablet should send a filtered picture at all.** The Android app asks Google's scanner for its fullest mode, which is the one that filters the page to black and white. A plainer mode exists. Which one reads better is for the Mac's session to try, where the Android app is built.
 - **HEIC photos are not read.** JPEG, PNG, WebP, TIFF and BMP are. A HEIC photo is reported as unreadable and the others in the job are still read.
 - **AsterNet is new and little used**: three weeks old, from a publisher I know nothing else about. Its file is a plain model file that the inference library runs; it cannot run code of its own. Its hash is fixed in the manifest.
 
@@ -302,7 +334,7 @@ You built the app, turned the scanner on, allowed devices in, and connected the 
 - **The firewall** has the two rules, as the script makes them: private networks in, public networks out, for the app's program and port 47801.
 - **The hub** listens on the network since the moment you allowed it, and its token and certificate are in Credential Manager.
 - **One device is connected**, since 19:09, and the hub has heard from it once. So the code works over your Wi-Fi.
-- **No page has arrived yet.** The hub holds no upload and no document. A scan sent from the tablet, and how its text compares with the paper, is still to do.
+- **One page has arrived**, at 19:39, from the tablet: one photo, and the hub made a document of 33 lines from it. How well it read, and what I changed because of it, is under "The first real page" in "Reading text". The document in your app was read by the reader as it was then. To see the difference, rebuild the app and send the page again.
 - **Whether the tablet found the PC by itself**, or needed the address, only you saw.
 
 ## Open
@@ -310,6 +342,6 @@ You built the app, turned the scanner on, allowed devices in, and connected the 
 - **The camera in a normal browser window and in meeting apps**, and the uneven timing with the real camera. See the top of this note.
 - **The scanner with your tablet.** See "The scanner in the Windows app".
 - **The rest of the Windows app.** The installer, which registers the camera, adds the firewall rules and carries the model files.
-- **The text reader on real photos**, HEIC photos, and its speed. See "Reading text".
+- **More real pages for the text reader**, HEIC photos, and its speed. See "Reading text".
 - The occlusion mask at half rate on machines with one accelerator.
 - The core changes made here still have to pass `tools/check.sh` on the Mac.

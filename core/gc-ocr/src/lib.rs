@@ -57,11 +57,50 @@ pub struct Settings {
     /// Processor threads one model run may use. The reader shares the
     /// computer with the live picture, so it does not take every core.
     pub threads: usize,
+    /// What is done about a speckled scan. `None` reads every picture as it is.
+    pub cleaning: Option<Cleaning>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { longest: 1920, finding: Finding::default(), least_sure: 0.5, threads: 4 }
+        Self { longest: 1920, finding: Finding::default(), least_sure: 0.5, threads: 4, cleaning: Some(Cleaning::default()) }
+    }
+}
+
+/// How a speckled scan is cleaned before it is read.
+///
+/// A tablet's document scanner turns a page to black and white. In poor light
+/// the grain of the photo then comes out as specks all over the paper, and
+/// the recogniser reads them as full stops, commas and tone marks: the first
+/// page a tablet sent came out at 93 % where a photo of a page reads at 99 %.
+/// Such a picture is blurred a little and its brightness is stretched (see
+/// [`Picture::cleaned`]); the lines are then found in the cleaned picture and
+/// read from it.
+///
+/// Only a speckled picture is cleaned. The stretch costs a clean photo a few
+/// characters in a thousand, and the blur would wash small writing out.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Cleaning {
+    /// A picture is cleaned when at least this share of its pixels are
+    /// specks, as [`Picture::speckle`] counts them. The tablet's page had
+    /// 0.055; photos and pages drawn by a program have under 0.01.
+    pub speckled: f32,
+    /// And when its lines are usually at least this many pixels high. In
+    /// smaller writing a stroke is no wider than a speck, and what takes the
+    /// one away takes the other; and a sharp picture of small writing, a
+    /// screenshot, has thin strokes that count as specks.
+    pub smallest_line: f32,
+    /// The blur, as a share of the usual line's height.
+    pub blur: f32,
+    /// After the blur, what is darker than this turns black,
+    pub ink: f32,
+    /// and what is lighter than this turns white. Both from 0 to 1.
+    pub paper: f32,
+}
+
+impl Default for Cleaning {
+    fn default() -> Self {
+        Self { speckled: 0.02, smallest_line: 32.0, blur: 0.02, ink: 0.3, paper: 0.7 }
     }
 }
 
@@ -96,6 +135,8 @@ impl From<InferError> for ReadError {
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Timing {
     pub pictures: usize,
+    /// How many of the pictures were speckled scans, cleaned before they were read.
+    pub cleaned: usize,
     pub lines: usize,
     pub finding: std::time::Duration,
     pub reading: std::time::Duration,
@@ -110,6 +151,22 @@ pub struct TextReader {
     timing: Timing,
     /// Where the pieces of lines are kept as pictures, and how many there are.
     kept: Option<(PathBuf, usize)>,
+}
+
+/// How high a line is at its left end.
+fn height_of(quad: &[[f32; 2]; 4]) -> f32 {
+    ((quad[0][0] - quad[3][0]).powi(2) + (quad[0][1] - quad[3][1]).powi(2)).sqrt()
+}
+
+/// The lines' corners kept inside the picture, which is what is reported (a
+/// line is cut out where it was found), and how high a line usually is.
+fn placed(found: &[[[f32; 2]; 4]], picture: &Picture) -> (Vec<[[f32; 2]; 4]>, f32) {
+    let (right, bottom) = (picture.width as f32 - 1.0, picture.height as f32 - 1.0);
+    let inside: Vec<[[f32; 2]; 4]> = found.iter().map(|corners| corners.map(|c| [c[0].clamp(0.0, right), c[1].clamp(0.0, bottom)])).collect();
+    let mut heights: Vec<f32> = inside.iter().map(height_of).collect();
+    heights.sort_by(f32::total_cmp);
+    let usual = heights.get(heights.len() / 2).copied().unwrap_or(0.0);
+    (inside, usual)
 }
 
 /// The first of `folders` that holds `name`.
@@ -171,22 +228,31 @@ impl TextReader {
     /// Every line of text in a picture, from the top down.
     pub fn read(&mut self, picture: &Picture) -> Result<Vec<OcrLine>, ReadError> {
         let started = std::time::Instant::now();
-        let found = self.find_lines(picture)?;
+        let mut found = self.find_lines(picture)?;
+        let (mut inside, mut usual) = placed(&found, picture);
+        // A speckled scan is cleaned, and its lines are looked for again:
+        // they too are found better without the specks.
+        let cleaned;
+        let mut picture = picture;
+        if let Some(cleaning) = self.settings.cleaning {
+            if usual >= cleaning.smallest_line && picture.speckle() >= cleaning.speckled {
+                // To the twentieth of a pixel, so that a line height that
+                // differs in its last digits gives the same picture.
+                let blur = (cleaning.blur * usual * 20.0).round() / 20.0;
+                cleaned = picture.cleaned(blur, cleaning.ink, cleaning.paper);
+                picture = &cleaned;
+                found = self.find_lines(picture)?;
+                (inside, usual) = placed(&found, picture);
+                self.timing.cleaned += 1;
+            }
+        }
         self.timing.pictures += 1;
         self.timing.finding += started.elapsed();
         let started = std::time::Instant::now();
 
-        let (right, bottom) = (picture.width as f32 - 1.0, picture.height as f32 - 1.0);
-        let side = |p: [f32; 2], q: [f32; 2]| ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt();
-        // What is reported lies inside the picture; the line is cut out where it was found.
-        let inside: Vec<[[f32; 2]; 4]> = found.iter().map(|corners| corners.map(|c| [c[0].clamp(0.0, right), c[1].clamp(0.0, bottom)])).collect();
-        let mut heights: Vec<f32> = inside.iter().map(|q| side(q[0], q[3])).collect();
-        heights.sort_by(f32::total_cmp);
-        let usual = heights.get(heights.len() / 2).copied().unwrap_or(0.0);
-
         let mut lines = Vec::new();
         for (corners, quad) in found.iter().zip(&inside) {
-            let tall = side(quad[0], quad[3]);
+            let tall = height_of(quad);
             // The sliver of a line that the picture's top or bottom edge left over reads as nonsense.
             let at_the_edge = quad.iter().any(|c| c[1] < 0.012 * picture.height as f32 || c[1] > 0.988 * picture.height as f32);
             if at_the_edge && tall < 0.7 * usual {

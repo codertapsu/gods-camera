@@ -10,14 +10,16 @@ use std::process::ExitCode;
 
 use gc_ocr::{Settings, TextReader};
 
-const USAGE: &str = "usage: gc-ocr [--packs <folder>]... [--threads <count>] [--timing] [--save-lines <folder>] <picture>...
+const USAGE: &str = "usage: gc-ocr [--packs <folder>]... [--threads <count>] [--timing] [--as-it-is] [--save-lines <folder>] <picture>...
 
 Reads the text in each picture and prints one JSON list of pages.
 The model files are looked for in the --packs folders; without any, in the
 folder named by GC_PACK_STORE, and then in the folder Packs beside this program.
 
 --save-lines keeps every line as the recogniser is shown it, as PNG files in
-the folder: for looking at when a reading is wrong.";
+the folder: for looking at when a reading is wrong.
+--as-it-is reads every picture as it is. Without it, a speckled scan is
+cleaned first; --timing says how many were.";
 
 fn usage() -> ExitCode {
     eprintln!("{USAGE}");
@@ -42,6 +44,7 @@ fn main() -> ExitCode {
                 None => return usage(),
             },
             Some("--timing") => timing = true,
+            Some("--as-it-is") => settings.cleaning = None,
             Some("--save-lines") => match arguments.next() {
                 Some(folder) => save_lines = Some(folder.into()),
                 None => return usage(),
@@ -85,11 +88,12 @@ fn main() -> ExitCode {
     if timing {
         let took = reader.timing();
         eprintln!(
-            "{} pictures, {} lines; finding {:.0} ms a picture, reading {:.0} ms a line",
+            "{} pictures, {} lines; finding {:.0} ms a picture, reading {:.0} ms a line; {} cleaned of specks first",
             took.pictures,
             took.lines,
             took.finding.as_secs_f64() * 1000.0 / took.pictures.max(1) as f64,
             took.reading.as_secs_f64() * 1000.0 / took.lines.max(1) as f64,
+            took.cleaned,
         );
     }
     ExitCode::SUCCESS

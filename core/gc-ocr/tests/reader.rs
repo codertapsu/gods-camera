@@ -1,4 +1,4 @@
-//! The text reader with its real models, on two small pictures drawn by
+//! The text reader with its real models, on three small pictures drawn by
 //! `tools/ocrkit/make_test_pictures.py`.
 //!
 //! Needs the model files. They are looked for in `GC_PACKS_DIR`, then in
@@ -98,6 +98,57 @@ fn a_line_too_wide_for_the_recogniser_is_read_in_pieces() {
     assert!(wrong <= 3, "{wrong} characters wrong in {}", line.text);
     // The pieces are joined with one space, and no word is cut or said twice.
     assert_eq!(line.text.split(' ').count(), LONG.split(' ').count(), "{}", line.text);
+}
+
+/// How many characters of `tests/data/speckled.png` a reading has wrong. The
+/// picture shows the heading and the first three lines, in larger writing.
+fn wrong_in_the_speckled_page(page: &OcrPage) -> usize {
+    assert_eq!(page.error, None);
+    let read: Vec<&str> = page.lines.iter().map(|line| line.text.as_str()).collect();
+    assert_eq!(read.len(), 4, "{read:#?}");
+    let expected = std::iter::once(TITLE).chain(LINES.into_iter().take(3));
+    read.iter().zip(expected).map(|(read, expected)| edit_distance(read, expected, 60)).sum()
+}
+
+#[test]
+fn a_speckled_scan_is_cleaned_before_it_is_read() {
+    let Some(packs) = packs() else { return };
+    let mut reader = reader(packs.clone());
+    let page = reader.read_file(&picture("speckled.png"));
+    assert_eq!(reader.timing().cleaned, 1, "the picture is speckled, and its lines are high enough to be cleaned");
+    assert!(page.lines[0].title, "the heading is larger than the rest");
+
+    // The same picture read as it is. Its specks are heavier than a tablet
+    // leaves them, so that the difference is beyond doubt: 7 characters wrong
+    // of 176 against 19 when this was written.
+    let mut plain = TextReader::load(&[packs], Settings { cleaning: None, ..Settings::default() }).expect("the reader loads");
+    let as_it_is = plain.read_file(&picture("speckled.png"));
+    assert_eq!(plain.timing().cleaned, 0);
+    let (wrong, wrong_as_it_is) = (wrong_in_the_speckled_page(&page), wrong_in_the_speckled_page(&as_it_is));
+    assert!(wrong <= 11, "{wrong} characters wrong in {:#?}", page.lines.iter().map(|line| &line.text).collect::<Vec<_>>());
+    assert!(wrong + 5 <= wrong_as_it_is, "{wrong} wrong when cleaned, {wrong_as_it_is} as it is");
+
+    // A clean page is not cleaned.
+    assert_eq!(reader.read_file(&picture("page.png")).lines.len(), 6);
+    assert_eq!(reader.timing().cleaned, 1);
+}
+
+#[test]
+fn the_program_says_how_many_pictures_it_cleaned() {
+    let Some(packs) = packs() else { return };
+    for (way, said) in [(&["--timing"][..], "; 1 cleaned of specks first"), (&["--timing", "--as-it-is"][..], "; 0 cleaned of specks first")] {
+        let output = Command::new(env!("CARGO_BIN_EXE_gc-ocr"))
+            .arg("--packs")
+            .arg(&packs)
+            .args(way)
+            .arg(picture("speckled.png"))
+            .arg(picture("page.png"))
+            .output()
+            .expect("gc-ocr starts");
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        let timing = String::from_utf8_lossy(&output.stderr);
+        assert!(timing.starts_with("2 pictures, 10 lines; ") && timing.trim_end().ends_with(said), "{way:?}: {timing}");
+    }
 }
 
 #[test]
