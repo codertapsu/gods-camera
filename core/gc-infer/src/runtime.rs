@@ -46,6 +46,10 @@ fn runtime_error<E: std::fmt::Display>(error: E) -> InferError {
 /// choice but `Cpu` means the graphics card, through DirectML: a PC has no
 /// second accelerator to tell apart. On Android only `Cpu` has an effect so
 /// far; it gets its own providers when its phase begins.
+///
+/// `Cpu` is not the processor on a Mac. Such a session names no place to
+/// run, and the inference library then gives it Core ML with settings of its
+/// own. See [`Runtime::session`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Accelerator {
     Cpu,
@@ -104,6 +108,15 @@ impl Runtime {
         for (name, size) in pinned {
             builder = builder.with_dimension_override(name, *size).map_err(runtime_error)?;
         }
+        // A session that asked for `Cpu` names no place to run here, and the
+        // library then chooses one itself. On a Mac it takes Core ML, with
+        // its own settings and in half precision. Measured on the M4 Pro on
+        // 2026-11-13 with `tests/processor.rs`: the large face detector takes
+        // 7 ms that way and 25 ms on the processor itself, the identity
+        // encoder 2 ms and 12 ms. The Mac's live pipeline was measured and
+        // tuned as it is, so this is left alone until someone measures the
+        // whole pipeline the other way. `Model::load` shows how the
+        // processor is asked for.
         #[cfg(target_vendor = "apple")]
         if accelerator != Accelerator::Cpu {
             use ort::ep::coreml::{ComputeUnits, CoreML, ModelFormat};

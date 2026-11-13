@@ -175,10 +175,14 @@ impl ModelPlan {
                 (find(file), SwapperContract::HYPERSWAP_256, None, on(Accelerator::Gpu))
             }
         };
-        // On the Mac both detectors run on the CPU. Measured on the M4 Pro at
-        // 640 pixels: about 11 ms for the large one and 4 ms for the small one,
-        // which is faster than Core ML ran them, and it leaves the GPU and the
-        // Neural Engine to the swap model.
+        // On the Mac both detectors are opened with `Cpu`. That is not the
+        // processor there: the inference library then runs them through Core
+        // ML with settings of its own (see `Runtime::session`). Measured on
+        // the M4 Pro at 640 pixels: about 7 ms for the large one and 3 ms for
+        // the small one that way, which is faster than Core ML set up as for
+        // the swap model ran them, and faster than the processor itself,
+        // which takes 25 ms and 7 ms. Which unit they then share with the
+        // swap model has not been looked at.
         //
         // On Windows the large detector goes to the graphics card. Measured on
         // the Core i5-13400F and RTX 3050: 48 ms on the processor, and far more
