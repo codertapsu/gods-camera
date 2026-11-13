@@ -13,6 +13,12 @@ const BAND_GAP: f32 = 1.4;
 /// An empty strip down a region must be this many line heights wide to
 /// separate two columns.
 const COLUMN_GAP: f32 = 0.6;
+/// Where a region has many lines, the strip between two columns may be
+/// reached into by one line in this many. A line whose box came out too wide,
+/// or a stain read as a word, must not make one column of two: the lines of
+/// both would then be read across, alternately, and nothing would make sense.
+/// With fewer lines than this, a line across two columns is taken at its word.
+const STRAY_LINES: usize = 12;
 /// A line this many times taller than the typical one is a heading.
 const HEADING_SCALE: f32 = 1.35;
 /// A line the reader calls a title is taken as a heading only if it is at
@@ -29,21 +35,42 @@ fn median(mut values: Vec<f32>) -> f32 {
     values[values.len() / 2]
 }
 
-/// Split `members` wherever an empty strip of at least `gap` runs between
-/// them along one axis (`axis` 0 cuts into columns, 1 into bands).
-fn split(lines: &[PlacedLine], members: &[usize], axis: usize, gap: f32) -> Vec<Vec<usize>> {
+/// Split `members` wherever a strip at least `gap` wide runs between them
+/// along one axis (`axis` 0 cuts into columns, 1 into bands) that no more
+/// than `stray` of them reach into. A line that does reach in goes to the
+/// side its middle is on.
+fn split(lines: &[PlacedLine], members: &[usize], axis: usize, gap: f32, stray: usize) -> Vec<Vec<usize>> {
+    // Walk along the axis over every place where a line starts or ends,
+    // keeping count of the lines that lie over the place.
+    let mut edges: Vec<(f32, i32)> =
+        members.iter().flat_map(|&index| [(lines[index].bbox[axis], 1), (lines[index].bbox[axis + 2], -1)]).collect();
+    edges.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+    let stray = stray as i32;
+    let (mut over, mut strip_from, mut cuts) = (0i32, None::<f32>, Vec::<f32>::new());
+    for (place, change) in edges {
+        let before = over;
+        over += change;
+        if before > stray && over <= stray {
+            strip_from = Some(place);
+        } else if before <= stray && over > stray {
+            // What lies before the first lines is no strip between lines,
+            // and neither is what lies after the last: only a strip that
+            // was opened is closed here.
+            if let Some(from) = strip_from.take() {
+                if place - from >= gap {
+                    cuts.push((from + place) / 2.0);
+                }
+            }
+        }
+    }
     let mut sorted = members.to_vec();
     sorted.sort_by(|a, b| lines[*a].bbox[axis].total_cmp(&lines[*b].bbox[axis]));
-    let mut parts: Vec<Vec<usize>> = Vec::new();
-    let mut reach = f32::MIN;
+    let mut parts: Vec<Vec<usize>> = vec![Vec::new(); cuts.len() + 1];
     for index in sorted {
-        let (start, end) = (lines[index].bbox[axis], lines[index].bbox[axis + 2]);
-        match parts.last_mut() {
-            Some(part) if start - reach < gap => part.push(index),
-            _ => parts.push(vec![index]),
-        }
-        reach = reach.max(end);
+        let middle = (lines[index].bbox[axis] + lines[index].bbox[axis + 2]) / 2.0;
+        parts[cuts.iter().filter(|cut| middle > **cut).count()].push(index);
     }
+    parts.retain(|part| !part.is_empty());
     parts
 }
 
@@ -53,14 +80,14 @@ fn cut(lines: &[PlacedLine], members: Vec<usize>, line_height: f32, out: &mut Ve
         out.push(members);
         return;
     }
-    let bands = split(lines, &members, 1, BAND_GAP * line_height);
+    let bands = split(lines, &members, 1, BAND_GAP * line_height, 0);
     if bands.len() > 1 {
         for band in bands {
             cut(lines, band, line_height, out, depth + 1);
         }
         return;
     }
-    let columns = split(lines, &members, 0, COLUMN_GAP * line_height);
+    let columns = split(lines, &members, 0, COLUMN_GAP * line_height, members.len() / STRAY_LINES);
     if columns.len() > 1 {
         for column in columns {
             cut(lines, column, line_height, out, depth + 1);
@@ -174,6 +201,53 @@ mod tests {
         assert_eq!(blocks[0].text, "Tin trong ngày");
         let body: Vec<&str> = blocks[1..].iter().map(|b| b.text.as_str()).collect();
         assert_eq!(body, ["trái 0 trái 1 trái 2 trái 3", "phải 0 phải 1 phải 2 phải 3"]);
+    }
+
+    /// Two columns of `rows` lines, 400 wide, the left one from 100 and the right one from 650.
+    fn two_columns(rows: usize) -> Vec<PlacedLine> {
+        (0..rows)
+            .flat_map(|row| {
+                let y = 220.0 + 60.0 * row as f32;
+                [line(&format!("phải {row}"), 650.0, y, 400.0, 44.0), line(&format!("trái {row}"), 100.0, y, 400.0, 44.0)]
+            })
+            .collect()
+    }
+
+    fn all_text(blocks: &[Block]) -> String {
+        blocks.iter().map(|block| block.text.as_str()).collect::<Vec<_>>().join(" ")
+    }
+
+    #[test]
+    fn a_line_that_reaches_into_the_gutter_does_not_make_one_column_of_two() {
+        let mut lines = two_columns(12);
+        // The box of one line on the right came out too wide: it starts 10
+        // from where the left column ends, and the gutter is 150.
+        let stray = lines.iter().position(|line| line.text == "phải 5").unwrap();
+        lines[stray].bbox[0] = 510.0;
+        let expected: Vec<String> = ["trái", "phải"].iter().flat_map(|side| (0..12).map(move |row| format!("{side} {row}"))).collect();
+        assert_eq!(all_text(&layout(lines)), expected.join(" "));
+    }
+
+    #[test]
+    fn two_lines_into_the_gutter_from_either_side_are_still_two_columns() {
+        let mut lines = two_columns(14);
+        let left = lines.iter().position(|line| line.text == "trái 3").unwrap();
+        let right = lines.iter().position(|line| line.text == "phải 9").unwrap();
+        lines[left].bbox[2] = 600.0;
+        lines[right].bbox[0] = 560.0;
+        let text = all_text(&layout(lines));
+        assert!(text.starts_with("trái 0 trái 1 trái 2 trái 3 trái 4"), "{text}");
+        assert!(text.ends_with("phải 9 phải 10 phải 11 phải 12 phải 13"), "{text}");
+    }
+
+    #[test]
+    fn with_few_lines_a_line_across_both_columns_is_taken_at_its_word() {
+        let mut lines = two_columns(3);
+        // A line right across, between the first and the second row.
+        lines.push(line("ngang", 100.0, 262.0, 950.0, 16.0));
+        let text = all_text(&layout(lines));
+        // Nothing separates the columns any more: the lines are read from the top down.
+        assert!(text.starts_with("trái 0 phải 0 ngang") || text.starts_with("phải 0 trái 0 ngang"), "{text}");
     }
 
     #[test]
