@@ -83,7 +83,15 @@ impl Default for Settings {
 pub struct Cleaning {
     /// A picture is cleaned when at least this share of its pixels are
     /// specks, as [`Picture::speckle`] counts them. The tablet's page had
-    /// 0.055; photos and pages drawn by a program have under 0.01.
+    /// 0.055, and a photo has under 0.001.
+    ///
+    /// The limit cannot go much lower as the specks are counted now. The
+    /// thinnest strokes of a sharp page drawn by a program stand alone as a
+    /// speck does: such a page counts up to 0.008, a single drawn line has
+    /// counted 0.011, and cleaning costs it a character or two in a hundred.
+    /// Imitated scans with as few specks as that would gain from the
+    /// cleaning; to tell them from sharp writing, the size of the dark
+    /// islands would have to be looked at, not single pixels.
     pub speckled: f32,
     /// And when its lines are usually at least this many pixels high. In
     /// smaller writing a stroke is no wider than a speck, and what takes the
