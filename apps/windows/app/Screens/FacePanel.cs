@@ -103,7 +103,7 @@ internal sealed class FacePanel : StackPanel
     private void OptionsChanged()
     {
         if (showing) return;
-        shell.App.SetFaceOptions((float)sharpen.Value, colour.IsOn, keepObjects.IsOn, realMouth.IsOn, realEyes.IsOn, blur.IsOn, aiBadge.IsOn);
+        shell.App.SetFaceOptions(new FaceOptions((float)sharpen.Value, colour.IsOn, keepObjects.IsOn, realMouth.IsOn, realEyes.IsOn, blur.IsOn, aiBadge.IsOn));
     }
 
     // Faces
