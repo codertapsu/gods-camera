@@ -117,9 +117,8 @@ internal sealed class Shell : Window
         navigation.IsSettingsVisible = false;
         navigation.IsPaneToggleButtonVisible = false;
         navigation.OpenPaneLength = 216;
+        // The camera, the loop and the face swap are one screen, so that they are used together.
         Add("camera", T("Camera"), Ui.IconCamera, () => new CameraScreen(this));
-        Add("loop", T("Loop"), Ui.IconLoop, () => new LoopScreen(this));
-        Add("face", T("Face"), Ui.IconFace, () => new FaceScreen(this));
         Add("scanner", T("Scanner"), Ui.IconScanner, () => new ScannerScreen(this));
         Add("settings", T("Settings"), Ui.IconSettings, () => new SettingsScreen(this));
         navigation.PaneFooter = StatusCard();
@@ -595,7 +594,19 @@ internal sealed class Shell : Window
             if (demoPhoto != null) await Demonstrate(folder, demoPhoto);
             foreach (var item in navigation.MenuItems.OfType<NavigationViewItem>())
             {
-                await Picture(folder, (string)item.Tag, item);
+                var tag = (string)item.Tag;
+                if (tag != "camera")
+                {
+                    await Picture(folder, tag, item);
+                    continue;
+                }
+                // The Camera screen once with each of its tabs.
+                navigation.SelectedItem = item;
+                foreach (var tab in new[] { "face", "loop", "camera" })
+                {
+                    CameraScreen().ShowTab(tab);
+                    await Picture(folder, $"camera-{tab}");
+                }
             }
             if (demoPhoto != null || scannerDemo) await DemonstrateScanner(folder);
         }
@@ -629,6 +640,13 @@ internal sealed class Shell : Window
 
     private NavigationViewItem Screen(string tag) => navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == tag);
 
+    /// <summary>The Camera screen, made if it was not yet.</summary>
+    private CameraScreen CameraScreen()
+    {
+        if (!screens.ContainsKey("camera")) navigation.SelectedItem = Screen("camera");
+        return (CameraScreen)screens["camera"];
+    }
+
     private async Task Until(Func<AppState, bool> done, int seconds)
     {
         var until = DateTime.UtcNow.AddSeconds(seconds);
@@ -642,28 +660,29 @@ internal sealed class Shell : Window
     private async Task Demonstrate(string folder, string photo)
     {
         // A loop: record two seconds, look at it, play it, and go back.
-        navigation.SelectedItem = Screen("loop");
+        navigation.SelectedItem = Screen("camera");
+        CameraScreen().ShowTab("loop");
         await Until(state => state.CanRecord, 20);
         App.ToggleRecording();
         await Until(state => state.RecordedSeconds >= 1.0, 20);
-        await Picture(folder, "loop-recording");
+        await Picture(folder, "camera-loop-recording");
         await Until(state => state.RecordedSeconds >= 2.0, 20);
         App.ToggleRecording();
         await Until(state => state.Clip != null, 20);
         App.SetShowLoopBadge(true);
         App.ToggleLoop();
         await Until(state => state.Mode == EngineMode.Looping, 20);
-        await Picture(folder, "loop-playing");
+        await Picture(folder, "camera-loop-playing");
         App.SaveClip(T("Sample: at my desk"));
         App.ToggleLoop();
         await Until(state => state.Mode == EngineMode.Live, 20);
         App.SetShowLoopBadge(false);
 
         // A face: read the photo, look at what was found, save it.
-        navigation.SelectedItem = Screen("face");
+        CameraScreen().ShowTab("face");
         App.AddPhotos(new[] { photo }, null);
         await Until(state => state.Pending != null || state.FaceNotice != null, 120);
-        await Picture(folder, "face-adding");
+        await Picture(folder, "camera-face-adding");
         App.SavePending(T("Sample face"), FaceConsent.Synthetic);
         foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(Root))
         {

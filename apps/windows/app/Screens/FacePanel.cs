@@ -6,16 +6,16 @@ using static GodsCamera.Texts;
 
 namespace GodsCamera.Screens;
 
-/// <summary>The face swap: the switch, the saved faces and the options.</summary>
-internal sealed class FaceScreen : UserControl, IScreen
+/// <summary>
+/// The Face tab of the Camera screen: the saved faces, adding one, how the
+/// swapped face looks, and privacy. The switch itself is in the row of
+/// controls under the picture, and the swap's state in the line under it.
+/// </summary>
+internal sealed class FacePanel : StackPanel
 {
     private static readonly string[] PhotoTypes = { ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff" };
 
     private readonly Shell shell;
-    private readonly PreviewPane preview;
-    private readonly SwitchRow swap;
-    private readonly Hint status = new();
-    private readonly ProgressRing loading = new() { Width = 16, Height = 16, IsActive = true };
 
     private readonly StackPanel faceList = new() { Spacing = 4 };
     private readonly Button add;
@@ -34,22 +34,15 @@ internal sealed class FaceScreen : UserControl, IScreen
     private Quality[] qualities = Array.Empty<Quality>();
     private bool showing;
     private bool dialogOpen;
-    private AppState? last;
 
-    public FaceScreen(Shell shell)
+    public FacePanel(Shell shell)
     {
         this.shell = shell;
-        preview = new PreviewPane(shell.Preview);
-        var layout = new StudioLayout(T("Face"), T("Show another face in place of yours, live."), preview);
-
-        swap = new SwitchRow(T("Swap my face"), WantSwap);
-        swap.TextSize = 17;
-        layout.Under.Children.Add(swap);
-        layout.Under.Children.Add(Ui.Row(8, loading, status));
+        Spacing = 14;
 
         add = Ui.IconButton(Ui.IconAdd, T("Add a face…"), () => ChoosePhotos(null));
         reading = Ui.Row(8, new ProgressRing { Width = 16, Height = 16, IsActive = true }, Ui.Secondary(T("Reading the photos…"), 13));
-        layout.Controls.Children.Add(new Card(
+        Children.Add(new Card(
             T("Faces"), Ui.IconFace, faceList, Ui.Row(10, add, reading),
             new Hint(T("Choose several photos of the same person at once: different angles, expressions and light. Together they give a better likeness than one photo.")),
             notice));
@@ -68,25 +61,26 @@ internal sealed class FaceScreen : UserControl, IScreen
         ToolTipService.SetToolTip(keepObjects, T("A hand, a cup or a microphone in front of your face stays in front of the swapped face."));
         realMouth = new SwitchRow(T("Show my real mouth"), _ => OptionsChanged());
         ToolTipService.SetToolTip(realMouth, T("Your own lips and teeth show through the swapped face. Speech looks more natural; the mouth is then yours, not the other face's."));
-        layout.Controls.Children.Add(new Card(
+        Children.Add(new Card(
             T("How it looks"), Ui.IconWand, qualityRow, Ui.Column(4, Ui.Secondary(T("Sharpness"), 13), sharpen), colour, keepObjects, realMouth));
 
         blur = new SwitchRow(T("Blur the picture when the swap is not on my face"), _ => OptionsChanged());
         aiBadge = new SwitchRow(T("Show an AI badge to others"), _ => OptionsChanged());
-        layout.Controls.Children.Add(new Card(
+        Children.Add(new Card(
             T("Privacy"), Ui.IconHidden, blur,
             new Hint(T("The swap leaves your face when you turn far to the side, when something hides most of it, or when it is too dark. With this on, others then see a blurred picture and never your own face.")),
             aiBadge));
-        Content = layout;
     }
 
     // The switch and the options
 
-    private async void WantSwap(bool on)
+    /// <summary>
+    /// Turn the swap on or off. The rules for swapping a face are shown once,
+    /// before the first time; the swap starts only when the user accepts them.
+    /// </summary>
+    public async Task TurnSwap(bool on)
     {
         if (shell.App.SetSwapWanted(on)) return;
-        // The rules for swapping a face are shown once, before the first time.
-        swap.Show(false);
         var rules = Ui.Column(
             10,
             Ui.Text(T("People in a call will see a face that is not the one in front of the camera. Please use this fairly.")),
@@ -111,7 +105,7 @@ internal sealed class FaceScreen : UserControl, IScreen
 
     // Faces
 
-    private async void ChoosePhotos(string? target)
+    public async void ChoosePhotos(string? target)
     {
         var files = await shell.PickFiles(true, PhotoTypes);
         if (files.Count > 0) shell.App.AddPhotos(files.ToArray(), target);
@@ -335,46 +329,6 @@ internal sealed class FaceScreen : UserControl, IScreen
 
     public void Update(AppState state)
     {
-        last = state;
-        preview.Update(state);
-        swap.Show(state.SwapWanted);
-
-        loading.Visible(state.SwapState == SwapState.Loading);
-        switch (state.SwapState)
-        {
-            case SwapState.Loading:
-                status.Set(T("Getting the models ready. The first time takes a little longer."));
-                break;
-            case SwapState.Missing:
-                status.Set(T("A model file is not installed: {0}", state.SwapDetail), Ui.IconWarning, Tone.Warning);
-                break;
-            case SwapState.Failed:
-                status.Set(state.SwapDetail, Ui.IconError, Tone.Bad);
-                break;
-            case SwapState.On when state.SwapError != null:
-                status.Set(state.SwapError, Ui.IconError, Tone.Bad);
-                break;
-            case SwapState.On when state.Swapping:
-                status.Set(
-                    T("Swapping. A new face picture every {0} ms, {1} ms behind the camera.", Math.Round(state.SwapMs), Math.Round(state.SwapAgeMs)),
-                    Ui.IconGood, Tone.Good);
-                break;
-            case SwapState.On when state.PictureHidden:
-                status.Set(T("The swap is not on your face, so the picture is blurred."), Ui.IconHidden, Tone.Warning);
-                break;
-            case SwapState.On when state.FaceFound:
-                status.Set(T("Getting the first swapped face…"));
-                break;
-            case SwapState.On:
-                status.Set(T("No face in the picture. Others see the picture as it is."), Ui.IconInfo);
-                break;
-            default:
-                status.Set(state.Faces.Length == 0
-                    ? T("Add a face first: click Add a face and choose photos of the person.")
-                    : T("The swap is off. Others see your own face."));
-                break;
-        }
-
         add.IsEnabled = !state.BusyAdding;
         reading.Visible(state.BusyAdding);
         notice.Visible(state.FaceNotice != null);

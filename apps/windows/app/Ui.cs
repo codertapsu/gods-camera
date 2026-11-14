@@ -49,6 +49,14 @@ internal static class Ui
     public const string IconCircle = "\uEA3A";
     public const string IconCheckedCircle = "\uE930";
     public const string IconWrench = "\uE90F";
+    public const string IconMirror = "\uE8AB";
+    public const string IconPicture = "\uE8B9";
+    public const string IconPattern = "\uE790";
+    public const string IconAssistant = "\uE99A";
+    public const string IconCopy = "\uE8C8";
+    public const string IconKey = "\uE8D7";
+    public const string IconCube = "\uF158";
+    public const string IconShirt = "\uE7BF";
 
     public static Brush Brush(string name) => (Brush)Application.Current.Resources[name];
 
@@ -300,33 +308,5 @@ internal sealed class ScreenHeader : StackPanel
         Spacing = 4;
         Children.Add(new TextBlock { Text = title, FontSize = 30, FontWeight = FontWeights.Bold });
         Children.Add(Ui.Text(subtitle, 14, false, Ui.Brush("TextFillColorSecondaryBrush")));
-    }
-}
-
-/// <summary>
-/// A screen with the live picture on the left and its controls in a column on the right.
-/// </summary>
-internal sealed class StudioLayout : Grid
-{
-    public StackPanel Under { get; } = new() { Spacing = 14 };
-    public StackPanel Controls { get; } = new() { Spacing = 14, Padding = new Thickness(18) };
-
-    public StudioLayout(string title, string subtitle, PreviewPane preview)
-    {
-        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 480 });
-        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(360) });
-        var left = new StackPanel { Spacing = 18, Padding = new Thickness(24) };
-        left.Children.Add(new ScreenHeader(title, subtitle));
-        left.Children.Add(preview);
-        left.Children.Add(Under);
-        Children.Add(new ScrollViewer { Content = left, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        var right = new Border
-        {
-            BorderBrush = Ui.Brush("DividerStrokeColorDefaultBrush"),
-            BorderThickness = new Thickness(1, 0, 0, 0),
-            Child = new ScrollViewer { Content = Controls, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
-        };
-        SetColumn(right, 1);
-        Children.Add(right);
     }
 }
