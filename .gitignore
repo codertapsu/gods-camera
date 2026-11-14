@@ -31,3 +31,6 @@ apps/windows/app/bin/
 apps/windows/app/obj/
 apps/windows/app/Core/*.cs
 apps/windows/app/Assets/vi.json
+
+# Working folders of helper agents, each a git worktree of its own.
+.claude/worktrees/
