@@ -17,6 +17,8 @@ namespace GodsCamera;
 ///                for development and for tests that cannot look at the window
 ///   --snapshots  save a picture of every screen into the folder as PNG, then close
 ///   --demo       with --snapshots: first record a loop and add this photo as a face
+///   --quit       ask the copy running on the data folder to end, wait until it
+///                has, and leave: for the installer, before it replaces the app's files
 ///
 /// For development also `--core-check FILE`: write the shared core's version
 /// to the file and leave, without a window.
@@ -51,6 +53,35 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Ask the copy that runs on this data folder to end, as Quit in its
+    /// icon's menu would, and wait up to ten seconds for it to have ended.
+    /// </summary>
+    private static void QuitRunningCopy(string folderMark)
+    {
+        Native.PostMessageW(Native.HWND_BROADCAST, Shell.QuitMessage(folderMark), IntPtr.Zero, IntPtr.Zero);
+        var until = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < until)
+        {
+            // The running copy holds this until it ends.
+            using var held = new Mutex(false, $"Local\\GodsCamera.OneCopy.{folderMark}", out _);
+            try
+            {
+                if (held.WaitOne(0))
+                {
+                    held.ReleaseMutex();
+                    return;
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                // The copy ended without letting go: it has ended all the same.
+                return;
+            }
+            Thread.Sleep(200);
+        }
+    }
+
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         var arguments = Environment.GetCommandLineArgs();
@@ -70,6 +101,12 @@ public partial class App : Application
         // is let through.
         var folderMark = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(data.ToLowerInvariant())))[..16];
+        if (arguments.Contains("--quit"))
+        {
+            QuitRunningCopy(folderMark);
+            Exit();
+            return;
+        }
         if (Value(arguments, "--snapshots") == null)
         {
             onlyCopy = new Mutex(true, $"Local\\GodsCamera.OneCopy.{folderMark}", out var first);

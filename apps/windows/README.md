@@ -158,3 +158,12 @@ App to source, before every picture (40 bytes), followed at once by the picture:
 - The row of squares on the slate is there for this stage of the work. The app can keep it or drop it; it is one function in `shared/gc_slate.h`.
 - The camera lives only while the host runs (`MFVirtualCameraLifetime_Session`). A camera that stays after the app closes, and shows the slate, is a choice for the app.
 - No installer, and the DLL is not signed.
+
+## The installer
+
+`tools\build-windows-installer.ps1` builds one `.msi` with everything the app needs: the app for release, the camera other apps see, the scanner's two firewall rules, and the model files the Windows app loads (about 1 GB: the detectors, the identity encoder, `inswapper_128` and HyperSwap in their mixed-precision copies, the occlusion mask, and the text reader's two models). It needs WiX 5 and its utility extension, installed once for the user:
+
+    dotnet tool install --global wix --version 5.0.2
+    wix extension add --global WixToolset.Util.wixext/5.0.2
+
+The installer is written in `apps\windows\installer\Package.wxs`. Installing it needs an administrator, because it registers the camera for the whole computer and changes Windows Firewall; that is the user's step. It installs into `C:\Program Files\God's Camera`, adds God's Camera to the Start menu, and asks a running copy of the app to end first (`GodsCamera.exe --quit`). Removing it takes the app, the camera's registration and the firewall rules away again. The user's own data in `%LOCALAPPDATA%\GodsCamera` and its keys in Credential Manager stay; "Delete all my data" in the app's Settings removes them.

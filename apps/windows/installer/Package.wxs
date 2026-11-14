@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  God's Camera for Windows in one installer: the app with everything it needs
+  to run, the camera other apps see, the scanner's two firewall rules, and the
+  model files. Built by tools\build-windows-installer.ps1, which gathers what
+  goes in and passes these:
+
+    Version     the app's version, as in GodsCamera.csproj
+    AppDir      the built app, as tools\build-windows-app.ps1 -OutputFolder leaves it
+    PacksDir    the model files the Windows app uses, in the layout of ..\packs
+
+  Installing needs an administrator, as registering a camera and changing the
+  firewall do. Removing the app takes all three away again; the user's own data
+  in %LOCALAPPDATA%\GodsCamera and its keys in Credential Manager stay, as
+  "Delete all my data" in the app's Settings is the way to remove them.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="God's Camera" Manufacturer="God's Camera" Version="$(var.Version)" Language="1033"
+           UpgradeCode="7C1D3E52-0B8F-4D61-9E7A-3F2A54C8B911" Scope="perMachine" Compressed="yes">
+    <SummaryInformation Description="God's Camera: a camera for meeting apps, with a loop, a face swap and a scanner." />
+    <!-- A newer installer replaces an older one; an older one leaves a newer one alone. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of God's Camera is already installed." Schedule="afterInstallInitialize" />
+    <!-- The model files hardly compress; quick compression keeps the build short. -->
+    <MediaTemplate EmbedCab="yes" CompressionLevel="mszip" />
+
+    <Icon Id="AppIcon" SourceFile="$(var.AppDir)\Assets\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <!-- The app's requirements: Windows 11, 64-bit. -->
+    <Launch Condition="Installed OR VersionNT64 &gt;= 603" Message="God's Camera needs 64-bit Windows 11." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="God's Camera">
+        <Directory Id="CameraFolder" Name="Camera" />
+        <Directory Id="PacksFolder" Name="Packs" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Everything" Title="God's Camera" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="ModelFiles" />
+      <ComponentRef Id="Camera" />
+      <ComponentRef Id="CameraScript" />
+      <ComponentRef Id="StartMenu" />
+    </Feature>
+
+    <!--
+      A running copy of the app holds its files. It is asked to end, as Quit in
+      its icon's menu would, before files are replaced or removed. On a first
+      installation there is nothing to ask.
+    -->
+    <CustomAction Id="QuitRunningApp" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]GodsCamera.exe&quot; --quit"
+                  Execute="immediate" Impersonate="yes" Return="ignore" />
+
+    <!--
+      The scanner's firewall rules, made by the script the app's own "Allow
+      devices on my network" button runs: calls from private networks to the
+      app's port 47801 are let in, and calls from public networks turned away.
+      With both rules in place Windows never puts its own question on the
+      screen. Run as the system, out of sight; a failure does not stop the
+      installation, as the app can still make the rules itself when asked.
+    -->
+    <SetProperty Id="AllowDevices" Sequence="execute" Before="AllowDevices"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Network\allow-windows-hub.ps1&quot; -Program &quot;[INSTALLFOLDER]GodsCamera.exe&quot; -Port 47801" />
+    <CustomAction Id="AllowDevices" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="ignore" />
+    <SetProperty Id="ForgetDevices" Sequence="execute" Before="ForgetDevices"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Network\allow-windows-hub.ps1&quot; -Remove -Program &quot;[INSTALLFOLDER]GodsCamera.exe&quot; -Port 47801" />
+    <CustomAction Id="ForgetDevices" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="QuitRunningApp" Before="InstallValidate" Condition="Installed OR WIX_UPGRADE_DETECTED" />
+      <!-- Removed while the script is still there; made once the files are in place. -->
+      <Custom Action="ForgetDevices" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="AllowDevices" After="InstallFiles" Condition="NOT REMOVE~=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
+  </Package>
+
+  <!-- The app as it was built, but for its camera file, which is registered below. -->
+  <Fragment>
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.AppDir)\**">
+        <Exclude Files="$(var.AppDir)\Camera\**" />
+      </Files>
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- The model files, beside the program, where the app looks first. -->
+  <Fragment>
+    <ComponentGroup Id="ModelFiles" Directory="PacksFolder">
+      <Files Include="$(var.PacksDir)\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <!--
+    The camera other apps see. Windows' camera service loads this media source
+    by the class number below, from the registry of the whole computer: what
+    the camera's own DllRegisterServer writes, and what the app's "Install the
+    camera" button does by script. The camera appears in apps' lists while the
+    app runs.
+  -->
+  <Fragment>
+    <Component Id="Camera" Directory="CameraFolder" Bitness="always64">
+      <File Id="CameraSource" Source="$(var.AppDir)\Camera\GodsCameraSource.dll" KeyPath="yes" />
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\CLSID\{1E1EB430-08A7-42F4-9F7D-C53A00B36024}">
+        <RegistryValue Type="string" Value="God's Camera media source" />
+        <RegistryKey Key="InprocServer32">
+          <RegistryValue Type="string" Value="[#CameraSource]" />
+          <RegistryValue Type="string" Name="ThreadingModel" Value="Both" />
+        </RegistryKey>
+      </RegistryKey>
+    </Component>
+    <Component Id="CameraScript" Directory="CameraFolder" Bitness="always64">
+      <File Id="CameraScriptFile" Source="$(var.AppDir)\Camera\register-windows-camera.ps1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="StartMenu" Directory="ProgramMenuFolder" Bitness="always64">
+      <Shortcut Id="AppShortcut" Name="God's Camera" Description="A camera for meeting apps, with a loop, a face swap and a scanner."
+                Target="[INSTALLFOLDER]GodsCamera.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+      <RegistryValue Root="HKLM" Key="Software\GodsCamera\Installer" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+</Wix>
