@@ -600,7 +600,7 @@ Safety, required before daily use
 
 - [x] First-use notice of the use policy.
 - [x] Consent statement per face. A liveness check for "this is me" is open.
-- [ ] A set of synthetic source faces generated for the app. It needs an image model, which arrives with Phase 5.
+- [x] A set of synthetic source faces generated for the app. It needs an image model, which arrives with Phase 5. Built on Windows on 2026-11-14 as "Make with AI..." on the Face tab: the user describes a person, the picture model makes a portrait of nobody who exists, and it is added as an AI-generated face, under a cloud switch of its own. The Mac's is open.
 - [x] Visible AI indicator, on by default. The invisible watermark is open; content credentials wait for the first export feature.
 - [x] Face data encrypted at rest; delete-everything control.
 - [x] Option to blur the whole picture whenever the swap is not fully on the face, so the real face never shows. Off by default.
@@ -772,7 +772,7 @@ Goal: capture a person and their items, then generate try-on images.
 - [ ] A small distilled swap model for phones, trained from the larger models' outputs. InsightFace's own 512 px live model shows this is achievable.
 - [ ] Personal trained model on desktop: our own training code, your own data.
 - [ ] 512 px swap, multi-face mapping, per-user calibration, multi-photo identity.
-- [ ] Automation: Shortcuts, command line, and an MCP server so assistants can run scans and exports.
+- [ ] Automation: Shortcuts, command line, and an MCP server so assistants can run scans and exports. Built on 2026-11-14: `gc mcp` (`api/mcp.md`), which lists, reads and saves the scanned documents for an assistant. Open: Shortcuts on the Mac, and starting a scan from an assistant.
 
 ### Phase 11 — iPhone and iPad (when you have one, 4–6 weeks)
 

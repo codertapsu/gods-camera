@@ -10,6 +10,7 @@ use std::time::Instant;
 #[cfg(windows)]
 mod camera;
 mod face;
+mod mcp;
 mod paired;
 
 use paired::HubAccess;
@@ -101,6 +102,14 @@ enum Command {
         /// Folder holding the model files.
         #[arg(long)]
         store: PathBuf,
+    },
+    /// Offer the scanned documents to an assistant over the Model Context
+    /// Protocol, on standard input and output: list them, read one, save one
+    /// as Word or PDF. Add it to an assistant as a command it starts.
+    Mcp {
+        /// The desktop app's hub folder. The default is the app's own.
+        #[arg(long)]
+        hub_dir: Option<PathBuf>,
     },
     /// Merge text already read from overlapping photos into one document.
     MergeOcr {
@@ -299,6 +308,12 @@ async fn main() -> Result<()> {
         }
         Command::Scan { folder, hub, paired, out } => scan(&folder, &HubAccess::open(hub, paired.as_deref())?, &out).await?,
         Command::VerifyPacks { manifests, store } => verify_packs(&manifests, &store)?,
+        Command::Mcp { hub_dir } => {
+            let hub = hub_dir.unwrap_or_else(mcp::default_hub_folder);
+            // Standard output carries the protocol; anything else goes to standard error.
+            eprintln!("gc mcp: documents in {}", hub.display());
+            tokio::task::spawn_blocking(move || mcp::serve(&hub, std::io::stdin().lock(), std::io::stdout().lock())).await??;
+        }
         Command::MergeOcr { ocr, out, docx, pdf, truth } => merge_ocr(&ocr, out.as_deref(), docx.as_deref(), pdf.as_deref(), truth.as_deref())?,
         Command::Swap { packs, source, target, out, model, mask, all, no_colour_match } => {
             // The models block the thread, so they stay off the async runtime's workers.
