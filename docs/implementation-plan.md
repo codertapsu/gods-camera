@@ -639,7 +639,7 @@ State: the scanner works from end to end. Pictures sent from the Android app are
 - [ ] On-device OCR preview with ML Kit, whose Latin model covers Vietnamese, so a page can be checked before moving on.
 - [x] Uploads that resume after a dropped connection. Carrying on in the background is open.
 - [ ] Phone as camera: CameraX into the hardware encoder into the hub stream, with lens, zoom and exposure controls. A camera foreground service keeps it running. The desktop lists it as an input source.
-- [ ] Remote control screen: loop on and off, source face, preset. Built on 2026-11-14: the hub's routes (`api/remote.md`), the Windows app's answers, and the Android app's Camera tab that uses them; the Android app is not yet built or tried, and the Mac app does not answer the routes yet.
+- [ ] Remote control screen: loop on and off, source face, preset. Built on 2026-11-14: the hub's routes (`api/remote.md`), the answers of the Windows app and of the Mac app, and the Android app's Camera tab that uses them, with the faces beside the picture on a tablet. Checked in tests and in pictures on the emulator; not yet tried from the tablet against either computer. The preset is open.
 - [x] Adaptive layout for the tablet. Redesigned for version 0.4.0: a connection card, large actions, numbered page thumbnails, two panes on a tablet.
 
 Checks only you can do

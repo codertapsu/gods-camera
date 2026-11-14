@@ -74,6 +74,53 @@ public struct PairingStatus: Equatable, Sendable {
     }
 }
 
+/// How the camera stands, for a paired device that works it from its Camera
+/// tab (`api/remote.md`).
+public struct DeviceCameraState: Equatable, Sendable {
+    public struct Face: Equatable, Sendable {
+        public var id: String
+        public var name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    public var mode: CameraEngine.Mode
+    public var recording = false
+    public var recordedSeconds = 0.0
+    public var canRecord = false
+    public var canLoop = false
+    public var swapWanted = false
+    public var swapping = false
+    /// Why the swap is not on the face while it is wanted: `getting_ready`,
+    /// `model_missing`, `failed`, `no_face_seen` or `not_on_face`.
+    public var swapProblem: String?
+    public var selectedFace: String?
+    /// An app is reading the camera: someone in a call sees the picture.
+    public var watched = false
+    /// The rules for swapping a face were accepted on this Mac. A device
+    /// cannot turn the swap on before they are.
+    public var rulesAccepted = false
+    public var faces: [Face] = []
+
+    public init(mode: CameraEngine.Mode) {
+        self.mode = mode
+    }
+}
+
+/// What a paired device asked the camera to do. The hub has refused already
+/// what cannot be done now.
+public enum DeviceCameraRequest: Equatable, Sendable {
+    case swap(on: Bool)
+    case face(id: String)
+    /// Start a recording, or end the one that runs.
+    case record
+    /// Play the loop, or go back to live.
+    case loop
+}
+
 /// The hub inside the Mac app: the local server the phone or tablet sends
 /// pictures to, and the documents it has made from them.
 ///
@@ -92,6 +139,8 @@ public final class ScanHub: @unchecked Sendable {
     private let lock = NSLock()
     private var server: HubServer?
     private let advertiser = HubAdvertiser()
+    /// Paired devices may work the camera, also after the hub starts again.
+    private var cameraOffered = false
 
     /// `reader` is the program that reads text from pictures. Without it the
     /// hub runs but refuses documents.
@@ -149,6 +198,7 @@ public final class ScanHub: @unchecked Sendable {
                     port: port, token: token, dataDir: dataFolder.path, ocrCommand: command,
                     lan: HubLan(port: network.port, identityPem: network.identity, name: network.name))
                 server = started
+                if cameraOffered { started.offerCamera() }
                 if network.announce, let listening = started.lanPort(), let fingerprint = started.identityFingerprint() {
                     advertiser.start(name: network.name, port: listening, fingerprint: fingerprint)
                 }
@@ -157,7 +207,9 @@ public final class ScanHub: @unchecked Sendable {
                 Log.app.error("hub could not listen on the network: \(String(describing: error))")
             }
         }
-        server = try HubServer.start(port: port, token: token, dataDir: dataFolder.path, ocrCommand: command)
+        let started = try HubServer.start(port: port, token: token, dataDir: dataFolder.path, ocrCommand: command)
+        server = started
+        if cameraOffered { started.offerCamera() }
     }
 
     public func stop() {
@@ -226,6 +278,65 @@ public final class ScanHub: @unchecked Sendable {
     /// Take a device's right to send scans away. It takes effect at once.
     public func removeDevice(_ id: String) {
         _ = try? running?.revokeDevice(id: id)
+    }
+
+    // MARK: The camera for paired devices
+
+    /// Let paired devices work the camera from their Camera tab. The hub
+    /// answers them from what `updateCamera` puts in, so a device never waits
+    /// on the app, and keeps doing so when it starts again.
+    public func offerCamera() {
+        lock.lock()
+        defer { lock.unlock() }
+        cameraOffered = true
+        server?.offerCamera()
+    }
+
+    /// How the camera stands now. Cheap: call it a few times a second.
+    public func updateCamera(_ state: DeviceCameraState) {
+        let mode: String
+        switch state.mode {
+        case .live: mode = "live"
+        case .looping: mode = "looping"
+        case .idle: mode = "idle"
+        }
+        running?.updateCamera(
+            camera: CameraForDevices(
+                mode: mode, recording: state.recording, recordedSeconds: state.recordedSeconds, canRecord: state.canRecord,
+                canLoop: state.canLoop, swapWanted: state.swapWanted, swapping: state.swapping, swapProblem: state.swapProblem,
+                selectedFace: state.selectedFace, watched: state.watched, rulesAccepted: state.rulesAccepted,
+                faces: state.faces.map { DeviceFace(id: $0.id, name: $0.name) }))
+    }
+
+    /// Whether the hub still lacks a face's small picture.
+    public func needsFacePicture(id: String) -> Bool {
+        guard let server = running else { return false }
+        return !server.hasFacePicture(id: id)
+    }
+
+    /// A face's small picture, PNG.
+    public func updateFacePicture(id: String, png: Data) {
+        running?.updateFacePicture(id: id, png: png)
+    }
+
+    /// A device asked for the picture in the last few seconds, so a new one is worth making.
+    public var cameraPictureWanted: Bool { running?.cameraPictureWanted() ?? false }
+
+    /// The picture others see, as a JPEG some 640 pixels wide.
+    public func updateCameraPicture(_ jpeg: Data) {
+        running?.updateCameraPicture(jpeg: jpeg)
+    }
+
+    /// What devices asked for since the last call, oldest first.
+    public func takeCameraRequests() -> [DeviceCameraRequest] {
+        (running?.takeCameraRequests() ?? []).map { request in
+            switch request {
+            case .swap(let on): return .swap(on: on)
+            case .face(let id): return .face(id: id)
+            case .record: return .record
+            case .loop: return .loop
+            }
+        }
     }
 
     /// The documents the hub has made or is making, newest first.

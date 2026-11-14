@@ -2,7 +2,9 @@ import AVFoundation
 import AppKit
 import Carbon.HIToolbox
 import Combine
+import CoreImage
 import GodsCameraKit
+import ImageIO
 import SwiftUI
 
 /// What feeds the camera.
@@ -103,6 +105,12 @@ final class AppModel: ObservableObject {
     private var watcher: VirtualCameraWatcher?
     private var hotKeys: [HotKey] = []
     private var timer: Timer?
+    /// Paired devices work the camera from their Camera tab: a few times a
+    /// second, how it stands goes to the hub and what they asked comes back.
+    private var devicesTimer: Timer?
+    /// The engine's latest picture, for a device that asks to see it.
+    private let latestPicture = LatestPicture()
+    private var makingPicture = false
     private var bag: Set<AnyCancellable> = []
     private let defaults = UserDefaults.standard
 
@@ -166,7 +174,11 @@ final class AppModel: ObservableObject {
         applySettings()
         registerHotKeys()
         face.start()
+        scan.hub.offerCamera()
         scan.start()
+        devicesTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.serveDevices() }
+        }
         // For setting up a test session from the command line: do what the
         // Scanner section's Connect a device button does, once.
         if CommandLine.arguments.contains("--connect-devices") { scan.connectDevices() }
@@ -193,7 +205,9 @@ final class AppModel: ObservableObject {
         guard let engine else { return }
         engine.sink = link
         let layer = previewLayer
+        let latest = latestPicture
         engine.onOutput = { buffer, _ in
+            latest.keep(buffer)
             guard let surface = CVPixelBufferGetIOSurface(buffer)?.takeUnretainedValue() else { return }
             DispatchQueue.main.async {
                 CATransaction.begin()
@@ -413,6 +427,66 @@ final class AppModel: ObservableObject {
         } else if let clip = currentClip {
             clip.mode = loopStyle.mode(for: clip)
             engine.startLoop(clip)
+        }
+    }
+
+    // MARK: Paired devices
+
+    /// Hand the hub how the camera stands, do what devices asked, and make
+    /// the picture they see while one is looking.
+    private func serveDevices() {
+        let hub = scan.hub
+        guard hub.isRunning else { return }
+        for request in hub.takeCameraRequests() {
+            Log.app.info("a paired device asked: \(String(describing: request))")
+            switch request {
+            // The hub refused it already where the rules were not accepted, or there is no face.
+            case .swap(let on): face.setWanted(on)
+            case .face(let id): if let id = UUID(uuidString: id) { face.select(id) }
+            case .record: toggleRecording()
+            case .loop: toggleLoop()
+            }
+        }
+        var state = DeviceCameraState(mode: status.mode)
+        state.recording = status.isRecording
+        state.recordedSeconds = status.recordedSeconds
+        state.canRecord = canRecord
+        state.canLoop = canLoop
+        state.swapWanted = face.wanted
+        state.swapping = status.swapping
+        state.swapProblem = swapProblemForDevices
+        state.selectedFace = face.selectedID?.uuidString
+        state.watched = !readers.isEmpty
+        state.rulesAccepted = face.policyAccepted
+        state.faces = face.faces.map { DeviceCameraState.Face(id: $0.id.uuidString, name: $0.name) }
+        hub.updateCamera(state)
+        for saved in face.faces where hub.needsFacePicture(id: saved.id.uuidString) {
+            hub.updateFacePicture(id: saved.id.uuidString, png: saved.thumbnail)
+        }
+        if hub.cameraPictureWanted, !makingPicture {
+            makingPicture = true
+            let latest = latestPicture
+            DispatchQueue.global(qos: .utility).async {
+                if let buffer = latest.take(), let jpeg = LatestPicture.jpeg(buffer, width: 640) { hub.updateCameraPicture(jpeg) }
+                DispatchQueue.main.async { self.makingPicture = false }
+            }
+        }
+    }
+
+    /// Why the swap is not on the face while it is wanted, in the codes `api/remote.md` lists.
+    private var swapProblemForDevices: String? {
+        guard face.wanted else { return nil }
+        switch face.state {
+        case .loading: return "getting_ready"
+        case .missing: return "model_missing"
+        case .failed: return "failed"
+        case .off: return nil
+        case .on:
+            if status.swapError != nil { return "failed" }
+            if status.swapping { return nil }
+            if status.pictureHidden { return "not_on_face" }
+            if status.mode == .live, !status.faceFound { return "no_face_seen" }
+            return nil
         }
     }
 
@@ -647,5 +721,35 @@ final class AppModel: ObservableObject {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("GodsCamera-diagnostics.txt")
         try? lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+}
+
+/// The engine's latest picture, kept for a paired device that asks to see it.
+/// Only the newest one is held; the engine hands a new one in every frame.
+final class LatestPicture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer: CVPixelBuffer?
+    private static let context = CIContext(options: [.cacheIntermediates: false])
+
+    func keep(_ buffer: CVPixelBuffer) {
+        lock.lock()
+        self.buffer = buffer
+        lock.unlock()
+    }
+
+    func take() -> CVPixelBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        return buffer
+    }
+
+    /// The picture as a JPEG no wider than `width`, as a device shows it.
+    static func jpeg(_ buffer: CVPixelBuffer, width: CGFloat) -> Data? {
+        let image = CIImage(cvPixelBuffer: buffer)
+        let scale = min(1, width / max(image.extent.width, 1))
+        let small = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        let quality = CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String)
+        return context.jpegRepresentation(of: small, colorSpace: space, options: [quality: 0.72])
     }
 }

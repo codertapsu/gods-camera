@@ -7,7 +7,9 @@ const THIS_COMPUTER: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr:
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
-use gc_ffi::{generate_hub_identity, hub_identity_fingerprint, HubLan, HubServer, PairingOutcome};
+use gc_ffi::{
+    generate_hub_identity, hub_identity_fingerprint, CameraForDevices, DeviceFace, DeviceRequest, HubLan, HubServer, PairingOutcome,
+};
 use gc_link::gc_pair::{Grant, Initiator, PairingCode};
 use gc_link::{PairFinishRequest, PairFinishResponse, PairStartRequest, PairStartResponse};
 
@@ -132,6 +134,97 @@ fn the_app_pairs_lists_and_removes_a_device() {
     assert_eq!(server.identity_fingerprint(), Some(fingerprint.clone()));
     assert_eq!(server.devices().iter().map(|device| device.name.as_str()).collect::<Vec<_>>(), ["phone"]);
     assert_eq!(device.block_on(health(server.lan_port().unwrap(), &fingerprint, &again.token)), 200);
+    server.stop();
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn a_device_works_the_apps_camera_through_the_mailbox() {
+    use serde_json::json;
+    let dir = folder("camera");
+    let server = HubServer::start(0, TOKEN.into(), dir.clone(), vec![]).unwrap();
+    let base = server.address();
+    // The device runs on its own runtime, as another process would.
+    let device = tokio::runtime::Runtime::new().unwrap();
+    let http = reqwest::Client::builder().tls_backend_preconfigured(gc_link::tls::pairing_client_config().0).build().unwrap();
+    let get = |path: &str| -> (u16, Vec<u8>) {
+        device.block_on(async {
+            let response = http.get(format!("{base}{path}")).bearer_auth(TOKEN).send().await.unwrap();
+            (response.status().as_u16(), response.bytes().await.unwrap().to_vec())
+        })
+    };
+    let state = || -> serde_json::Value { serde_json::from_slice(&get("/v1/camera").1).unwrap() };
+    // The answer's status, and the code a refusal gives in its `error`.
+    let ask = |action: serde_json::Value| -> (u16, String) {
+        device.block_on(async {
+            let response = http.post(format!("{base}/v1/camera")).bearer_auth(TOKEN).json(&action).send().await.unwrap();
+            let status = response.status().as_u16();
+            let body: serde_json::Value = serde_json::from_str(&response.text().await.unwrap()).unwrap_or_default();
+            (status, body["error"].as_str().unwrap_or_default().to_string())
+        })
+    };
+
+    // Until the app offers its camera, the routes say it is not here.
+    assert_eq!(get("/v1/camera").0, 404);
+    server.offer_camera();
+    // Before the app's first word: idle, and nothing can be done.
+    assert_eq!(state()["mode"], "idle");
+    assert_eq!(ask(json!({ "action": "record" })), (409, "cannot_record_now".to_string()));
+
+    let mut camera = CameraForDevices {
+        mode: "live".into(),
+        recording: false,
+        recorded_seconds: 0.0,
+        can_record: true,
+        can_loop: false,
+        swap_wanted: false,
+        swapping: false,
+        swap_problem: None,
+        selected_face: Some("a".into()),
+        watched: true,
+        rules_accepted: false,
+        faces: vec![DeviceFace { id: "a".into(), name: "Mai".into() }, DeviceFace { id: "b".into(), name: "Lan".into() }],
+    };
+    server.update_camera(camera.clone());
+    server.update_face_picture("a".into(), b"\x89PNG".to_vec());
+    let now = state();
+    assert_eq!((now["mode"].as_str(), now["watched"].as_bool(), now["selected_face"].as_str()), (Some("live"), Some(true), Some("a")));
+    let faces: serde_json::Value = serde_json::from_slice(&get("/v1/camera/faces").1).unwrap();
+    assert_eq!(faces, json!([{ "id": "a", "name": "Mai" }, { "id": "b", "name": "Lan" }]));
+    assert_eq!(get("/v1/camera/faces/a/picture"), (200, b"\x89PNG".to_vec()));
+    assert_eq!(get("/v1/camera/faces/b/picture").0, 404);
+
+    // The picture: none until the app makes one, which it does once a device asks.
+    assert!(!server.camera_picture_wanted());
+    assert_eq!(get("/v1/camera/picture").0, 404);
+    assert!(server.camera_picture_wanted());
+    server.update_camera_picture(vec![0xFF, 0xD8, 0xFF]);
+    assert_eq!(get("/v1/camera/picture"), (200, vec![0xFF, 0xD8, 0xFF]));
+
+    // Refused as the Windows app refuses, with the same codes, and nothing reaches the app.
+    assert_eq!(ask(json!({ "action": "swap", "on": true })), (409, "accept_rules_on_computer".to_string()));
+    assert_eq!(ask(json!({ "action": "face", "id": "c" })), (409, "no_such_face".to_string()));
+    assert_eq!(ask(json!({ "action": "loop" })), (409, "no_loop_yet".to_string()));
+    assert!(server.take_camera_requests().is_empty());
+
+    // What can be done reaches the app in order, once, and the device sees its change at once.
+    camera.rules_accepted = true;
+    server.update_camera(camera.clone());
+    assert_eq!(ask(json!({ "action": "swap", "on": true })).0, 204);
+    assert_eq!(ask(json!({ "action": "face", "id": "b" })).0, 204);
+    assert_eq!(ask(json!({ "action": "record" })).0, 204);
+    assert_eq!(server.take_camera_requests(), [DeviceRequest::Swap { on: true }, DeviceRequest::Face { id: "b".into() }, DeviceRequest::Record]);
+    assert!(server.take_camera_requests().is_empty());
+    let now = state();
+    assert_eq!((now["swap_wanted"].as_bool(), now["selected_face"].as_str()), (Some(true), Some("b")));
+
+    // A face that is gone takes its picture with it.
+    camera.faces.retain(|face| face.id != "a");
+    server.update_camera(camera);
+    assert!(!server.has_face_picture("a".into()));
+
+    server.withdraw_camera();
+    assert_eq!(get("/v1/camera").0, 404);
     server.stop();
     std::fs::remove_dir_all(dir).ok();
 }

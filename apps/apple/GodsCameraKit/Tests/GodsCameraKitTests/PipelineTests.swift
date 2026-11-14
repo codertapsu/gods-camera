@@ -911,7 +911,7 @@ final class ScanHubTests: XCTestCase {
     }
 
     func testAnnouncementCarriesTheNameAndTheStartOfTheFingerprint() {
-        let record = HubAdvertiser.textRecord(name: "Mac của Khánh", fingerprint: String(repeating: "ab", count: 32))
+        let record = HubAdvertiser.textRecord(name: "Mac của Lan", fingerprint: String(repeating: "ab", count: 32))
         // Each entry: one byte of length, then key=value.
         var entries: [String] = []
         var index = record.startIndex
@@ -921,7 +921,7 @@ final class ScanHubTests: XCTestCase {
             entries.append(String(decoding: record[start..<record.index(start, offsetBy: length)], as: UTF8.self))
             index = record.index(start, offsetBy: length)
         }
-        XCTAssertEqual(entries, ["v=1", "name=Mac của Khánh", "fp=abababababababab"])
+        XCTAssertEqual(entries, ["v=1", "name=Mac của Lan", "fp=abababababababab"])
     }
 
     func testHubTakesPicturesAndListsTheDocument() async throws {
@@ -969,6 +969,56 @@ final class ScanHubTests: XCTestCase {
         XCTAssertTrue(hub.documents().isEmpty)
         hub.stop()
         XCTAssertFalse(hub.isRunning)
+    }
+
+    func testADeviceWorksTheCameraThroughTheHub() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("gc-camera-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let hub = ScanHub(dataFolder: folder.appendingPathComponent("data"), reader: nil)
+        let token = "test-token-0123456789"
+        // Offered before the hub starts, as the app does: the offer holds once it runs.
+        hub.offerCamera()
+        try hub.start(port: 0, token: token)
+        defer { hub.stop() }
+        let base = try XCTUnwrap(hub.address)
+
+        var state = DeviceCameraState(mode: .live)
+        state.canRecord = true
+        state.watched = true
+        state.faces = [.init(id: "a", name: "Mai")]
+        state.selectedFace = "a"
+        hub.updateCamera(state)
+        XCTAssertTrue(hub.needsFacePicture(id: "a"))
+        hub.updateFacePicture(id: "a", png: Data([0x89, 0x50, 0x4E, 0x47]))
+        XCTAssertFalse(hub.needsFacePicture(id: "a"))
+
+        let (status, data) = try await call("GET", "\(base)/v1/camera", token: token)
+        XCTAssertEqual(status, 200)
+        let seen = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(seen["mode"] as? String, "live")
+        XCTAssertEqual(seen["watched"] as? Bool, true)
+        XCTAssertEqual(seen["selected_face"] as? String, "a")
+
+        // The picture is made only once a device asks for it.
+        XCTAssertFalse(hub.cameraPictureWanted)
+        let (none, _) = try await call("GET", "\(base)/v1/camera/picture", token: token)
+        XCTAssertEqual(none, 404)
+        XCTAssertTrue(hub.cameraPictureWanted)
+        hub.updateCameraPicture(Data([0xFF, 0xD8, 0xFF]))
+        let (shown, jpeg) = try await call("GET", "\(base)/v1/camera/picture", token: token)
+        XCTAssertEqual(shown, 200)
+        XCTAssertEqual(jpeg, Data([0xFF, 0xD8, 0xFF]))
+
+        // The swap waits for the rules to be accepted on the Mac; a recording can start.
+        let swapOn = try JSONSerialization.data(withJSONObject: ["action": "swap", "on": true] as [String: Any])
+        let (refused, _) = try await call("POST", "\(base)/v1/camera", token: token, body: swapOn)
+        XCTAssertEqual(refused, 409)
+        let record = try JSONSerialization.data(withJSONObject: ["action": "record"] as [String: Any])
+        let (accepted, _) = try await call("POST", "\(base)/v1/camera", token: token, body: record)
+        XCTAssertEqual(accepted, 204)
+        XCTAssertEqual(hub.takeCameraRequests(), [.record])
+        XCTAssertEqual(hub.takeCameraRequests(), [])
     }
 }
 

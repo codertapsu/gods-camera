@@ -482,6 +482,7 @@ pub struct HubServer {
     address: String,
     lan_port: Option<u16>,
     hub: gc_link::Hub,
+    camera: Arc<CameraMailbox>,
 }
 
 impl HubServer {
@@ -531,6 +532,7 @@ impl HubServer {
             address: format!("http://{local}"),
             lan_port,
             hub,
+            camera: Arc::default(),
         }))
     }
 
@@ -548,6 +550,150 @@ impl HubServer {
         lan_address: std::net::IpAddr,
     ) -> Result<Arc<Self>, CoreError> {
         Self::launch(port, token, data_dir, ocr_command, Some(lan), lan_address)
+    }
+}
+
+/// How the app's camera stands, as a paired device shows it (`api/remote.md`).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct CameraForDevices {
+    /// `live`, `looping` or `idle`.
+    pub mode: String,
+    pub recording: bool,
+    pub recorded_seconds: f64,
+    /// A recording can start now: the picture is live.
+    pub can_record: bool,
+    /// A loop can be played, or the one that plays ended.
+    pub can_loop: bool,
+    pub swap_wanted: bool,
+    /// A swapped face is being drawn.
+    pub swapping: bool,
+    /// Why the swap is not on the face while it is wanted: `getting_ready`,
+    /// `model_missing`, `failed`, `no_face_seen` or `not_on_face`.
+    pub swap_problem: Option<String>,
+    pub selected_face: Option<String>,
+    /// An app is reading the camera: someone in a call sees this picture.
+    pub watched: bool,
+    /// The rules for swapping a face were accepted on this computer. Until
+    /// they are, a device cannot turn the swap on.
+    pub rules_accepted: bool,
+    pub faces: Vec<DeviceFace>,
+}
+
+/// A saved face, as a device lists it. Its photos stay on the computer.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DeviceFace {
+    pub id: String,
+    pub name: String,
+}
+
+/// What a paired device asked the camera to do, for the app to do it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum DeviceRequest {
+    Swap { on: bool },
+    Face { id: String },
+    /// Start a recording, or end the one that runs.
+    Record,
+    /// Play the loop, or go back to live.
+    Loop,
+}
+
+/// The app's camera for paired devices, kept as a mailbox. The app puts in
+/// how the camera stands and the picture others see, and takes out what the
+/// devices asked for; the hub answers devices from it on threads of its own.
+/// So a device never waits on the app's main thread, and the app never on a
+/// device.
+#[derive(Default)]
+struct CameraMailbox {
+    inner: Mutex<Mailbox>,
+}
+
+#[derive(Default)]
+struct Mailbox {
+    camera: Option<CameraForDevices>,
+    picture: Option<Vec<u8>>,
+    face_pictures: std::collections::HashMap<String, Vec<u8>>,
+    asked: Vec<DeviceRequest>,
+    picture_asked_at: Option<std::time::Instant>,
+}
+
+impl CameraMailbox {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Mailbox> {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+impl gc_link::CameraRemote for CameraMailbox {
+    fn state(&self) -> gc_link::RemoteState {
+        let mailbox = self.lock();
+        let camera = mailbox.camera.as_ref();
+        gc_link::RemoteState {
+            mode: camera.map_or("idle".into(), |camera| camera.mode.clone()),
+            recording: camera.is_some_and(|camera| camera.recording),
+            recorded_seconds: camera.map_or(0.0, |camera| camera.recorded_seconds),
+            can_record: camera.is_some_and(|camera| camera.can_record),
+            can_loop: camera.is_some_and(|camera| camera.can_loop),
+            swap_wanted: camera.is_some_and(|camera| camera.swap_wanted),
+            swapping: camera.is_some_and(|camera| camera.swapping),
+            swap_problem: camera.and_then(|camera| camera.swap_problem.clone()),
+            selected_face: camera.and_then(|camera| camera.selected_face.clone()),
+            watched: camera.is_some_and(|camera| camera.watched),
+        }
+    }
+
+    fn faces(&self) -> Vec<gc_link::RemoteFace> {
+        let mailbox = self.lock();
+        let faces = mailbox.camera.as_ref().map(|camera| camera.faces.as_slice()).unwrap_or_default();
+        faces.iter().map(|face| gc_link::RemoteFace { id: face.id.clone(), name: face.name.clone() }).collect()
+    }
+
+    fn face_picture(&self, id: &str) -> Option<Vec<u8>> {
+        self.lock().face_pictures.get(id).cloned()
+    }
+
+    fn picture(&self) -> Option<Vec<u8>> {
+        let mut mailbox = self.lock();
+        mailbox.picture_asked_at = Some(std::time::Instant::now());
+        mailbox.picture.clone()
+    }
+
+    /// Refused for the same reasons, and with the same codes, as by the Windows app.
+    fn act(&self, action: gc_link::RemoteAction) -> Result<(), String> {
+        let mut mailbox = self.lock();
+        let Some(camera) = mailbox.camera.as_mut() else { return Err("cannot_record_now".into()) };
+        let request = match action {
+            gc_link::RemoteAction::Swap { on } => {
+                if on && camera.faces.is_empty() {
+                    return Err("add_a_face_first".into());
+                }
+                // The rules are shown and accepted on the computer, by the person in front of it.
+                if on && !camera.rules_accepted {
+                    return Err("accept_rules_on_computer".into());
+                }
+                camera.swap_wanted = on;
+                DeviceRequest::Swap { on }
+            }
+            gc_link::RemoteAction::Face { id } => {
+                if !camera.faces.iter().any(|face| face.id == id) {
+                    return Err("no_such_face".into());
+                }
+                camera.selected_face = Some(id.clone());
+                DeviceRequest::Face { id }
+            }
+            gc_link::RemoteAction::Record => {
+                if !camera.can_record && !camera.recording {
+                    return Err("cannot_record_now".into());
+                }
+                DeviceRequest::Record
+            }
+            gc_link::RemoteAction::Loop => {
+                if !camera.can_loop {
+                    return Err("no_loop_yet".into());
+                }
+                DeviceRequest::Loop
+            }
+        };
+        mailbox.asked.push(request);
+        Ok(())
     }
 }
 
@@ -648,6 +794,54 @@ impl HubServer {
         if let Some(stop) = self.stop.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = stop.send(());
         }
+    }
+
+    // The camera for paired devices (`api/remote.md`). Until `offer_camera`,
+    // the camera's routes say the camera is not available here.
+
+    /// Let paired devices work the app's camera, from what `update_camera` puts in.
+    pub fn offer_camera(&self) {
+        self.hub.set_camera_remote(Some(Arc::clone(&self.camera) as Arc<dyn gc_link::CameraRemote>));
+    }
+
+    /// Stop paired devices from working the camera.
+    pub fn withdraw_camera(&self) {
+        self.hub.set_camera_remote(None);
+    }
+
+    /// How the camera stands now, with its faces. Cheap: call it on a timer,
+    /// a few times a second.
+    pub fn update_camera(&self, camera: CameraForDevices) {
+        let mut mailbox = self.camera.lock();
+        mailbox.face_pictures.retain(|id, _| camera.faces.iter().any(|face| &face.id == id));
+        mailbox.camera = Some(camera);
+    }
+
+    /// A face's small picture, PNG.
+    pub fn update_face_picture(&self, id: String, png: Vec<u8>) {
+        self.camera.lock().face_pictures.insert(id, png);
+    }
+
+    /// Whether a face's picture is in the mailbox already.
+    pub fn has_face_picture(&self, id: String) -> bool {
+        self.camera.lock().face_pictures.contains_key(&id)
+    }
+
+    /// Whether a device asked for the picture in the last three seconds. Only
+    /// then is a new one worth making.
+    pub fn camera_picture_wanted(&self) -> bool {
+        self.camera.lock().picture_asked_at.is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(3))
+    }
+
+    /// The picture others see, as a JPEG some 640 pixels wide.
+    pub fn update_camera_picture(&self, jpeg: Vec<u8>) {
+        self.camera.lock().picture = Some(jpeg);
+    }
+
+    /// What devices asked for since the last call, oldest first. The hub has
+    /// refused already what cannot be done, as the Windows app refuses it.
+    pub fn take_camera_requests(&self) -> Vec<DeviceRequest> {
+        std::mem::take(&mut self.camera.lock().asked)
     }
 }
 

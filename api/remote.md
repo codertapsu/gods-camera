@@ -60,4 +60,4 @@ Codes are short words the device puts in its own language:
 | `swap_problem` | `no_face_seen` | No face is in the picture |
 | `swap_problem` | `not_on_face` | The swap is not on the face, and the picture is blurred |
 
-The Windows app answers these from its model (`core/gc-app/src/remote.rs`).
+The Windows app answers these from its model (`core/gc-app/src/remote.rs`). The Mac app answers them through a mailbox in `gc-ffi` (`HubServer::offer_camera`): a few times a second the app puts in how its camera stands and, while a device looks, the picture, and takes out what devices asked for. The hub refuses what cannot be done with the same codes as Windows, so a device never waits on the Mac app's main thread.

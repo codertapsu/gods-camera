@@ -38,7 +38,8 @@ final class ScanModel: ObservableObject {
     /// The name devices on the network see for this Mac.
     let networkName = Host.current().localizedName ?? "Mac"
 
-    private let hub: ScanHub
+    /// Also how paired devices work the camera, through `AppModel`.
+    let hub: ScanHub
     private let defaults = UserDefaults.standard
 
     init() {

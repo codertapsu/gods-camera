@@ -1001,6 +1001,7 @@ dependencies = [
  "gc-link",
  "gc-live",
  "reqwest",
+ "serde_json",
  "tokio",
  "uniffi",
 ]
