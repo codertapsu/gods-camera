@@ -65,6 +65,8 @@ pub struct Settings {
     pub blur_when_unswapped: bool,
     /// Closing the window leaves the app running, so other apps keep their camera.
     pub keep_running: bool,
+    /// While a loop plays, listen to the microphone and go back to live when the user speaks.
+    pub back_to_live_on_voice: bool,
 }
 
 impl Default for Settings {
@@ -90,6 +92,8 @@ impl Default for Settings {
             real_mouth: false,
             blur_when_unswapped: false,
             keep_running: true,
+            // The microphone is opened only when the user asks for this.
+            back_to_live_on_voice: false,
         }
     }
 }

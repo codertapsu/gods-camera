@@ -48,7 +48,9 @@ internal sealed class SettingsScreen : UserControl, IScreen
             T("Help"), Ui.IconHelp,
             Labelled(T("Record or stop a loop"), Keys("Ctrl+Alt+Shift+R", shell.RecordKeyWorks || !shell.AskedForHotKeys)),
             Labelled(T("Play the loop or go back to live"), Keys("Ctrl+Alt+Shift+L", shell.LoopKeyWorks || !shell.AskedForHotKeys)),
-            new Hint(T("These keys work while another app has the keyboard, for use during a call."))));
+            new Hint(T("These keys work while another app has the keyboard, for use during a call.")),
+            Ui.PlainButton(T("Save a diagnostics report…"), SaveDiagnostics),
+            new Hint(T("A diagnostics report holds the app's state and its log. It contains no pictures and no faces."))));
 
         var delete = Ui.PlainButton(T("Delete all my data…"), DeleteEverything);
         column.Children.Add(new Card(
@@ -83,6 +85,29 @@ internal sealed class SettingsScreen : UserControl, IScreen
         Grid.SetColumn(value, 1);
         grid.Children.Add(value);
         return grid;
+    }
+
+    /// <summary>Write the diagnostics report where the user chooses, and show it in File Explorer.</summary>
+    private async void SaveDiagnostics()
+    {
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+        {
+            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Desktop,
+            SuggestedFileName = $"GodsCamera-diagnostics-{DateTime.Now:yyyy-MM-dd-HHmm}",
+        };
+        picker.FileTypeChoices.Add(T("Text"), new List<string> { ".txt" });
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(shell));
+        var file = await picker.PickSaveFileAsync();
+        if (file == null) return;
+        try
+        {
+            await File.WriteAllTextAsync(file.Path, Diagnostics.Report(shell));
+            Shell.ShowInExplorer(file.Path);
+        }
+        catch (Exception problem)
+        {
+            Log.Problem("saving the diagnostics report", problem);
+        }
     }
 
     private async void DeleteEverything()

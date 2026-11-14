@@ -227,6 +227,17 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 /// The live pipeline. See the module's description.
+/// Ends the loop that plays, from any thread: see [`CameraEngine::loop_stopper`].
+#[derive(Clone)]
+pub struct LoopStopper(Sender<Message>);
+
+impl LoopStopper {
+    /// Fade back to the live picture, if a loop plays. Nothing happens once the engine is gone.
+    pub fn stop(&self) {
+        let _ = self.0.send(Message::StopLoop);
+    }
+}
+
 pub struct CameraEngine {
     shared: Arc<Shared>,
     messages: Sender<Message>,
@@ -324,6 +335,12 @@ impl CameraEngine {
     /// Fade back to the live picture.
     pub fn stop_loop(&self) {
         self.tell(Message::StopLoop);
+    }
+
+    /// Something that can end the loop from another thread, such as the one
+    /// that listens to the microphone, without holding the engine.
+    pub fn loop_stopper(&self) -> LoopStopper {
+        LoopStopper(self.messages.clone())
     }
 
     pub fn status(&self) -> Status {

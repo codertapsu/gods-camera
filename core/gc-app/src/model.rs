@@ -87,6 +87,21 @@ pub enum CaptureFrom {
 /// Called with every picture and the moment it was taken, on the platform's clock.
 pub type OnFrame = Box<dyn FnMut(&ImageView<'_>, u64) + Send>;
 
+/// Called with each short block of the microphone's sound, one channel
+/// between -1 and 1, and how many seconds it lasts.
+pub type OnSound = Box<dyn FnMut(&[f32], f64) + Send>;
+
+/// Why the microphone cannot be listened to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MicrophoneProblem {
+    /// No microphone is attached, or the system has none for talking.
+    NoMicrophone,
+    /// The system's privacy settings do not let the app use the microphone.
+    Refused,
+    /// The system refused for another reason.
+    Failed,
+}
+
 /// What the model needs from the system it runs on.
 pub trait Platform: Send + Sync {
     /// Where the engine's pictures go: the virtual camera.
@@ -109,6 +124,11 @@ pub trait Platform: Send + Sync {
     /// Start fetching pictures. They are delivered until what is returned is dropped.
     fn capture(&self, _from: CaptureFrom, _on_frame: OnFrame) -> Result<Box<dyn Send>, SourceProblem> {
         Err(SourceProblem::NotAvailable)
+    }
+    /// Listen to the microphone: its sound is delivered until what is
+    /// returned is dropped. Nothing else may be done with the sound.
+    fn listen(&self, _on_sound: OnSound) -> Result<Box<dyn Send>, MicrophoneProblem> {
+        Err(MicrophoneProblem::NoMicrophone)
     }
 }
 
@@ -308,6 +328,13 @@ pub struct AppState {
     pub real_mouth: bool,
     pub blur_when_unswapped: bool,
     pub show_ai_badge: bool,
+
+    // Going back to live when the user speaks.
+    pub back_to_live_on_voice: bool,
+    /// The microphone is open: a loop plays and the option is on.
+    pub listening: bool,
+    /// Why the microphone could not be opened, the last time it was tried.
+    pub microphone_problem: Option<MicrophoneProblem>,
 }
 
 /// The size and number of the picture `DesktopApp::preview` copied.
@@ -384,6 +411,11 @@ struct Inner {
     pending: Option<PendingFace>,
     busy_adding: bool,
     notice: Option<FaceNotice>,
+
+    /// The microphone, open while a loop plays and the user asked to go back to live on speaking.
+    listener: Option<Box<dyn Send>>,
+    /// The microphone could not be opened for the loop that plays: not tried again until the next one.
+    microphone_problem: Option<MicrophoneProblem>,
 }
 
 struct Core {
@@ -410,6 +442,35 @@ impl Core {
 
     fn settings_path(&self) -> PathBuf {
         self.data_dir.join("settings.json")
+    }
+
+    /// Open the microphone while a loop plays and the user wants to go back
+    /// to live on speaking, and close it otherwise. When the user speaks, the
+    /// loop ends from the microphone's own thread, without waiting for the
+    /// window to ask how things stand.
+    fn listen_or_not(&self, inner: &mut Inner, looping: bool) {
+        if !looping || !inner.settings.back_to_live_on_voice {
+            inner.listener = None;
+            if !looping {
+                inner.microphone_problem = None;
+            }
+            return;
+        }
+        if inner.listener.is_some() || inner.microphone_problem.is_some() {
+            return;
+        }
+        let stopper = self.engine.loop_stopper();
+        let mut voice = crate::voice::VoiceActivity::default();
+        let on_sound: OnSound = Box::new(move |samples, seconds| {
+            if voice.feed(crate::voice::level_db(samples), seconds) {
+                voice.reset();
+                stopper.stop();
+            }
+        });
+        match self.platform.listen(on_sound) {
+            Ok(listener) => inner.listener = Some(listener),
+            Err(problem) => inner.microphone_problem = Some(problem),
+        }
     }
 
     fn save_settings(&self, inner: &Inner) {
@@ -717,6 +778,8 @@ impl DesktopApp {
                 pending: None,
                 busy_adding: false,
                 notice: None,
+                listener: None,
+                microphone_problem: None,
             }),
             finder: Mutex::new(None),
             data_dir,
@@ -772,6 +835,7 @@ impl DesktopApp {
             inner.clip_saved = false;
         }
         core.rest_or_wake(&mut inner);
+        core.listen_or_not(&mut inner, status.mode == Mode::Looping);
         let (virtual_camera, virtual_camera_detail) = core.platform.virtual_camera();
         let clip = inner.clip.as_ref().map(|clip| ClipInfo {
             id: clip.id.clone(),
@@ -873,6 +937,9 @@ impl DesktopApp {
             real_mouth: settings.real_mouth,
             blur_when_unswapped: settings.blur_when_unswapped,
             show_ai_badge: settings.show_ai_badge,
+            back_to_live_on_voice: settings.back_to_live_on_voice,
+            listening: inner.listener.is_some(),
+            microphone_problem: inner.microphone_problem,
         }
     }
 
@@ -982,6 +1049,19 @@ impl DesktopApp {
             };
             self.core.engine.start_loop(Arc::new(playing));
         }
+    }
+
+    /// While a loop plays, listen to the microphone and go back to the live
+    /// picture as soon as the user speaks. The microphone is open only while
+    /// a loop plays.
+    pub fn set_back_to_live_on_voice(&self, on: bool) {
+        let mut inner = self.core.lock();
+        inner.settings.back_to_live_on_voice = on;
+        // Asked again, the microphone is tried again.
+        inner.microphone_problem = None;
+        self.core.save_settings(&inner);
+        let looping = self.core.engine.status().mode == Mode::Looping;
+        self.core.listen_or_not(&mut inner, looping);
     }
 
     /// How loops repeat. It takes effect the next time a loop starts.

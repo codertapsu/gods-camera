@@ -27,6 +27,10 @@ internal sealed class LoopPanel : StackPanel
     private readonly Hint styleHint = new();
     private readonly SwitchRow badge;
 
+    private readonly SwitchRow voice;
+    private readonly Hint voiceProblem = new();
+    private readonly Button microphoneSettings;
+
     private readonly Card savedCard;
     private readonly StackPanel savedList = new() { Spacing = 6 };
     private string savedKey = "";
@@ -58,6 +62,14 @@ internal sealed class LoopPanel : StackPanel
         badge = new SwitchRow(T("Show a LOOP badge to others"), on => shell.App.SetShowLoopBadge(on));
         Children.Add(new Card(T("How it repeats"), Ui.IconRepeat, style, styleHint, badge));
 
+        voice = new SwitchRow(T("Go back to live when I start to speak"), on => shell.App.SetBackToLiveOnVoice(on));
+        microphoneSettings = Ui.PlainButton(T("Open Windows Settings"), () =>
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:privacy-microphone")));
+        Children.Add(new Card(
+            T("Back to live"), Ui.IconVideo, voice,
+            new Hint(T("Uses the microphone only while a loop plays. Nothing is recorded.")),
+            voiceProblem, microphoneSettings));
+
         savedCard = new Card(T("Saved loops"), Ui.IconSaved, savedList);
         Children.Add(savedCard);
         Children.Add(new Hint(T("Ctrl+Alt+Shift+R records, and Ctrl+Alt+Shift+L plays the loop, even while another app has the keyboard."), Ui.IconInfo));
@@ -82,6 +94,21 @@ internal sealed class LoopPanel : StackPanel
         if (style.SelectedIndex != index) style.SelectedIndex = index;
         showing = false;
         badge.Show(state.ShowLoopBadge);
+        voice.Show(state.BackToLiveOnVoice);
+        voiceProblem.Visible(state.MicrophoneProblem != null);
+        microphoneSettings.Visible(state.MicrophoneProblem == MicrophoneProblem.Refused);
+        switch (state.MicrophoneProblem)
+        {
+            case MicrophoneProblem.Refused:
+                voiceProblem.Set(T("Windows does not let desktop apps use the microphone. Turn that on under Privacy & security, Microphone."), Ui.IconWarning, Tone.Warning);
+                break;
+            case MicrophoneProblem.NoMicrophone:
+                voiceProblem.Set(T("No microphone is attached to this PC."), Ui.IconWarning, Tone.Warning);
+                break;
+            case MicrophoneProblem.Failed:
+                voiceProblem.Set(T("Without the microphone, God's Camera cannot tell when you start to speak."), Ui.IconWarning, Tone.Warning);
+                break;
+        }
         styleHint.Set(state.LoopStyle switch
         {
             LoopStyle.Forward => T("Plays to the end, then fades back to the start."),

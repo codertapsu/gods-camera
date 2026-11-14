@@ -41,7 +41,7 @@ pub use windows::{native, scan_platform};
 mod windows {
     use super::{try_out_secrets, AppConfig, ScanPlatform, ScannerConfig, Secrets};
     use crate::faces::{new_key, FaceError, KeyStore};
-    use crate::model::{CameraChoice, CaptureFrom, OnFrame, Platform, SourceProblem, VirtualCamera};
+    use crate::model::{CameraChoice, CaptureFrom, MicrophoneProblem, OnFrame, OnSound, Platform, SourceProblem, VirtualCamera};
     use crate::scanner::{Announce, NetworkAccess};
     use gc_camera::Output;
     use gc_win::{Announced, Announcement, CameraKeeper, CameraOutput, Capture, CaptureSource, Credential, Feed, FeedError};
@@ -174,6 +174,15 @@ mod windows {
                 Err(_) if from_file => Err(SourceProblem::FileUnreadable),
                 Err(error) if error.refused() => Err(SourceProblem::CameraRefused),
                 Err(_) => Err(SourceProblem::CameraUnavailable),
+            }
+        }
+
+        fn listen(&self, mut on_sound: OnSound) -> Result<Box<dyn Send>, MicrophoneProblem> {
+            match gc_win::listen(move |samples, seconds| on_sound(samples, seconds)) {
+                Ok(listener) => Ok(Box::new(listener)),
+                Err(gc_win::MicrophoneError::NoMicrophone) => Err(MicrophoneProblem::NoMicrophone),
+                Err(gc_win::MicrophoneError::Refused) => Err(MicrophoneProblem::Refused),
+                Err(gc_win::MicrophoneError::Failed(_)) => Err(MicrophoneProblem::Failed),
             }
         }
     }

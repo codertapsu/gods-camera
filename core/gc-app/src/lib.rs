@@ -13,6 +13,7 @@ pub mod platform;
 pub mod scanner;
 pub mod secrets;
 pub mod settings;
+pub mod voice;
 
 pub use model::{AppConfig, AppState, DesktopApp, Platform};
 pub use scanner::{Scanner, ScannerConfig, ScannerState};

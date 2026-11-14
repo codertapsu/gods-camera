@@ -16,6 +16,6 @@ pub mod thumbnail;
 
 pub use badge::Badge;
 pub use clip::{Clip, ClipDecoder, ClipError, ClipLibrary, ClipRecorder, ClipSummary};
-pub use engine::{CameraEngine, Mode, Output, PreviewInfo, Settings, Status, SwapReport, SwapStage, Swapped, SwappedFace};
+pub use engine::{CameraEngine, LoopStopper, Mode, Output, PreviewInfo, Settings, Status, SwapReport, SwapStage, Swapped, SwappedFace};
 pub use looping::{LoopMode, LoopPoints, LoopSequencer, LoopStep};
 pub use thumbnail::Thumbnail;

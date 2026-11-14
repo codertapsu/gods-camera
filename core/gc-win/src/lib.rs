@@ -12,7 +12,8 @@
 //!
 //! The scanner's hub needs three more things from Windows, in `network`:
 //! the computer's name, an announcement of the hub on the local network, and
-//! what Windows Firewall will do when a phone calls.
+//! what Windows Firewall will do when a phone calls. And `microphone`
+//! listens, for going back to live when the user starts to speak.
 //!
 //! On every other system this crate is empty.
 #![cfg(windows)]
@@ -20,6 +21,7 @@
 mod camera;
 mod feed;
 mod media;
+mod microphone;
 mod network;
 mod output;
 pub mod protocol;
@@ -28,6 +30,7 @@ mod vault;
 pub use camera::{CameraError, CameraKeeper, VirtualCamera};
 pub use feed::{now_100ns, Feed, FeedError, FeedStats};
 pub use media::{cameras, CameraDevice, Capture, CaptureError, CaptureSource, OnFrame};
+pub use microphone::{listen, Listener, MicrophoneError};
 pub use network::{addresses, computer_name, firewall, Announced, Announcement, FirewallAnswer, RULE_PRIVATE, RULE_PUBLIC, SERVICE_TYPE};
 pub use output::CameraOutput;
 pub use protocol::Wanted;

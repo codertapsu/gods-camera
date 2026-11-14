@@ -3,8 +3,8 @@
 
 use gc_app::faces::{FaceError, FindFace, FoundFace, KeyStore};
 use gc_app::model::{
-    AppConfig, AppState, CameraChoice, CaptureFrom, DesktopApp, EngineMode, FaceConsent, FaceNotice, OnFrame, Platform, SourceProblem,
-    SwapState, VirtualCamera,
+    AppConfig, AppState, CameraChoice, CaptureFrom, DesktopApp, EngineMode, FaceConsent, FaceNotice, MicrophoneProblem, OnFrame, OnSound,
+    Platform, SourceProblem, SwapState, VirtualCamera,
 };
 use gc_app::settings::{LoopStyle, Quality, SourceKind};
 use gc_camera::Output;
@@ -75,10 +75,34 @@ impl Drop for Delivering {
     }
 }
 
+/// A stand-in for the microphone: quiet, or "speech" while `speaking` is set.
+#[derive(Clone, Default)]
+struct Ears {
+    speaking: Arc<AtomicBool>,
+    /// The microphone is refused, as Windows' privacy settings would.
+    refuse: Arc<AtomicBool>,
+    /// How often the app asked to listen, and how many listeners are open now.
+    asked: Arc<AtomicU64>,
+    open: Arc<AtomicU64>,
+}
+
+/// Counts itself out of `Ears::open` when the app drops it.
+struct Listening {
+    _delivering: Delivering,
+    open: Arc<AtomicU64>,
+}
+
+impl Drop for Listening {
+    fn drop(&mut self) {
+        self.open.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 struct Stand {
     camera: Camera,
     keys: Keys,
     attached: Attached,
+    ears: Ears,
     started: Instant,
 }
 
@@ -128,6 +152,29 @@ impl Platform for Stand {
         });
         Ok(Box::new(Delivering { stop, thread: Some(thread) }))
     }
+
+    fn listen(&self, mut on_sound: OnSound) -> Result<Box<dyn Send>, MicrophoneProblem> {
+        self.ears.asked.fetch_add(1, Ordering::Relaxed);
+        if self.ears.refuse.load(Ordering::Relaxed) {
+            return Err(MicrophoneProblem::Refused);
+        }
+        self.ears.open.fetch_add(1, Ordering::Relaxed);
+        let stop = Arc::new(AtomicBool::new(false));
+        let (stopped, speaking) = (Arc::clone(&stop), Arc::clone(&self.ears.speaking));
+        // Blocks of 20 ms, as a microphone delivers them, as fast as the test can take them.
+        let thread = std::thread::spawn(move || {
+            let mut block = vec![0.0f32; 960];
+            while !stopped.load(Ordering::Acquire) {
+                let loudness = if speaking.load(Ordering::Relaxed) { 0.3 } else { 0.002 };
+                for (n, sample) in block.iter_mut().enumerate() {
+                    *sample = loudness * (n as f32 * 0.07).sin();
+                }
+                on_sound(&block, 0.02);
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        Ok(Box::new(Listening { _delivering: Delivering { stop, thread: Some(thread) }, open: Arc::clone(&self.ears.open) }))
+    }
 }
 
 /// Finds a "face" by the colour of a picture's first pixel: red is one
@@ -155,6 +202,7 @@ struct Fixture {
     camera: Camera,
     keys: Keys,
     attached: Attached,
+    ears: Ears,
     folder: PathBuf,
 }
 
@@ -162,13 +210,18 @@ impl Fixture {
     fn new(name: &str) -> Self {
         let folder = std::env::temp_dir().join(format!("gc-app-model-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
-        Self::open(folder, Camera::default(), Keys::default(), Attached::default())
+        Self::open(folder, Camera::default(), Keys::default(), Attached::default(), Ears::default())
     }
 
     /// Start the app on a data folder, as after closing and opening it again.
-    fn open(folder: PathBuf, camera: Camera, keys: Keys, attached: Attached) -> Self {
-        let platform =
-            Arc::new(Stand { camera: camera.clone(), keys: keys.clone(), attached: attached.clone(), started: Instant::now() });
+    fn open(folder: PathBuf, camera: Camera, keys: Keys, attached: Attached, ears: Ears) -> Self {
+        let platform = Arc::new(Stand {
+            camera: camera.clone(),
+            keys: keys.clone(),
+            attached: attached.clone(),
+            ears: ears.clone(),
+            started: Instant::now(),
+        });
         let config = AppConfig {
             data_dir: folder.join("data").to_string_lossy().into_owned(),
             // No model files anywhere near here.
@@ -178,13 +231,14 @@ impl Fixture {
         };
         let app = DesktopApp::with_platform(config, platform);
         app.set_face_finder(Box::new(ByColour));
-        Self { app, camera, keys, attached, folder }
+        Self { app, camera, keys, attached, ears, folder }
     }
 
     fn reopen(self) -> Self {
-        let (folder, camera, keys, attached) = (self.folder.clone(), self.camera.clone(), self.keys.clone(), self.attached.clone());
+        let (folder, camera, keys, attached, ears) =
+            (self.folder.clone(), self.camera.clone(), self.keys.clone(), self.attached.clone(), self.ears.clone());
         drop(self);
-        Self::open(folder, camera, keys, attached)
+        Self::open(folder, camera, keys, attached, ears)
     }
 
     /// The brightness of the picture the window would show.
@@ -329,6 +383,56 @@ fn a_loop_is_recorded_played_saved_and_found_again() {
     let state = fixture.app.state();
     assert!(state.saved_clips.is_empty());
     assert_eq!(state.clip.map(|clip| clip.saved), Some(false));
+}
+
+#[test]
+fn speaking_while_a_loop_plays_goes_back_to_live() {
+    let fixture = Fixture::new("voice");
+    let ears = fixture.ears.clone();
+    fixture.app.set_source(SourceKind::Pattern, None);
+    fixture.until("the live picture", |state| state.can_record && state.frames_out > 3);
+    fixture.app.toggle_recording();
+    fixture.until("half a second recorded", |state| state.is_recording && state.recorded_seconds >= 0.5);
+    fixture.app.toggle_recording();
+    fixture.until("the clip", |state| state.clip.is_some());
+
+    // With the option off, a loop plays and the microphone stays closed.
+    fixture.app.toggle_loop();
+    let state = fixture.until("the loop", |state| state.mode == EngineMode::Looping);
+    assert!(!state.back_to_live_on_voice && !state.listening);
+    assert_eq!(ears.asked.load(Ordering::Relaxed), 0);
+
+    // Turned on while the loop plays, the microphone opens; quiet keeps the loop.
+    fixture.app.set_back_to_live_on_voice(true);
+    let state = fixture.until("the microphone to open", |state| state.listening);
+    assert!(state.back_to_live_on_voice && state.microphone_problem.is_none());
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(fixture.app.state().mode, EngineMode::Looping);
+
+    // Speech ends the loop by itself, and the microphone is closed again.
+    ears.speaking.store(true, Ordering::Relaxed);
+    fixture.until("the live picture again", |state| state.mode == EngineMode::Live && !state.listening);
+    fixture.until("the microphone to close", |_| ears.open.load(Ordering::Relaxed) == 0);
+    ears.speaking.store(false, Ordering::Relaxed);
+    assert_eq!(ears.asked.load(Ordering::Relaxed), 1);
+
+    // A refused microphone is said, and not asked for again while that loop plays.
+    ears.refuse.store(true, Ordering::Relaxed);
+    fixture.app.toggle_loop();
+    fixture.until("the loop, without a microphone", |state| {
+        state.mode == EngineMode::Looping && state.microphone_problem == Some(MicrophoneProblem::Refused)
+    });
+    for _ in 0..30 {
+        assert!(!fixture.app.state().listening);
+    }
+    assert_eq!(ears.asked.load(Ordering::Relaxed), 2);
+    assert_eq!(fixture.app.state().mode, EngineMode::Looping);
+    fixture.app.toggle_loop();
+    fixture.until("live once more", |state| state.mode == EngineMode::Live && state.microphone_problem.is_none());
+
+    // The option is remembered.
+    let fixture = fixture.reopen();
+    assert!(fixture.app.state().back_to_live_on_voice);
 }
 
 #[test]

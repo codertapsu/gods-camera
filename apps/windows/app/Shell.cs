@@ -609,6 +609,8 @@ internal sealed class Shell : Window
                 }
             }
             if (demoPhoto != null || scannerDemo) await DemonstrateScanner(folder);
+            // The diagnostics report as Settings saves it, to read beside the pictures.
+            await File.WriteAllTextAsync(System.IO.Path.Combine(folder, "diagnostics.txt"), Diagnostics.Report(this));
         }
         catch (Exception problem)
         {

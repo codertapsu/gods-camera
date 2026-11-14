@@ -131,7 +131,7 @@ internal sealed class PreviewPane : Grid
 
         // The badges are made anew only when what they say changes.
         var recorded = state.IsRecording ? (int)state.RecordedSeconds : -1;
-        var key = $"{state.Mode}|{state.Swapping}|{state.PictureHidden}|{recorded}";
+        var key = $"{state.Mode}|{state.Swapping}|{state.PictureHidden}|{recorded}|{state.Listening}";
         if (key != badgeKey)
         {
             badgeKey = key;
@@ -140,6 +140,7 @@ internal sealed class PreviewPane : Grid
             {
                 case EngineMode.Looping:
                     badges.Children.Add(Badge(T("LOOPING"), Ui.Red));
+                    if (state.Listening) badges.Children.Add(Badge(T("LISTENING"), Ui.Indigo));
                     break;
                 case EngineMode.Live:
                     badges.Children.Add(Badge(T("LIVE"), Ui.Green));
