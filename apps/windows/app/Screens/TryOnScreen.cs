@@ -38,6 +38,10 @@ internal sealed class TryOnScreen : UserControl, IScreen
     private string galleryKey = "";
     private string? shown;
 
+    private readonly StackPanel wardrobe = new() { Orientation = Orientation.Horizontal, Spacing = 10 };
+    private readonly Hint wardrobeEmpty = new();
+    private string wardrobeKey = "";
+
     private ulong task;
     private readonly DispatcherQueueTimer follow;
 
@@ -81,6 +85,24 @@ internal sealed class TryOnScreen : UserControl, IScreen
             T("A garment"), Ui.IconShirt, photos,
             new Hint(T("A photo of the person from head to knee, standing straight, works best; the garment on its own, laid flat or on a hanger.")),
             tryOn));
+
+        // The wardrobe: garments kept for trying on, named and tagged by the model.
+        var addGarments = Ui.IconButton(Ui.IconAdd, T("Add to the wardrobe…"), async () =>
+        {
+            var files = await shell.PickFiles(true, PhotoTypes);
+            foreach (var file in files)
+            {
+                var problem = shell.Assistant.AddToWardrobe(file);
+                if (problem != null) Log.Write($"adding to the wardrobe: {problem}");
+            }
+            wardrobeKey = "";
+            Refresh();
+        });
+        wardrobeEmpty.Set(T("Keep photos of your clothes here, to try them on with one click. A model names and tags each one, where Settings lets it see the photos."));
+        column.Children.Add(new Card(
+            T("Wardrobe"), Ui.IconSaved, wardrobeEmpty,
+            new ScrollViewer { Content = wardrobe, HorizontalScrollMode = ScrollMode.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Disabled },
+            addGarments));
 
         var chips = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         foreach (var preset in Styles)
@@ -152,6 +174,7 @@ internal sealed class TryOnScreen : UserControl, IScreen
                     ? T("Pictures are made by {0} · {1}.", model.Provider, model.Model)
                     : T("Try-on sends the photos to {0}. Allow that in Settings, under AI models, first.", model.Provider));
         }
+        RefreshWardrobe();
         var files = Directory.Exists(PicturesFolder)
             ? Directory.GetFiles(PicturesFolder, "*.png").OrderByDescending(File.GetLastWriteTimeUtc).Take(12).ToArray()
             : Array.Empty<string>();
@@ -168,6 +191,58 @@ internal sealed class TryOnScreen : UserControl, IScreen
             gallery.Children.Add(button);
         }
         if (shown == null && files.Length > 0) Show(files[0]);
+    }
+
+    /// <summary>The garments kept, each a button that chooses it for trying on.</summary>
+    private void RefreshWardrobe()
+    {
+        var items = shell.Assistant.Wardrobe();
+        var key = string.Join("|", items.Select(item => $"{item.Id}:{item.Name}:{string.Join(",", item.Tags)}")) + "#" + garment;
+        if (key == wardrobeKey) return;
+        wardrobeKey = key;
+        wardrobeEmpty.Visible(items.Length == 0);
+        wardrobe.Children.Clear();
+        foreach (var item in items)
+        {
+            var picture = new Image { Source = new BitmapImage(new Uri(item.Picture)) { DecodePixelWidth = 200 }, Width = 96, Height = 120, Stretch = Stretch.UniformToFill };
+            var words = Ui.Column(
+                2,
+                Ui.Text(item.Name.Length > 0 ? item.Name : T("Being looked at…"), 12, item.Picture == garment),
+                Ui.Secondary(string.Join(" · ", item.Tags), 11));
+            words.Width = 110;
+            var choose = new Button { Content = Ui.Column(6, picture, words), Padding = new Thickness(6) };
+            var path = item.Picture;
+            choose.Click += (_, _) =>
+            {
+                garment = path;
+                garmentPicture.Source = new BitmapImage(new Uri(path));
+                wardrobeKey = "";
+                Refresh();
+            };
+            ToolTipService.SetToolTip(choose, T("Try this on"));
+            var id = item.Id;
+            var menu = new MenuFlyout();
+            var remove = new MenuFlyoutItem { Text = T("Take out of the wardrobe") };
+            remove.Click += (_, _) =>
+            {
+                shell.Assistant.RemoveFromWardrobe(id);
+                if (garment == path)
+                {
+                    garment = null;
+                    garmentPicture.Source = null;
+                }
+                wardrobeKey = "";
+                Refresh();
+            };
+            menu.Items.Add(remove);
+            choose.ContextFlyout = menu;
+            if (item.Picture == garment)
+            {
+                choose.BorderBrush = Ui.Brush("AccentFillColorDefaultBrush");
+                choose.BorderThickness = new Thickness(2);
+            }
+            wardrobe.Children.Add(choose);
+        }
     }
 
     private void Show(string file)

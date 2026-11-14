@@ -16,7 +16,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use gc_llm::{ApiKey, ChangeKind, DocOptions, Feature, Gateway, ImageRequest, Language, LlmError, Message, Picture, Provider, Request, Target};
+use gc_llm::{
+    ApiKey, ChangeKind, DocOptions, Feature, Gateway, ImageRequest, Language, LlmError, Message,
+    Picture, Provider, Request, Target,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::secrets::Secrets;
@@ -56,7 +59,11 @@ impl CloudProvider {
         }
     }
 
-    const ALL: [CloudProvider; 3] = [CloudProvider::Anthropic, CloudProvider::OpenAi, CloudProvider::Gemini];
+    const ALL: [CloudProvider; 3] = [
+        CloudProvider::Anthropic,
+        CloudProvider::OpenAi,
+        CloudProvider::Gemini,
+    ];
 }
 
 /// The features that may use a model, each with its own cloud switch.
@@ -115,6 +122,18 @@ pub struct ModelList {
     pub problem: Option<AssistantProblem>,
 }
 
+/// A garment kept for try-on, with what a model saw in its photo.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct WardrobeItem {
+    pub id: String,
+    /// The photo, kept in the app's data.
+    pub picture: String,
+    /// A short name, such as "Blue linen shirt"; empty until a model has looked.
+    pub name: String,
+    /// Category, colours, material and season, as words.
+    pub tags: Vec<String>,
+}
+
 /// What went wrong, as the screens put it to the user.
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum AssistantProblem {
@@ -123,18 +142,28 @@ pub enum AssistantProblem {
     /// The provider turned the key down.
     KeyRefused,
     /// Too many requests; wait this many seconds, when the provider said.
-    RateLimited { seconds: Option<u32> },
+    RateLimited {
+        seconds: Option<u32>,
+    },
     /// The provider is busy or could not be reached; try again later.
-    Temporary { message: String },
+    Temporary {
+        message: String,
+    },
     /// The provider did not accept the request: its own words.
-    BadRequest { message: String },
+    BadRequest {
+        message: String,
+    },
     /// The model declined.
-    Refused { model: String },
+    Refused {
+        model: String,
+    },
     /// This feature stays on the user's devices, and the provider is in the cloud.
     CloudNotAllowed,
     /// Stopped by the user.
     Cancelled,
-    Other { message: String },
+    Other {
+        message: String,
+    },
 }
 
 impl From<LlmError> for AssistantProblem {
@@ -142,13 +171,19 @@ impl From<LlmError> for AssistantProblem {
         match error {
             LlmError::NoKey { .. } => AssistantProblem::NoKey,
             LlmError::KeyRefused { .. } => AssistantProblem::KeyRefused,
-            LlmError::RateLimited { retry_after, .. } => AssistantProblem::RateLimited { seconds: retry_after.map(|wait| wait.as_secs() as u32) },
+            LlmError::RateLimited { retry_after, .. } => AssistantProblem::RateLimited {
+                seconds: retry_after.map(|wait| wait.as_secs() as u32),
+            },
             LlmError::BadRequest { message, .. } => AssistantProblem::BadRequest { message },
             LlmError::Refused { model, .. } => AssistantProblem::Refused { model },
             LlmError::CloudNotAllowed { .. } => AssistantProblem::CloudNotAllowed,
             LlmError::Cancelled => AssistantProblem::Cancelled,
-            error if error.is_temporary() => AssistantProblem::Temporary { message: error.to_string() },
-            error => AssistantProblem::Other { message: error.to_string() },
+            error if error.is_temporary() => AssistantProblem::Temporary {
+                message: error.to_string(),
+            },
+            error => AssistantProblem::Other {
+                message: error.to_string(),
+            },
         }
     }
 }
@@ -158,15 +193,23 @@ impl From<LlmError> for AssistantProblem {
 pub enum DocumentTask {
     /// Fix what text recognition got wrong, and nothing else.
     CleanUp,
-    Summary { english: bool },
+    Summary {
+        english: bool,
+    },
     /// Into English, or into Vietnamese.
-    Translate { english: bool },
-    Ask { question: String },
+    Translate {
+        english: bool,
+    },
+    Ask {
+        question: String,
+    },
     /// The title, date, people, places, organisations, amounts and contacts the document names.
     KeyFacts,
     /// Read the document's photos again with a model that sees pictures:
     /// for pages the text reader could not read, such as handwriting.
-    ReadPhotos { photos: Vec<String> },
+    ReadPhotos {
+        photos: Vec<String>,
+    },
 }
 
 /// A picture to make from photos (Phase 9).
@@ -248,22 +291,38 @@ pub struct Assistant {
 }
 
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 impl Assistant {
     /// The assistant on the folder `data_dir`, with `secrets` where keys are
     /// kept. Tests bring their own. `utc_offset` is how many minutes the
     /// user's clock is ahead of UTC, so that the meter's days are theirs.
-    pub fn with_secrets(data_dir: &Path, secrets: Arc<dyn Secrets>, utc_offset: i32) -> Result<Arc<Self>, String> {
+    pub fn with_secrets(
+        data_dir: &Path,
+        secrets: Arc<dyn Secrets>,
+        utc_offset: i32,
+    ) -> Result<Arc<Self>, String> {
         let folder = data_dir.join("Assistant");
-        let gateway = Gateway::open(&folder).map_err(|error| error.to_string())?.with_utc_offset(utc_offset);
+        let gateway = Gateway::open(&folder)
+            .map_err(|error| error.to_string())?
+            .with_utc_offset(utc_offset);
         for cloud in CloudProvider::ALL {
-            let key = secrets.read(cloud.secret()).ok().flatten().and_then(|bytes| String::from_utf8(bytes).ok()).and_then(|text| ApiKey::new(text).ok());
+            let key = secrets
+                .read(cloud.secret())
+                .ok()
+                .flatten()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .and_then(|text| ApiKey::new(text).ok());
             gateway.set_provider(cloud.provider(key));
         }
         gateway.set_provider(Provider::ollama());
-        let kept = std::fs::read(folder.join("choice.json")).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
+        let kept = std::fs::read(folder.join("choice.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
         Ok(Arc::new(Self {
             gateway: Arc::new(gateway),
             secrets,
@@ -280,9 +339,33 @@ impl Assistant {
         self.gateway.set_provider(provider);
     }
 
+    fn read_wardrobe(&self) -> Vec<WardrobeItem> {
+        let _guard = WARDROBE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::fs::read(self.folder.join("Wardrobe").join("items.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    }
+
+    fn write_wardrobe(&self, items: &[WardrobeItem]) {
+        let _guard = WARDROBE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _ = std::fs::create_dir_all(self.folder.join("Wardrobe"));
+        let _ = std::fs::write(
+            self.folder.join("Wardrobe").join("items.json"),
+            serde_json::to_vec_pretty(items).unwrap_or_default(),
+        );
+    }
+
     fn keep(&self, kept: &Kept) {
         let _ = std::fs::create_dir_all(&self.folder);
-        let _ = std::fs::write(self.folder.join("choice.json"), serde_json::to_vec_pretty(kept).unwrap_or_default());
+        let _ = std::fs::write(
+            self.folder.join("choice.json"),
+            serde_json::to_vec_pretty(kept).unwrap_or_default(),
+        );
     }
 
     /// The model for document work: the user's choice, or the first provider with a key.
@@ -294,7 +377,11 @@ impl Assistant {
             .providers()
             .into_iter()
             .filter(|provider| provider.has_key && !provider.local)
-            .find_map(|provider| provider.default_model.map(|model| Target::new(provider.name, model)))
+            .find_map(|provider| {
+                provider
+                    .default_model
+                    .map(|model| Target::new(provider.name, model))
+            })
     }
 
     fn image_target(&self) -> Option<Target> {
@@ -305,16 +392,34 @@ impl Assistant {
             .providers()
             .into_iter()
             .filter(|provider| provider.has_key)
-            .find_map(|provider| provider.default_image_model.map(|model| Target::new(provider.name, model)))
+            .find_map(|provider| {
+                provider
+                    .default_image_model
+                    .map(|model| Target::new(provider.name, model))
+            })
     }
 
     /// Run `work` on a thread of its own, as task number `id`.
-    fn run(&self, work: impl FnOnce(&Gateway, &mut dyn FnMut(usize, usize) -> bool) -> Result<TaskResult, LlmError> + Send + 'static) -> u64 {
+    fn run(
+        &self,
+        work: impl FnOnce(&Gateway, &mut dyn FnMut(usize, usize) -> bool) -> Result<TaskResult, LlmError>
+            + Send
+            + 'static,
+    ) -> u64 {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let stop = Arc::new(AtomicBool::new(false));
         locked(&self.tasks).insert(
             id,
-            Task { state: TaskState { running: true, done: 0, total: 0, result: None, problem: None }, stop: Arc::clone(&stop) },
+            Task {
+                state: TaskState {
+                    running: true,
+                    done: 0,
+                    total: 0,
+                    result: None,
+                    problem: None,
+                },
+                stop: Arc::clone(&stop),
+            },
         );
         let (gateway, tasks) = (Arc::clone(&self.gateway), Arc::clone(&self.tasks));
         std::thread::spawn(move || {
@@ -349,8 +454,12 @@ impl Assistant {
         match Self::with_secrets(Path::new(&data_dir), Arc::clone(&secrets), utc_offset) {
             Ok(assistant) => assistant,
             // A folder that cannot be written is no reason not to start: the assistant then keeps nothing.
-            Err(_) => Self::with_secrets(&std::env::temp_dir().join("GodsCamera-assistant"), secrets, utc_offset)
-                .expect("the temporary folder can be written"),
+            Err(_) => Self::with_secrets(
+                &std::env::temp_dir().join("GodsCamera-assistant"),
+                secrets,
+                utc_offset,
+            )
+            .expect("the temporary folder can be written"),
         }
     }
 
@@ -360,9 +469,19 @@ impl Assistant {
             .gateway
             .providers()
             .into_iter()
-            .map(|provider| ProviderStatus { name: provider.name, local: provider.local, has_key: provider.has_key, default_model: provider.default_model })
+            .map(|provider| ProviderStatus {
+                name: provider.name,
+                local: provider.local,
+                has_key: provider.has_key,
+                default_model: provider.default_model,
+            })
             .collect();
-        let order = |name: &str| ["anthropic", "openai", "gemini", "ollama"].iter().position(|known| *known == name).unwrap_or(9);
+        let order = |name: &str| {
+            ["anthropic", "openai", "gemini", "ollama"]
+                .iter()
+                .position(|known| *known == name)
+                .unwrap_or(9)
+        };
         providers.sort_by_key(|provider| order(&provider.name));
         providers
     }
@@ -375,7 +494,11 @@ impl Assistant {
             Ok(checked) => checked,
             Err(error) => return Some(error.to_string()),
         };
-        if let Err(problem) = self.secrets.write(provider.secret(), key.as_bytes(), "A key God's Camera uses for a language or image model.") {
+        if let Err(problem) = self.secrets.write(
+            provider.secret(),
+            key.as_bytes(),
+            "A key God's Camera uses for a language or image model.",
+        ) {
             return Some(problem);
         }
         self.gateway.set_provider(provider.provider(Some(checked)));
@@ -392,21 +515,39 @@ impl Assistant {
     pub fn models(&self, provider: String) -> ModelList {
         match self.gateway.models(&provider) {
             Ok(models) => ModelList {
-                models: models.iter().filter(|model| model.kind == gc_llm::ModelKind::Text).map(|model| model.id.clone()).collect(),
-                image_models: models.iter().filter(|model| model.kind == gc_llm::ModelKind::Image).map(|model| model.id.clone()).collect(),
+                models: models
+                    .iter()
+                    .filter(|model| model.kind == gc_llm::ModelKind::Text)
+                    .map(|model| model.id.clone())
+                    .collect(),
+                image_models: models
+                    .iter()
+                    .filter(|model| model.kind == gc_llm::ModelKind::Image)
+                    .map(|model| model.id.clone())
+                    .collect(),
                 problem: None,
             },
-            Err(error) => ModelList { models: Vec::new(), image_models: Vec::new(), problem: Some(error.into()) },
+            Err(error) => ModelList {
+                models: Vec::new(),
+                image_models: Vec::new(),
+                problem: Some(error.into()),
+            },
         }
     }
 
     /// The model used for documents, and the one for pictures.
     pub fn text_model(&self) -> Option<ModelChoice> {
-        self.text_target().map(|target| ModelChoice { provider: target.provider, model: target.model })
+        self.text_target().map(|target| ModelChoice {
+            provider: target.provider,
+            model: target.model,
+        })
     }
 
     pub fn image_model(&self) -> Option<ModelChoice> {
-        self.image_target().map(|target| ModelChoice { provider: target.provider, model: target.model })
+        self.image_target().map(|target| ModelChoice {
+            provider: target.provider,
+            model: target.model,
+        })
     }
 
     pub fn set_text_model(&self, choice: Option<ModelChoice>) {
@@ -433,12 +574,23 @@ impl Assistant {
     /// Start work on a document's text. Follow it with `task`.
     pub fn start_document(&self, task: DocumentTask, text: String) -> u64 {
         let Some(target) = self.text_target() else {
-            return self.run(|_, _| Err(LlmError::NoKey { provider: CloudProvider::Anthropic.name().into() }));
+            return self.run(|_, _| {
+                Err(LlmError::NoKey {
+                    provider: CloudProvider::Anthropic.name().into(),
+                })
+            });
         };
         self.run(move |gateway, progress| {
             let options = DocOptions::default();
             let model = format!("{}/{}", target.provider, target.model);
-            let plain = |text: String| TaskResult { text, changes: Vec::new(), flagged: false, quotes: Vec::new(), picture: None, model: model.clone() };
+            let plain = |text: String| TaskResult {
+                text,
+                changes: Vec::new(),
+                flagged: false,
+                quotes: Vec::new(),
+                picture: None,
+                model: model.clone(),
+            };
             match task {
                 DocumentTask::CleanUp => {
                     let cleaned = gateway.clean_up(&target, &text, &options, Some(progress))?;
@@ -456,22 +608,63 @@ impl Assistant {
                             text: change.text.clone(),
                         })
                         .collect();
-                    Ok(TaskResult { text: cleaned.text, changes, flagged: cleaned.flagged, quotes: Vec::new(), picture: None, model })
+                    Ok(TaskResult {
+                        text: cleaned.text,
+                        changes,
+                        flagged: cleaned.flagged,
+                        quotes: Vec::new(),
+                        picture: None,
+                        model,
+                    })
                 }
                 DocumentTask::Summary { english } => {
-                    let language = if english { Language::English } else { Language::Vietnamese };
-                    Ok(plain(gateway.summarise(&target, &text, language, &options, Some(progress))?))
+                    let language = if english {
+                        Language::English
+                    } else {
+                        Language::Vietnamese
+                    };
+                    Ok(plain(gateway.summarise(
+                        &target,
+                        &text,
+                        language,
+                        &options,
+                        Some(progress),
+                    )?))
                 }
                 DocumentTask::Translate { english } => {
-                    let language = if english { Language::English } else { Language::Vietnamese };
-                    Ok(plain(gateway.translate(&target, &text, language, &options, Some(progress))?))
+                    let language = if english {
+                        Language::English
+                    } else {
+                        Language::Vietnamese
+                    };
+                    Ok(plain(gateway.translate(
+                        &target,
+                        &text,
+                        language,
+                        &options,
+                        Some(progress),
+                    )?))
                 }
                 DocumentTask::Ask { question } => {
-                    let answer = gateway.ask(&target, &text, &question, &options, Some(progress))?;
-                    Ok(TaskResult { text: answer.text, changes: Vec::new(), flagged: false, quotes: answer.quotes, picture: None, model })
+                    let answer =
+                        gateway.ask(&target, &text, &question, &options, Some(progress))?;
+                    Ok(TaskResult {
+                        text: answer.text,
+                        changes: Vec::new(),
+                        flagged: false,
+                        quotes: answer.quotes,
+                        picture: None,
+                        model,
+                    })
                 }
                 DocumentTask::KeyFacts => {
-                    let facts = gateway.extract(&target, &text, &key_facts_schema(), &options, Some(progress))?;
+                    let facts = gateway.extract(
+                        &target,
+                        &text,
+                        &key_facts_schema(),
+                        &options,
+                        Some(progress),
+                    )?;
                     Ok(plain(key_facts_text(&facts)))
                 }
                 DocumentTask::ReadPhotos { photos } => {
@@ -481,9 +674,15 @@ impl Assistant {
                         if !progress(done, photos.len()) {
                             return Err(LlmError::Cancelled);
                         }
-                        let bytes = std::fs::read(photo).map_err(|error| LlmError::InvalidInput { message: format!("{photo} cannot be read: {error}") })?;
+                        let bytes =
+                            std::fs::read(photo).map_err(|error| LlmError::InvalidInput {
+                                message: format!("{photo} cannot be read: {error}"),
+                            })?;
                         let mut request = Request::new(&target.model, "").with_system(READ_PHOTO);
-                        request.messages = vec![Message::user_with_pictures("The photo of the page:", vec![Picture::new(bytes)?])];
+                        request.messages = vec![Message::user_with_pictures(
+                            "The photo of the page:",
+                            vec![Picture::new(bytes)?],
+                        )];
                         request.max_tokens = 8000;
                         let reply = gateway.chat(Feature::HardPages, &target.provider, &request)?;
                         pages.push(gc_llm::text::nfc(reply.text.trim()));
@@ -498,22 +697,50 @@ impl Assistant {
     /// Start making a picture from photos (Phase 9). Follow it with `task`; the picture is saved in the app's data.
     pub fn start_picture(&self, task: PictureTask) -> u64 {
         let Some(target) = self.image_target() else {
-            return self.run(|_, _| Err(LlmError::NoKey { provider: CloudProvider::OpenAi.name().into() }));
+            return self.run(|_, _| {
+                Err(LlmError::NoKey {
+                    provider: CloudProvider::OpenAi.name().into(),
+                })
+            });
         };
         let out = self.folder.join("Pictures");
         self.run(move |gateway, progress| {
-            let read = |path: &str| std::fs::read(path).map_err(|error| LlmError::InvalidInput { message: format!("{path} cannot be read: {error}") });
-            let (prompt, photos) = match &task {
-                PictureTask::TryOn { person, garment } => (TRY_ON.to_string(), vec![read(person)?, read(garment)?]),
-                PictureTask::Hairstyle { person, style } => (format!("{HAIRSTYLE}\n\nThe hairstyle: {}", style.trim()), vec![read(person)?]),
+            let read = |path: &str| {
+                std::fs::read(path).map_err(|error| LlmError::InvalidInput {
+                    message: format!("{path} cannot be read: {error}"),
+                })
             };
-            let pictures = photos.into_iter().map(Picture::new).collect::<Result<Vec<_>, _>>()?;
+            let (prompt, photos) = match &task {
+                PictureTask::TryOn { person, garment } => {
+                    (TRY_ON.to_string(), vec![read(person)?, read(garment)?])
+                }
+                PictureTask::Hairstyle { person, style } => (
+                    format!("{HAIRSTYLE}\n\nThe hairstyle: {}", style.trim()),
+                    vec![read(person)?],
+                ),
+            };
+            let pictures = photos
+                .into_iter()
+                .map(Picture::new)
+                .collect::<Result<Vec<_>, _>>()?;
             progress(0, 1);
-            let made = gateway.generate_image(Feature::TryOn, &target.provider, &ImageRequest { model: target.model.clone(), prompt, pictures })?;
+            let made = gateway.generate_image(
+                Feature::TryOn,
+                &target.provider,
+                &ImageRequest {
+                    model: target.model.clone(),
+                    prompt,
+                    pictures,
+                },
+            )?;
             let _ = std::fs::create_dir_all(&out);
-            let made_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_millis());
+            let made_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_millis());
             let file = out.join(format!("{made_at}.png"));
-            std::fs::write(&file, &made.png).map_err(|error| LlmError::Storage { message: error.to_string() })?;
+            std::fs::write(&file, &made.png).map_err(|error| LlmError::Storage {
+                message: error.to_string(),
+            })?;
             progress(1, 1);
             Ok(TaskResult {
                 text: made.text,
@@ -531,7 +758,15 @@ impl Assistant {
         locked(&self.tasks)
             .get(&id)
             .map(|task| task.state.clone())
-            .unwrap_or(TaskState { running: false, done: 0, total: 0, result: None, problem: Some(AssistantProblem::Other { message: "no such task".into() }) })
+            .unwrap_or(TaskState {
+                running: false,
+                done: 0,
+                total: 0,
+                result: None,
+                problem: Some(AssistantProblem::Other {
+                    message: "no such task".into(),
+                }),
+            })
     }
 
     /// Stop a task after the request it is waiting for.
@@ -555,13 +790,105 @@ impl Assistant {
         let month = format!("{}-01", &today[..7.min(today.len())]);
         let sum = |from: &str| -> (f64, u64, bool) {
             match self.gateway.usage(from, &today) {
-                Ok(report) => (report.total_cost, report.lines.iter().map(|line| line.requests).sum(), !report.unpriced.is_empty()),
+                Ok(report) => (
+                    report.total_cost,
+                    report.lines.iter().map(|line| line.requests).sum(),
+                    !report.unpriced.is_empty(),
+                ),
                 Err(_) => (0.0, 0, false),
             }
         };
         let (today_cost, today_requests, today_unpriced) = sum(&today);
         let (month_cost, month_requests, month_unpriced) = sum(&month);
-        UsageSummary { today_cost, month_cost, today_requests, month_requests, incomplete: today_unpriced || month_unpriced }
+        UsageSummary {
+            today_cost,
+            month_cost,
+            today_requests,
+            month_requests,
+            incomplete: today_unpriced || month_unpriced,
+        }
+    }
+
+    /// The garments kept for try-on, newest first.
+    pub fn wardrobe(&self) -> Vec<WardrobeItem> {
+        let mut items = self.read_wardrobe();
+        items.reverse();
+        items
+    }
+
+    /// Keep a garment's photo for try-on. A model then names it and tags it,
+    /// where the try-on switch lets the photo go to one. `None` when kept;
+    /// otherwise why not.
+    pub fn add_to_wardrobe(&self, photo: String) -> Option<String> {
+        let bytes = match std::fs::read(&photo) {
+            Ok(bytes) => bytes,
+            Err(error) => return Some(format!("{photo} cannot be read: {error}")),
+        };
+        if Picture::new(bytes.clone()).is_err() {
+            return Some("a garment's photo must be a JPEG or PNG file".into());
+        }
+        let folder = self.folder.join("Wardrobe");
+        if let Err(error) = std::fs::create_dir_all(&folder) {
+            return Some(error.to_string());
+        }
+        let made_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis());
+        let id = format!("{made_at}");
+        let extension = if bytes.starts_with(b"\x89PNG") {
+            "png"
+        } else {
+            "jpg"
+        };
+        let picture = folder.join(format!("{id}.{extension}"));
+        if let Err(error) = std::fs::write(&picture, &bytes) {
+            return Some(error.to_string());
+        }
+        let mut items = self.read_wardrobe();
+        items.push(WardrobeItem {
+            id: id.clone(),
+            picture: picture.to_string_lossy().into_owned(),
+            name: String::new(),
+            tags: Vec::new(),
+        });
+        self.write_wardrobe(&items);
+        // The tags come later, from a model, if one may see the photo.
+        if let Some(target) = self.text_target() {
+            let (gateway, wardrobe) = (
+                Arc::clone(&self.gateway),
+                self.folder.join("Wardrobe").join("items.json"),
+            );
+            std::thread::spawn(move || {
+                if let Ok((name, tags)) = describe_garment(&gateway, &target, bytes) {
+                    let _guard = WARDROBE
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let mut items: Vec<WardrobeItem> = std::fs::read(&wardrobe)
+                        .ok()
+                        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+                        .unwrap_or_default();
+                    if let Some(item) = items.iter_mut().find(|item| item.id == id) {
+                        item.name = name;
+                        item.tags = tags;
+                        let _ = std::fs::write(
+                            &wardrobe,
+                            serde_json::to_vec_pretty(&items).unwrap_or_default(),
+                        );
+                    }
+                }
+            });
+        }
+        None
+    }
+
+    /// Take a garment out of the wardrobe, its photo with it.
+    pub fn remove_from_wardrobe(&self, id: String) {
+        let mut items = self.read_wardrobe();
+        if let Some(at) = items.iter().position(|item| item.id == id) {
+            let item = items.remove(at);
+            let _ = std::fs::remove_file(&item.picture);
+            self.write_wardrobe(&items);
+        }
     }
 
     /// Forget the keys, the choices, the meter and the pictures made.
@@ -573,6 +900,70 @@ impl Assistant {
         let _ = std::fs::remove_dir_all(&self.folder);
     }
 }
+
+/// One at a time changes the wardrobe's list.
+static WARDROBE: Mutex<()> = Mutex::new(());
+
+/// A garment's name and tags, as a model that sees pictures describes its photo.
+fn describe_garment(
+    gateway: &Gateway,
+    target: &Target,
+    photo: Vec<u8>,
+) -> Result<(String, Vec<String>), LlmError> {
+    let schema = serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "category", "colours", "material", "season"],
+        "properties": {
+            "name": { "type": "string", "description": "A short name for the garment, such as Blue linen shirt" },
+            "category": { "type": "string", "description": "Shirt, dress, trousers, jacket, shoes, hat, bag, accessory, and so on" },
+            "colours": { "type": "array", "items": { "type": "string" } },
+            "material": { "type": "string", "description": "As far as the photo shows; empty when it cannot be told" },
+            "season": { "type": "string", "description": "Summer, winter, all year, or empty" }
+        }
+    });
+    let mut request = Request::new(&target.model, "")
+        .with_system(DESCRIBE_GARMENT)
+        .with_schema(schema);
+    request.messages = vec![Message::user_with_pictures(
+        "The garment:",
+        vec![Picture::new(photo)?],
+    )];
+    request.max_tokens = 2000;
+    let reply = gateway.chat(Feature::TryOn, &target.provider, &request)?;
+    let facts = reply.json.unwrap_or_default();
+    let word = |key: &str| {
+        facts
+            .get(key)
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .unwrap_or("")
+            .to_string()
+    };
+    let mut tags = vec![word("category")];
+    tags.extend(
+        facts
+            .get("colours")
+            .and_then(|list| list.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|colour| colour.as_str().map(str::to_string)),
+    );
+    tags.push(word("material"));
+    tags.push(word("season"));
+    tags.retain(|tag| !tag.is_empty());
+    Ok((
+        gc_llm::text::nfc(&word("name")),
+        tags.into_iter()
+            .map(|tag| gc_llm::text::nfc(&tag))
+            .collect(),
+    ))
+}
+
+/// What describing a garment asks.
+const DESCRIBE_GARMENT: &str =
+    "You describe a garment or an accessory from its photo, for a wardrobe list. \
+Answer in English, briefly, with what the photo shows and nothing else.";
 
 /// What reading a page from its photo asks of a model that sees pictures.
 const READ_PHOTO: &str = "You read the text in a photo of a page, as a careful typist would. \
@@ -612,11 +1003,26 @@ fn key_facts_schema() -> serde_json::Value {
 /// The facts as lines to read.
 fn key_facts_text(facts: &serde_json::Value) -> String {
     let mut out = Vec::new();
-    if let Some(title) = facts.get("title").and_then(|title| title.as_str()).filter(|title| !title.trim().is_empty()) {
+    if let Some(title) = facts
+        .get("title")
+        .and_then(|title| title.as_str())
+        .filter(|title| !title.trim().is_empty())
+    {
         out.push(title.trim().to_string());
     }
-    for field in ["dates", "people", "places", "organisations", "amounts", "contacts"] {
-        let items: Vec<&str> = facts.get(field).and_then(|list| list.as_array()).map(|list| list.iter().filter_map(|item| item.as_str()).collect()).unwrap_or_default();
+    for field in [
+        "dates",
+        "people",
+        "places",
+        "organisations",
+        "amounts",
+        "contacts",
+    ] {
+        let items: Vec<&str> = facts
+            .get(field)
+            .and_then(|list| list.as_array())
+            .map(|list| list.iter().filter_map(|item| item.as_str()).collect())
+            .unwrap_or_default();
         if !items.is_empty() {
             out.push(format!("{field}: {}", items.join("; ")));
         }
