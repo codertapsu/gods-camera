@@ -758,13 +758,13 @@ Exit: a coffee cup photographed 40–80 times with the tablet yields a usable mo
 Goal: capture a person and their items, then generate try-on images.
 
 - [ ] Capture flows with pose guidance for body (front and side), garments (worn, flat or on a hanger), accessories (photos or a Phase 8 scan), and hair.
-- [ ] Wardrobe library with automatic tags for category, colour and material.
+- [x] Wardrobe library with automatic tags for category, colour and material. Built on Windows on 2026-11-14: garments kept in the app's data, named and tagged by the chosen text model where the try-on switch lets it see them, and chosen for try-on with one click. The Mac's screen is open.
 - [x] One generation interface over several backends. Cloud image models from Gemini and OpenAI come first, since the keys exist. In gc-llm; the Windows Try-on screen uses it.
 - [ ] Local FASHN VTON v1.5 as the private path. Test it on the RTX 3050, where its stated 8 GB need is borderline, and on the Mac; keep whichever works.
 - [ ] Hairstyle studio: style, length and colour presets, generated previews, side-by-side comparison. A first version on Windows: presets and a described style, generated pictures kept and looked through; side by side is open.
 - [ ] Live hair recolour by segmentation shader; face-anchored glasses and hats from scanned or stock 3D assets.
 - [ ] Experimental body measurements from photos plus height, shown with uncertainty.
-- [ ] Safety: output classifier against nudity, consent for photos of other people, encrypted storage, the per-feature cloud switch.
+- [ ] Safety: output classifier against nudity, consent for photos of other people, encrypted storage, the per-feature cloud switch. Built on Windows: the per-feature cloud switch, and the consent: a person's photo is used only once the user says whose it is, and that answer is kept beside each picture made. Open: the classifier, and encrypting the try-on photos and pictures.
 
 ### Phase 10 — Generative studio and pro features (ongoing, optional)
 
