@@ -58,14 +58,15 @@ class PairingWithARealHubTest {
         assumeTrue("the command-line tool is not built: ${tool.path}", tool.canExecute())
         assumeTrue("the shared core is not built for this computer: ${core.path}", core.isFile)
         // An older build of the tool, from before hubs could be connected to with a code, cannot run this.
-        val help = ProcessBuilder(tool.path, "hub", "--help").redirectErrorStream(true).start()
-        assumeTrue("the command-line tool is older than connecting with a code", help.inputStream.bufferedReader().readText().contains("--pair"))
+        val help = ProcessBuilder(tool.path, "hub", "--help").redirectErrorStream(true).start().inputStream.bufferedReader().readText()
+        assumeTrue("the command-line tool is older than connecting with a code", "--pair" in help && "--lan-addr" in help)
 
         data = Files.createTempDirectory("gc-hub-test").toFile()
         lanPort = sparePort()
+        // The network side listens on this computer only, so no firewall asks about the test.
         val process = ProcessBuilder(
             tool.path, "hub", "--addr", "127.0.0.1:${sparePort()}", "--data-dir", data!!.path,
-            "--lan", "--lan-port", "$lanPort", "--pair", "--name", "Test Mac",
+            "--lan", "--lan-addr", "127.0.0.1", "--lan-port", "$lanPort", "--pair", "--name", "Test Mac",
         ).redirectErrorStream(true).apply { environment()["GC_HUB_TOKEN"] = "0123456789abcdef0123456789abcdef" }.start()
         hub = process
         Thread { process.inputStream.bufferedReader().forEachLine(lines::put) }.apply { isDaemon = true }.start()

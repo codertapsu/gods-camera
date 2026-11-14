@@ -6,10 +6,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -54,6 +57,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -89,23 +93,54 @@ fun RemoteScreen(ui: RemoteUi, model: RemoteViewModel, onConnect: () -> Unit, on
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            Column(
-                modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                when (ui.reach) {
-                    Reach.NotConnected -> Notice(stringResource(R.string.remote_not_connected), stringResource(R.string.connect_to_mac), onConnect)
-                    Reach.NotOnThisComputer -> Notice(stringResource(R.string.remote_not_here), null, null)
-                    Reach.Unreachable -> Notice(stringResource(R.string.remote_unreachable), null, null)
-                    Reach.Unknown, Reach.Available -> {}
+        BoxWithConstraints(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            if (maxWidth >= 840.dp) {
+                // A tablet held sideways: the faces beside the picture, as on the computer,
+                // and the picture no taller than leaves room for the controls under it.
+                val widest = ((maxHeight - 170.dp) * (16f / 9f)).coerceAtLeast(360.dp)
+                Row(modifier = Modifier.widthIn(max = 1320.dp).fillMaxSize().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Column(modifier = Modifier.widthIn(max = widest), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Notices(ui, onConnect)
+                            Picture(ui)
+                            Controls(ui, model)
+                            Status(ui, model)
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.width(300.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        FaceList(ui, model)
+                    }
                 }
-                Picture(ui)
-                Controls(ui, model)
-                Status(ui, model)
-                Faces(ui, model)
+            } else {
+                Column(
+                    modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Notices(ui, onConnect)
+                    Picture(ui)
+                    Controls(ui, model)
+                    Status(ui, model)
+                    Faces(ui, model)
+                }
             }
         }
+    }
+}
+
+/** Why the computer's camera cannot be worked from here, when it cannot. */
+@Composable
+private fun Notices(ui: RemoteUi, onConnect: () -> Unit) {
+    when (ui.reach) {
+        Reach.NotConnected -> Notice(stringResource(R.string.remote_not_connected), stringResource(R.string.connect_to_mac), onConnect)
+        Reach.NotOnThisComputer -> Notice(stringResource(R.string.remote_not_here), null, null)
+        Reach.Unreachable -> Notice(stringResource(R.string.remote_unreachable), null, null)
+        Reach.Unknown, Reach.Available -> {}
     }
 }
 
@@ -235,6 +270,42 @@ private fun Status(ui: RemoteUi, model: RemoteViewModel) {
         problem != null -> Text(stringResource(problem), color = MaterialTheme.colorScheme.onSurfaceVariant)
         ui.state?.swapping == true -> Text(stringResource(R.string.remote_swapping), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else -> {}
+    }
+}
+
+/** The faces on the computer as a list beside the picture, on a wide screen. */
+@Composable
+private fun FaceList(ui: RemoteUi, model: RemoteViewModel) {
+    if (ui.reach != Reach.Available) return
+    Text(
+        stringResource(R.string.remote_faces),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+    )
+    if (ui.faces.isEmpty()) {
+        Text(stringResource(R.string.remote_no_faces), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+        return
+    }
+    ui.faces.forEach { face ->
+        val chosen = face.id == ui.state?.selected_face
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (chosen) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                .clickable(enabled = !ui.asking) { model.chooseFace(face.id) }
+                .padding(10.dp),
+        ) {
+            val picture = ui.facePictures[face.id]
+            Box(modifier = Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                if (picture != null) Image(picture, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+            Text(face.name, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (chosen) Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 
