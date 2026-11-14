@@ -415,6 +415,9 @@ impl LiveEngine {
             Occluder::load(runtime, &model, accelerator).map_err(|error| shared.fail(&error)).ok()
         });
         lock(&shared.stats).occlusion = occluder.is_some();
+        // On Windows every model shares the one graphics card, and the mask is
+        // made for every second swap; on the Mac it has a unit of its own.
+        let mask_every = if cfg!(windows) && !config.cpu_only { 2 } else { 1 };
         let mut workers = vec![
             {
                 let shared = shared.clone();
@@ -427,7 +430,7 @@ impl LiveEngine {
                 let shared = shared.clone();
                 std::thread::Builder::new()
                     .name("gc-swap".into())
-                    .spawn(move || swap_worker(&shared, swapper))
+                    .spawn(move || swap_worker(&shared, swapper, mask_every))
                     .map_err(|e| InferError::Runtime(e.to_string()))?
             },
         ];
@@ -838,7 +841,11 @@ fn occlusion_worker(shared: &Shared, mut occluder: Occluder, size: u32) {
     }
 }
 
-fn swap_worker(shared: &Shared, mut swapper: Swapper) {
+/// `mask_every`: the occlusion mask is made for one swap in this many. Where
+/// it shares the one graphics card with the swap model it costs a swap
+/// 15 ms; made for every second swap, the mask in use is one swap older,
+/// which `MASK_FRESH` allows by far, and the swap keeps most of that time.
+fn swap_worker(shared: &Shared, mut swapper: Swapper, mask_every: u64) {
     let size = swapper.contract().crop_size;
     let occlusion_model = lock(&shared.stats).occlusion;
     let box_mask = image::crop_mask(size, MaskShape::Box);
@@ -856,7 +863,9 @@ fn swap_worker(shared: &Shared, mut swapper: Swapper) {
     // The identity as the encoder gave it, and as this model wants it.
     let mut prepared: Option<(Arc<Vec<f32>>, Vec<f32>)> = None;
     let mut sequence = 0u64;
+    let mut jobs = 0u64;
     while let Some(job) = shared.swap_jobs.take() {
+        jobs += 1;
         let Some(identity) = lock(&shared.identity).clone() else { continue };
         if !prepared.as_ref().is_some_and(|(raw, _)| Arc::ptr_eq(raw, &identity)) {
             match swapper.identity(&identity) {
@@ -872,7 +881,7 @@ fn swap_worker(shared: &Shared, mut swapper: Swapper) {
         let started = Instant::now();
         // The occlusion model looks at the same crop while the swap model works on it.
         let occlusion = settings.occlusion && occlusion_model;
-        if occlusion {
+        if occlusion && jobs % mask_every.max(1) == 1 % mask_every.max(1) {
             shared.occlusion_jobs.put((job.crop.clone(), job.arrived));
         }
         let swapped = match swapper.swap(&job.crop, input) {

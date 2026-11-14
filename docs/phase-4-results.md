@@ -90,7 +90,7 @@ Video memory: about 0.4 GB for `inswapper_128` mixed, 0.75 GB for HyperSwap, and
 | Keypoint wobble | 1.2 px | 1.2 px | 1.2 px |
 
 - **The target is met.** The plan asks for 720p at 30 frames a second with the swap on. Output is always 30; the face refreshes 25 times a second with the occlusion mask and 30 without.
-- **One card does everything here.** The Mac spreads the models over its processor, graphics chip and Neural Engine. The PC has one accelerator, so the swap model, the detector and the occlusion mask take turns on it. That is why the mask costs 15 ms a swap here and 1 ms on the Mac. Making the mask every second swap would win most of it back; not done yet.
+- **One card does everything here.** The Mac spreads the models over its processor, graphics chip and Neural Engine. The PC has one accelerator, so the swap model, the detector and the occlusion mask take turns on it. That is why the mask costs 15 ms a swap here and 1 ms on the Mac. **Since 2026-11-14 the mask is made for every second swap on Windows**, and the mask in use is then at most one swap older. Measured with `gc replay` as above, two runs each: 25.2 swaps a second at 39.7 ms a swap and the face 58 ms behind, before; 30.0 swaps a second at 32.4 ms and 38 ms behind, after. The Mac keeps a mask for every swap.
 - **The frame thread is over its 2 ms target** on this processor, at 2.4 to 3.1 ms. It has 33 ms, so nothing is dropped; it is noted, not fixed.
 - **The large detector runs on the card** on Windows: 10 ms against 48 ms on this processor.
 
