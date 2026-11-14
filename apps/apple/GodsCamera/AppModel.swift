@@ -57,6 +57,8 @@ final class AppModel: ObservableObject {
             updateDemand()
         }
     }
+    /// The tab shown at the right of the Camera screen.
+    @Published var cameraTab: CameraTab = .face
     @Published var sourceKind: SourceKind
     @Published var cameras: [CameraDevice] = []
     @Published var cameraID: String?

@@ -95,6 +95,8 @@ internal sealed class Shell : Window
             }
         }
         Scanner = new Scanner(new ScannerConfig(launch.DataFolder, reader.ToArray(), launch.PackFolders, Environment.ProcessPath ?? "", launch.TryOut));
+        // Paired phones and tablets can work the camera from their Remote tab.
+        Scanner.SetCamera(App);
         if (launch.ScannerOn) Scanner.SetWanted(true);
         else Scanner.Start();
         handle = WinRT.Interop.WindowNative.GetWindowHandle(this);

@@ -10,6 +10,7 @@ pub mod faces;
 pub mod model;
 pub mod pattern;
 pub mod platform;
+pub mod remote;
 pub mod scanner;
 pub mod secrets;
 pub mod settings;

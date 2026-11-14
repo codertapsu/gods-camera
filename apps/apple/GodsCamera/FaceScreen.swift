@@ -2,8 +2,10 @@ import AppKit
 import GodsCameraKit
 import SwiftUI
 
-/// The face swap: the switch, the saved faces and the options.
-struct FaceScreen: View {
+/// The Face tab of the Camera screen: the saved faces, adding one, how the
+/// swapped face looks, and privacy. The switch itself is in the row of
+/// controls under the picture, and the swap's state in the line under it.
+struct FacePanel: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject var face: FaceModel
     @State private var renaming: SavedFace?
@@ -11,26 +13,10 @@ struct FaceScreen: View {
     @State private var dropTargeted = false
 
     var body: some View {
-        StudioLayout(screen: .face) {
-            HStack(alignment: .center, spacing: 14) {
-                Toggle(isOn: Binding(get: { face.wanted }, set: { face.setWanted($0) })) {
-                    Text("Swap my face").font(.title3.weight(.semibold))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.large)
-                Spacer()
-            }
-            statusLine
-        } controls: {
+        VStack(alignment: .leading, spacing: 14) {
             faces
             look
             privacy
-        }
-        .sheet(item: $face.pending) { pending in
-            NewFaceSheet(pending: pending, face: face)
-        }
-        .sheet(isPresented: $face.askingPolicy) {
-            PolicySheet(face: face)
         }
         .alert(String(localized: "Rename the face"), isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField(String(localized: "Name"), text: $newName)
@@ -39,42 +25,6 @@ struct FaceScreen: View {
                 renaming = nil
             }
             Button("Cancel", role: .cancel) { renaming = nil }
-        }
-    }
-
-    // MARK: Status
-
-    @ViewBuilder private var statusLine: some View {
-        switch face.state {
-        case .off:
-            if face.faces.isEmpty {
-                Hint(String(localized: "Add a face first: click Add a face and choose photos of the person."), symbol: "arrow.right.circle")
-            } else {
-                Hint(String(localized: "The swap is off. Others see your own face."))
-            }
-        case .loading:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Hint(String(localized: "Getting the models ready. The first time takes a little longer."))
-            }
-        case .on:
-            if let error = model.status.swapError {
-                Hint(error, symbol: "xmark.octagon", tone: .red)
-            } else if model.status.swapping {
-                Hint(
-                    String(localized: "Swapping. A new face picture every \(Int(model.status.swapMs.rounded())) ms, \(Int(model.status.swapAgeMs.rounded())) ms behind the camera."),
-                    symbol: "checkmark.circle.fill", tone: .green)
-            } else if model.status.pictureHidden {
-                Hint(String(localized: "The swap is not on your face, so the picture is blurred."), symbol: "eye.slash", tone: .orange)
-            } else if model.status.faceFound {
-                Hint(String(localized: "Getting the first swapped face…"))
-            } else {
-                Hint(String(localized: "No face in the picture. Others see the picture as it is."), symbol: "person.crop.circle.badge.questionmark")
-            }
-        case .missing(let file):
-            Hint(String(localized: "A model file is not installed: \(file)"), symbol: "exclamationmark.triangle", tone: .orange)
-        case .failed(let reason):
-            Hint(reason, symbol: "xmark.octagon", tone: .red)
         }
     }
 
@@ -220,6 +170,22 @@ struct FaceScreen: View {
             Toggle("Show an AI badge to others", isOn: $face.showAIBadge)
                 .onChange(of: face.showAIBadge) { face.settingsChanged() }
         }
+    }
+}
+
+/// The sheets that adding a face and turning the swap on bring up. They belong
+/// to the whole Camera screen, since both can start from its row of controls.
+struct FaceSheets: ViewModifier {
+    @ObservedObject var face: FaceModel
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $face.pending) { pending in
+                NewFaceSheet(pending: pending, face: face)
+            }
+            .sheet(isPresented: $face.askingPolicy) {
+                PolicySheet(face: face)
+            }
     }
 }
 

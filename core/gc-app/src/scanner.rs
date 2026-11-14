@@ -215,6 +215,8 @@ pub struct Scanner {
     config: ScannerConfig,
     platform: Arc<dyn ScanPlatform>,
     inner: Mutex<Inner>,
+    /// The app's camera, for paired devices to work from the Remote tab.
+    camera: Mutex<Option<Arc<dyn gc_link::CameraRemote>>>,
 }
 
 /// What is kept between runs.
@@ -237,6 +239,7 @@ impl Scanner {
         Arc::new(Self {
             config,
             platform,
+            camera: Mutex::new(None),
             inner: Mutex::new(Inner {
                 wanted: kept.wanted,
                 running: None,
@@ -364,6 +367,7 @@ impl Scanner {
         let local = bound.local_addr().ok()?;
         let network_port = bound.lan_addr().map(|address| address.port());
         let hub = bound.hub();
+        hub.set_camera_remote(self.camera.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone());
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
         runtime.spawn(async move {
             let _ = bound
@@ -458,6 +462,16 @@ impl Scanner {
     pub fn new(config: ScannerConfig) -> Arc<Self> {
         let platform = crate::platform::scan_platform(&config);
         Self::with_platform(config, platform)
+    }
+
+    /// Let paired phones and tablets work `app`'s camera: the swap, the face,
+    /// recording and the loop, as the controls under its picture do.
+    pub fn set_camera(&self, app: Arc<crate::model::DesktopApp>) {
+        let camera = crate::remote::camera(&app);
+        *self.camera.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::clone(&camera));
+        if let Some(running) = &self.lock().running {
+            running.hub.set_camera_remote(Some(camera));
+        }
     }
 
     /// Carry on from the last session. The hub stays off until the user has turned it on.

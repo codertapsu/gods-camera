@@ -436,6 +436,63 @@ fn speaking_while_a_loop_plays_goes_back_to_live() {
 }
 
 #[test]
+fn a_paired_device_works_the_camera_as_the_window_would() {
+    use gc_link::RemoteAction;
+    let fixture = Fixture::new("remote");
+    let camera = gc_app::remote::camera(&fixture.app);
+    fixture.app.set_source(SourceKind::Pattern, None);
+    fixture.until("the live picture", |state| state.can_record && state.frames_out > 3);
+
+    let state = camera.state();
+    assert_eq!((state.mode.as_str(), state.can_record, state.can_loop, state.swap_wanted), ("live", true, false, false));
+    assert!(camera.faces().is_empty());
+    // The picture others see, small enough to send several times a second.
+    let picture = camera.picture().expect("a picture");
+    assert_eq!(&picture[..2], &[0xFF, 0xD8]);
+    let small = image::load_from_memory(&picture).unwrap();
+    assert!(small.width() <= 640 && small.height() <= 640, "{}x{}", small.width(), small.height());
+
+    // What cannot be done is said as a code the device puts in its own words.
+    assert_eq!(camera.act(RemoteAction::Loop), Err("no_loop_yet".into()));
+    assert_eq!(camera.act(RemoteAction::Swap { on: true }), Err("add_a_face_first".into()));
+    assert_eq!(camera.act(RemoteAction::Face { id: "nobody".into() }), Err("no_such_face".into()));
+
+    // A loop, recorded and played from the device.
+    camera.act(RemoteAction::Record).unwrap();
+    fixture.until("the recording", |state| state.is_recording && state.recorded_seconds >= 0.5);
+    assert!(camera.state().recording);
+    camera.act(RemoteAction::Record).unwrap();
+    fixture.until("the clip", |state| state.clip.is_some());
+    camera.act(RemoteAction::Loop).unwrap();
+    fixture.until("the loop", |state| state.mode == EngineMode::Looping);
+    assert_eq!(camera.state().mode, "looping");
+    assert_eq!(camera.act(RemoteAction::Record), Err("cannot_record_now".into()));
+    camera.act(RemoteAction::Loop).unwrap();
+    fixture.until("live again", |state| state.mode == EngineMode::Live);
+
+    // A face saved on the computer is listed, and the swap waits for its rules to be accepted there.
+    fixture.app.add_photos(vec![fixture.photo("red.png", [255, 0, 10])], None);
+    fixture.until("the photo to be read", |state| state.pending.is_some());
+    assert!(fixture.app.save_pending("Red".into(), FaceConsent::Synthetic));
+    let faces = camera.faces();
+    assert_eq!(faces.iter().map(|face| face.name.as_str()).collect::<Vec<_>>(), ["Red"]);
+    assert!(camera.face_picture(&faces[0].id).is_some_and(|png| png.starts_with(b"\x89PNG")));
+    assert!(camera.face_picture("nobody").is_none());
+    camera.act(RemoteAction::Face { id: faces[0].id.clone() }).unwrap();
+    assert_eq!(camera.state().selected_face.as_deref(), Some(faces[0].id.as_str()));
+    assert_eq!(camera.act(RemoteAction::Swap { on: true }), Err("accept_rules_on_computer".into()));
+    fixture.app.accept_policy();
+    camera.act(RemoteAction::Swap { on: false }).unwrap();
+    camera.act(RemoteAction::Swap { on: true }).unwrap();
+    assert!(camera.state().swap_wanted);
+
+    // Once the app is gone, the camera says so instead of failing.
+    drop(fixture);
+    assert_eq!(camera.state().mode, "idle");
+    assert!(camera.picture().is_none() && camera.faces().is_empty());
+}
+
+#[test]
 fn a_face_is_added_from_photos_kept_encrypted_and_chosen() {
     let fixture = Fixture::new("faces");
     let state = fixture.app.state();

@@ -2,17 +2,16 @@ import AppKit
 import GodsCameraKit
 import SwiftUI
 
-/// The app's screens, as listed in the sidebar.
+/// The app's screens, as listed in the sidebar. The camera, the loop and the
+/// face swap are one screen, so that they are used together (plan, section 6.12).
 enum Screen: String, CaseIterable, Identifiable {
-    case camera, loop, face, scanner, settings
+    case camera, scanner, settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .camera: return String(localized: "Camera")
-        case .loop: return String(localized: "Loop")
-        case .face: return String(localized: "Face")
         case .scanner: return String(localized: "Scanner")
         case .settings: return String(localized: "Settings")
         }
@@ -20,9 +19,7 @@ enum Screen: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .camera: return String(localized: "What other apps see when they choose God's Camera.")
-        case .loop: return String(localized: "Record a few seconds of yourself and play them as your camera picture.")
-        case .face: return String(localized: "Show another face in place of yours, live.")
+        case .camera: return String(localized: "What others see in your calls: your camera, a face in place of yours, or a loop.")
         case .scanner: return String(localized: "Photograph pages with your phone or tablet. The text arrives here.")
         case .settings: return String(localized: "The camera, your data and help.")
         }
@@ -31,15 +28,36 @@ enum Screen: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .camera: return "video"
-        case .loop: return "repeat"
-        case .face: return "face.smiling"
         case .scanner: return "doc.viewfinder"
         case .settings: return "gearshape"
         }
     }
 
     /// The screen shows the live picture, so the camera must run while it is open.
-    var showsPreview: Bool { self == .camera || self == .loop || self == .face }
+    var showsPreview: Bool { self == .camera }
+}
+
+/// The tabs at the right of the Camera screen.
+enum CameraTab: String, CaseIterable, Identifiable {
+    case face, loop, source
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .face: return String(localized: "Face")
+        case .loop: return String(localized: "Loop")
+        case .source: return String(localized: "Camera")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .face: return "face.smiling"
+        case .loop: return "repeat"
+        case .source: return "video"
+        }
+    }
 }
 
 /// Shows the engine's output inside a SwiftUI layout.
@@ -204,34 +222,6 @@ struct PreviewPane: View {
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black)
-    }
-}
-
-/// A screen with the live picture on the left and its controls in a column on the right.
-struct StudioLayout<Under: View, Controls: View>: View {
-    let screen: Screen
-    @ViewBuilder var under: Under
-    @ViewBuilder var controls: Controls
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 18) {
-                ScreenHeader(screen: screen)
-                PreviewPane()
-                under
-                Spacer(minLength: 0)
-            }
-            .padding(24)
-            .frame(minWidth: 480, maxWidth: .infinity, alignment: .topLeading)
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) { controls }
-                    .padding(18)
-            }
-            .frame(width: 348)
-        }
     }
 }
 

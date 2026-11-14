@@ -11,12 +11,16 @@
 //!
 //! Both reject browser origins. The live video stream comes later.
 //!
+//! A paired device can also work the computer's Camera screen during a call:
+//! see [`remote`].
+//!
 //! Work that takes time runs as a job: the client starts it, asks how far it
 //! is, and fetches the files it produced. Jobs are written to disk, so a
 //! finished job can still be read after the hub restarts.
 
 mod jobs;
 mod pairing;
+pub mod remote;
 pub mod tls;
 
 use axum::{
@@ -43,6 +47,7 @@ use tokio::io::AsyncWriteExt;
 use zeroize::Zeroize;
 
 pub use gc_pair;
+pub use remote::{CameraRemote, RemoteAction, RemoteFace, RemoteState};
 pub use pairing::{
     DeviceInfo, Hello, PairFinishRequest, PairFinishResponse, PairStartRequest, PairStartResponse, PairingEnd,
     PairingStatus, DEFAULT_PAIRING_TTL, MAX_ATTEMPTS,
@@ -192,6 +197,8 @@ struct AppState {
     registry: Arc<Mutex<DeviceRegistry>>,
     desk: Arc<Mutex<pairing::Desk>>,
     lan: Option<Arc<LanInfo>>,
+    /// The desktop app's camera, once it has handed it over.
+    remote: Arc<Mutex<Option<Arc<dyn CameraRemote>>>>,
 }
 
 /// A lock that a panic elsewhere does not take away: the data behind these
@@ -506,6 +513,7 @@ impl AppState {
             registry: Arc::new(Mutex::new(registry)),
             desk: Arc::new(Mutex::new(pairing::Desk::default())),
             lan: lan.map(Arc::new),
+            remote: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -520,7 +528,16 @@ impl AppState {
             .route("/v1/jobs/{id}", get(get_job))
             .route("/v1/jobs/{id}/files/{name}", get(get_job_file))
             // File bodies are streamed and counted by the handler itself.
-            .layer(DefaultBodyLimit::disable());
+            .layer(DefaultBodyLimit::disable())
+            .merge(
+                Router::new()
+                    .route("/v1/camera", get(remote::state).post(remote::act))
+                    .route("/v1/camera/faces", get(remote::faces))
+                    .route("/v1/camera/faces/{id}/picture", get(remote::face_picture))
+                    .route("/v1/camera/picture", get(remote::picture))
+                    // What a device asks of the camera is a line of JSON.
+                    .layer(DefaultBodyLimit::max(4096)),
+            );
         let routes = match via {
             Via::Local => work,
             Via::Lan => work.merge(
@@ -639,6 +656,12 @@ impl Hub {
     /// The SHA-256 of the hub's certificate, when it listens on the network.
     pub fn fingerprint(&self) -> Option<String> {
         self.state.lan.as_ref().map(|lan| lan.fingerprint.clone())
+    }
+
+    /// Let paired devices work the desktop app's camera, or stop letting them
+    /// with `None`. See [`remote`].
+    pub fn set_camera_remote(&self, remote: Option<Arc<dyn CameraRemote>>) {
+        *locked(&self.state.remote) = remote;
     }
 }
 

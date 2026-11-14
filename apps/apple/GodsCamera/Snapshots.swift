@@ -36,7 +36,14 @@ enum Snapshots {
 
         let output = URL(fileURLWithPath: folder, isDirectory: true)
         try? FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        var steps: [(name: String, prepare: () -> Void)] = Screen.allCases.map { screen in
+        // The Camera screen once with each of its tabs, then the other screens.
+        var steps: [(name: String, prepare: () -> Void)] = CameraTab.allCases.map { tab in
+            ("camera-\(tab.rawValue)", {
+                model.screen = .camera
+                model.cameraTab = tab
+            })
+        }
+        steps += Screen.allCases.filter { $0 != .camera }.map { screen in
             (screen.rawValue, { model.screen = screen })
         }
         steps.append(("scanner-code", {
@@ -45,7 +52,8 @@ enum Snapshots {
         }))
         steps.append(("face-photos", {
             model.scan.showingPairing = false
-            model.screen = .face
+            model.screen = .camera
+            model.cameraTab = .face
             model.face.showSamplePending()
         }))
 

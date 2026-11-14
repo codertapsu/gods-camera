@@ -200,6 +200,26 @@
         }
       }
     },
+    "A picture…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Một ảnh…"
+          }
+        }
+      }
+    },
+    "A video…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Một video…"
+          }
+        }
+      }
+    },
     "AI FACE": {
       "localizations": {
         "vi": {
@@ -336,6 +356,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Thiết bị Android đang gắn để gỡ lỗi, qua cáp USB hoặc Wi-Fi, có thể kết nối mà không cần mã."
+          }
+        }
+      }
+    },
+    "An app is using the camera": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Có ứng dụng đang dùng camera"
           }
         }
       }
@@ -806,6 +836,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Khuôn mặt %lld"
+          }
+        }
+      }
+    },
+    "Face options…": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tùy chọn khuôn mặt…"
+          }
+        }
+      }
+    },
+    "Face swap": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thay khuôn mặt"
           }
         }
       }
@@ -1520,6 +1570,26 @@
         }
       }
     },
+    "Playing the loop. Others see the recording until you go back to live.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang phát đoạn lặp. Người khác thấy đoạn đã ghi cho tới khi bạn trở về trực tiếp."
+          }
+        }
+      }
+    },
+    "Playing the loop. The swap keeps following your face, so going back to live does not jump.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang phát đoạn lặp. Phần thay mặt vẫn bám theo khuôn mặt bạn, nên khi trở về trực tiếp hình không bị giật."
+          }
+        }
+      }
+    },
     "Plays to the end, then backwards to the start. There is no jump, but movement runs in reverse half the time.": {
       "localizations": {
         "vi": {
@@ -1692,6 +1762,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Đã ghi %.1f giây · lặp %.1f giây"
+          }
+        }
+      }
+    },
+    "Recording. Sit still for the last second, then click Stop recording.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang ghi. Hãy ngồi yên trong giây cuối, rồi bấm Dừng ghi."
           }
         }
       }
@@ -1932,6 +2012,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Độ sắc nét"
+          }
+        }
+      }
+    },
+    "Show": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiển thị"
           }
         }
       }
@@ -2502,12 +2592,32 @@
         }
       }
     },
+    "What others see in your calls: your camera, a face in place of yours, or a loop.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Những gì người khác thấy trong cuộc gọi: camera của bạn, một khuôn mặt thay cho bạn, hoặc một đoạn lặp."
+          }
+        }
+      }
+    },
     "Where a photo shows several faces, the largest one was used.": {
       "localizations": {
         "vi": {
           "stringUnit": {
             "state": "translated",
             "value": "Với ảnh có nhiều khuôn mặt, khuôn mặt lớn nhất được dùng."
+          }
+        }
+      }
+    },
+    "Where the picture comes from": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hình lấy từ đâu"
           }
         }
       }
@@ -2608,6 +2718,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "⌃⌥⌘R"
+          }
+        }
+      }
+    },
+    "⌃⌥⌘R records, and ⌃⌥⌘L plays the loop, even while another app is in front.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃⌥⌘R để ghi, ⌃⌥⌘L để phát đoạn lặp, kể cả khi ứng dụng khác đang ở phía trước."
           }
         }
       }
