@@ -30,6 +30,7 @@ internal sealed class AiSettings : StackPanel
         (AiFeature.HardPages, T("Reading pages the text reader could not")),
         (AiFeature.TryOn, T("Try-on pictures")),
         (AiFeature.NameScan, T("Naming 3D scans")),
+        (AiFeature.MadeUpFaces, T("Making faces that show no real person")),
     };
 
     private readonly Shell shell;

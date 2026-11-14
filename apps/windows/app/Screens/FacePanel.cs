@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -23,6 +24,14 @@ internal sealed class FacePanel : StackPanel
     private readonly Hint notice = new();
     private string facesKey = "";
 
+    // A face that shows no real person, made by the picture model from words.
+    private readonly Button makeOne;
+    private readonly StackPanel making;
+    private readonly Hint makingProblem = new();
+    private readonly DispatcherQueueTimer followMaking;
+    private ulong makingTask;
+    private string? madeUpPicture;
+
     private readonly ComboBox quality = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly StackPanel qualityRow;
     private readonly Slider sharpen = new() { Minimum = 0, Maximum = 1, StepFrequency = 0.05, MinWidth = 150 };
@@ -42,11 +51,21 @@ internal sealed class FacePanel : StackPanel
         Spacing = 14;
 
         add = Ui.IconButton(Ui.IconAdd, T("Add a face…"), () => ChoosePhotos(null));
+        makeOne = Ui.IconButton(Ui.IconWand, T("Make with AI…"), MakeAFace);
+        ToolTipService.SetToolTip(makeOne, T("A face of nobody who exists, made from a few words by the picture model chosen in Settings."));
         reading = Ui.Row(8, new ProgressRing { Width = 16, Height = 16, IsActive = true }, Ui.Secondary(T("Reading the photos…"), 13));
+        making = Ui.Row(8, new ProgressRing { Width = 16, Height = 16, IsActive = true }, Ui.Secondary(T("Making a face. This takes up to a minute."), 13));
+        making.Visible(false);
+        makingProblem.Visible(false);
+        // The two ways to add a face, one under the other: side by side they do not fit the column in Vietnamese.
+        var ways = Ui.Column(8, add, makeOne);
         Children.Add(new Card(
-            T("Faces"), Ui.IconFace, faceList, Ui.Row(10, add, reading),
+            T("Faces"), Ui.IconFace, faceList, ways, reading, making,
             new Hint(T("Choose several photos of the same person at once: different angles, expressions and light. Together they give a better likeness than one photo.")),
-            notice));
+            notice, makingProblem));
+        followMaking = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        followMaking.Interval = TimeSpan.FromMilliseconds(400);
+        followMaking.Tick += (_, _) => FollowMaking();
 
         quality.SelectionChanged += (_, _) =>
         {
@@ -112,6 +131,48 @@ internal sealed class FacePanel : StackPanel
     {
         var files = await shell.PickFiles(true, PhotoTypes);
         if (files.Count > 0) shell.App.AddPhotos(files.ToArray(), target);
+    }
+
+    /// <summary>
+    /// A face that shows no real person: a few words go to the picture model
+    /// chosen in Settings, and the portrait it makes is added as a photo is,
+    /// with "AI-generated" chosen in the dialog that follows.
+    /// </summary>
+    private async void MakeAFace()
+    {
+        var words = new TextBox { PlaceholderText = T("For example: a man in his forties with a short beard") };
+        var body = Ui.Column(
+            10,
+            Ui.Text(T("Describe the person in a few words. The picture model makes a portrait of someone who does not exist, and it is added as a photo is.")),
+            words,
+            new Hint(T("Only your words are sent to the model. The face is saved as AI-generated."), Ui.IconLock));
+        body.MaxWidth = 440;
+        if (!await shell.Ask(T("Make a face with AI"), body, T("Make it"), T("Cancel"))) return;
+        makingProblem.Visible(false);
+        makingTask = shell.Assistant.StartPicture(new PictureTask.MadeUpFace(words.Text));
+        making.Visible(true);
+        makeOne.IsEnabled = false;
+        followMaking.Start();
+    }
+
+    private void FollowMaking()
+    {
+        var state = shell.Assistant.Task(makingTask);
+        if (state.Running) return;
+        followMaking.Stop();
+        shell.Assistant.Forget(makingTask);
+        making.Visible(false);
+        makeOne.IsEnabled = true;
+        if (state.Problem != null)
+        {
+            makingProblem.Visible(true);
+            makingProblem.Set(AssistantScreen.ProblemWords(state.Problem), Ui.IconWarning, Tone.Warning);
+        }
+        else if (state.Result?.Picture is string picture)
+        {
+            madeUpPicture = picture;
+            shell.App.AddPhotos(new[] { picture }, null);
+        }
     }
 
     private static string PhotoCount(int count) => count == 1 ? T("1 photo") : T("{0} photos", count);
@@ -312,6 +373,12 @@ internal sealed class FacePanel : StackPanel
             IsPrimaryButtonEnabled = used > 0 && addition,
         };
         whose.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = used > 0 && whose.SelectedIndex >= 0;
+        // A face the picture model just made is AI-generated: said already, and still the user's to change.
+        if (!addition && madeUpPicture != null && pending.Photos.Any(photo => photo.FileName == System.IO.Path.GetFileName(madeUpPicture)))
+        {
+            whose.SelectedIndex = 2;
+        }
+        madeUpPicture = null;
         var answer = await dialog.ShowAsync();
         if (answer == ContentDialogResult.Primary)
         {

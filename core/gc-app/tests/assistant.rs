@@ -189,6 +189,40 @@ fn a_try_on_picture_is_kept_with_whose_photo_it_was_made_from() {
 }
 
 #[test]
+fn a_made_up_face_is_made_from_words_alone() {
+    use base64::Engine as _;
+    let folder = folder("made-up");
+    let assistant = Assistant::with_secrets(&folder, Arc::new(FolderSecrets::new(folder.join("Secrets"))), 0).unwrap();
+    let mut made = Vec::new();
+    image::RgbImage::from_pixel(8, 8, image::Rgb([180, 150, 130])).write_to(&mut std::io::Cursor::new(&mut made), image::ImageFormat::Png).unwrap();
+    let reply = serde_json::json!({ "created": 1, "data": [{ "b64_json": base64::engine::general_purpose::STANDARD.encode(&made) }], "output_format": "png" });
+    let (address, seen) = answering(reply.to_string());
+    let key = gc_llm::ApiKey::new("sk-test-0123456789").unwrap();
+    assistant.set_provider(gc_llm::Provider::openai(Some(key)).with_base_url(&address).unwrap());
+    assistant.set_image_model(Some(ModelChoice { provider: "openai".into(), model: "gpt-image-2.6-sunburst".into() }));
+
+    // Its own switch: the try-on's does not open it.
+    assistant.set_cloud_allowed(AiFeature::TryOn, true);
+    let task = PictureTask::MadeUpFace { description: "a woman in her thirties with short black hair".into() };
+    let id = assistant.start_picture(task.clone());
+    assert_eq!(finished(&assistant, id).problem, Some(AssistantProblem::CloudNotAllowed));
+    assert!(seen.lock().unwrap().is_empty(), "nothing was sent");
+    assistant.set_cloud_allowed(AiFeature::MadeUpFaces, true);
+
+    let id = assistant.start_picture(task);
+    let state = finished(&assistant, id);
+    assert_eq!(state.problem, None);
+    let picture = std::path::PathBuf::from(state.result.unwrap().picture.expect("a picture"));
+    assert_eq!(std::fs::read(&picture).unwrap(), made);
+    // Kept apart from the try-on pictures, and made from words: no photo went with the request.
+    assert!(picture.starts_with(folder.join("Assistant").join("Made-up faces")));
+    assert!(seen.lock().unwrap()[0].starts_with("POST /v1/images/generations"), "{:?}", seen.lock().unwrap());
+    let record: serde_json::Value = serde_json::from_slice(&std::fs::read(picture.with_extension("json")).unwrap()).unwrap();
+    assert_eq!(record["made"], "made_up_face");
+    assert_eq!(record["consent"], "the photo is AI-generated and shows no real person");
+}
+
+#[test]
 fn garments_are_kept_tagged_and_taken_out_again() {
     let folder = folder("wardrobe");
     let assistant = Assistant::with_secrets(&folder, Arc::new(FolderSecrets::new(folder.join("Secrets"))), 0).unwrap();

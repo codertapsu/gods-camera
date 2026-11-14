@@ -30,10 +30,12 @@ pub enum Feature {
     TryOn,
     /// Naming and describing an object scanned in 3D.
     NameScan,
+    /// A face that shows no real person, made from words, to swap in.
+    MadeUpFaces,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 8] = [
+    pub const ALL: [Feature; 9] = [
         Feature::CleanUp,
         Feature::Summary,
         Feature::Translation,
@@ -42,6 +44,7 @@ impl Feature {
         Feature::HardPages,
         Feature::TryOn,
         Feature::NameScan,
+        Feature::MadeUpFaces,
     ];
 
     /// The name the settings file uses.
@@ -55,6 +58,7 @@ impl Feature {
             Feature::HardPages => "hard_pages",
             Feature::TryOn => "try_on",
             Feature::NameScan => "name_scan",
+            Feature::MadeUpFaces => "made_up_faces",
         }
     }
 
@@ -69,6 +73,7 @@ impl Feature {
             Feature::HardPages => "Reading hard pages",
             Feature::TryOn => "Try-on",
             Feature::NameScan => "Naming a 3D scan",
+            Feature::MadeUpFaces => "Making a face that shows no real person",
         }
     }
 
@@ -83,6 +88,7 @@ impl Feature {
             Feature::HardPages => "Pictures of the pages are sent to the provider.",
             Feature::TryOn => "Your photo and the photos of the clothes are sent to the provider.",
             Feature::NameScan => "Pictures of the scanned object are sent to the provider.",
+            Feature::MadeUpFaces => "Only the words you type are sent to the provider.",
         }
     }
 

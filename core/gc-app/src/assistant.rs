@@ -71,6 +71,7 @@ pub enum AiFeature {
     HardPages,
     TryOn,
     NameScan,
+    MadeUpFaces,
 }
 
 impl From<AiFeature> for Feature {
@@ -84,6 +85,7 @@ impl From<AiFeature> for Feature {
             AiFeature::HardPages => Feature::HardPages,
             AiFeature::TryOn => Feature::TryOn,
             AiFeature::NameScan => Feature::NameScan,
+            AiFeature::MadeUpFaces => Feature::MadeUpFaces,
         }
     }
 }
@@ -190,14 +192,18 @@ pub enum PictureTask {
     TryOn { person: String, garment: String, consent: FaceConsent },
     /// The person with another hairstyle, as described.
     Hairstyle { person: String, style: String, consent: FaceConsent },
+    /// A face that shows no real person, made from words alone, to add as a
+    /// face to swap in (plan, Phase 2's synthetic faces).
+    MadeUpFace { description: String },
 }
 
 impl PictureTask {
     /// What was made and whose photo it was made from, as kept beside the picture.
     fn record(&self, model: &str, made_at: u128) -> serde_json::Value {
         let (made, consent) = match self {
-            PictureTask::TryOn { consent, .. } => ("try_on", consent),
-            PictureTask::Hairstyle { consent, .. } => ("hairstyle", consent),
+            PictureTask::TryOn { consent, .. } => ("try_on", *consent),
+            PictureTask::Hairstyle { consent, .. } => ("hairstyle", *consent),
+            PictureTask::MadeUpFace { .. } => ("made_up_face", FaceConsent::Synthetic),
         };
         let consent = match consent {
             FaceConsent::Myself => "the person is the user",
@@ -205,6 +211,14 @@ impl PictureTask {
             FaceConsent::Synthetic => "the photo is AI-generated and shows no real person",
         };
         serde_json::json!({ "made": made, "consent": consent, "model": model, "made_at_ms": made_at as u64 })
+    }
+
+    /// The cloud switch the task falls under, and the folder its picture goes to.
+    fn kind(&self) -> (Feature, &'static str) {
+        match self {
+            PictureTask::TryOn { .. } | PictureTask::Hairstyle { .. } => (Feature::TryOn, "Pictures"),
+            PictureTask::MadeUpFace { .. } => (Feature::MadeUpFaces, "Made-up faces"),
+        }
     }
 }
 
@@ -541,16 +555,22 @@ impl Assistant {
         let Some(target) = self.image_target() else {
             return self.run(|_, _| Err(LlmError::NoKey { provider: CloudProvider::OpenAi.name().into() }));
         };
-        let out = self.folder.join("Pictures");
+        let (feature, folder) = task.kind();
+        let out = self.folder.join(folder);
         self.run(move |gateway, progress| {
             let read = |path: &str| std::fs::read(path).map_err(|error| LlmError::InvalidInput { message: format!("{path} cannot be read: {error}") });
             let (prompt, photos) = match &task {
                 PictureTask::TryOn { person, garment, .. } => (TRY_ON.to_string(), vec![read(person)?, read(garment)?]),
                 PictureTask::Hairstyle { person, style, .. } => (format!("{HAIRSTYLE}\n\nThe hairstyle: {}", style.trim()), vec![read(person)?]),
+                PictureTask::MadeUpFace { description } => {
+                    let description = description.trim();
+                    let description = if description.is_empty() { "an adult, as the model chooses" } else { description };
+                    (format!("{MADE_UP_FACE}\n\nThe person: {description}"), Vec::new())
+                }
             };
             let pictures = photos.into_iter().map(Picture::new).collect::<Result<Vec<_>, _>>()?;
             progress(0, 1);
-            let made = gateway.generate_image(Feature::TryOn, &target.provider, &ImageRequest { model: target.model.clone(), prompt, pictures })?;
+            let made = gateway.generate_image(feature, &target.provider, &ImageRequest { model: target.model.clone(), prompt, pictures })?;
             let _ = std::fs::create_dir_all(&out);
             let made_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_millis());
             let file = out.join(format!("{made_at}.png"));
@@ -732,6 +752,14 @@ The person stays fully and decently dressed. Do not add, remove or change anythi
 const HAIRSTYLE: &str = "Make one photorealistic picture of the person in the photo with a different hairstyle, described below. \
 Keep the person exactly as they are: the same face, skin, body, clothing, pose, expression, background and light. \
 Change only the hair: its style, length and colour as described. Do not change anything else.";
+
+/// What a made-up face asks of the image model: a portrait that the face
+/// swap can take a face from, of nobody who exists.
+const MADE_UP_FACE: &str = "Make one photorealistic head-and-shoulders portrait of an adult who does not exist. \
+The person looks straight into the camera with a calm, friendly expression, eyes open and mouth closed. \
+Soft, even light from the front; a plain, light grey background; sharp focus; the face fills the middle third of the picture. \
+Nothing covers the face: no glasses, hat, hair across the eyes, hands or text. \
+The person must not look like any real or famous person, and is fully and decently dressed.";
 
 /// The general facts a document can hold, as a JSON schema.
 fn key_facts_schema() -> serde_json::Value {
