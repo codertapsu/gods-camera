@@ -1,0 +1,2 @@
+# The bundled font is never treated as text, whatever its bytes look like.
+*.ttf binary

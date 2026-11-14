@@ -6,6 +6,24 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# The Word file is a ZIP archive: its parts are compressed and checksummed with these.
+crc32fast = "1.5.5"
+flate2 = "1.1.11"
 gc-align = { version = "0.1.0", path = "../gc-align" }
+# Photos for the searchable PDF: JPEG goes in as it is, the other formats the
+# text reader takes are decoded.
+image = { version = "0.25", default-features = false, features = ["png", "webp", "tiff", "bmp"] }
+# The PDFs: written with Typst's writer, with the bundled font cut down to the letters used.
+pdf-writer = "0.15.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+subsetter = { version = "0.2.6", default-features = false }
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }
+unicode-normalization = "0.1.26"
+
+[dev-dependencies]
+# The tests read the files back with libraries other than the ones that wrote them.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+lopdf = { version = "0.47.0", default-features = false }
+roxmltree = "0.21.2"
+zip = { version = "9.5.1", default-features = false, features = ["deflate-flate2"] }

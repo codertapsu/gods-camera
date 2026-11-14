@@ -109,6 +109,12 @@ enum Command {
         /// Folder for document.md, document.txt and document.json.
         #[arg(long)]
         out: Option<PathBuf>,
+        /// Also write the document as a Word file.
+        #[arg(long)]
+        docx: Option<PathBuf>,
+        /// Also write the document as a PDF, set as text on A4 pages.
+        #[arg(long)]
+        pdf: Option<PathBuf>,
         /// The true text, to report the character error rate against.
         #[arg(long)]
         truth: Option<PathBuf>,
@@ -293,7 +299,7 @@ async fn main() -> Result<()> {
         }
         Command::Scan { folder, hub, paired, out } => scan(&folder, &HubAccess::open(hub, paired.as_deref())?, &out).await?,
         Command::VerifyPacks { manifests, store } => verify_packs(&manifests, &store)?,
-        Command::MergeOcr { ocr, out, truth } => merge_ocr(&ocr, out.as_deref(), truth.as_deref())?,
+        Command::MergeOcr { ocr, out, docx, pdf, truth } => merge_ocr(&ocr, out.as_deref(), docx.as_deref(), pdf.as_deref(), truth.as_deref())?,
         Command::Swap { packs, source, target, out, model, mask, all, no_colour_match } => {
             // The models block the thread, so they stay off the async runtime's workers.
             let args = face::SwapArgs {
@@ -483,7 +489,7 @@ async fn upload(folder: &Path, access: &HubAccess, upload_id: Option<String>) ->
     Ok((existing.id, names.len()))
 }
 
-fn merge_ocr(ocr: &Path, out: Option<&Path>, truth: Option<&Path>) -> Result<()> {
+fn merge_ocr(ocr: &Path, out: Option<&Path>, docx: Option<&Path>, pdf: Option<&Path>, truth: Option<&Path>) -> Result<()> {
     let text = std::fs::read_to_string(ocr).with_context(|| format!("cannot read {}", ocr.display()))?;
     let pages: Vec<gc_doc::OcrPage> = serde_json::from_str(&text).context("not gc-ocr output")?;
     let document = gc_doc::build(&pages);
@@ -515,6 +521,14 @@ fn merge_ocr(ocr: &Path, out: Option<&Path>, truth: Option<&Path>) -> Result<()>
         std::fs::write(out.join("document.md"), gc_doc::export::to_markdown(&document))?;
         std::fs::write(out.join("document.json"), gc_doc::export::to_json(&document))?;
         println!("wrote document.txt, document.md and document.json to {}", out.display());
+    }
+    if let Some(docx) = docx {
+        std::fs::write(docx, gc_doc::export::to_docx(&document, None)).with_context(|| format!("cannot write {}", docx.display()))?;
+        println!("wrote {}", docx.display());
+    }
+    if let Some(pdf) = pdf {
+        std::fs::write(pdf, gc_doc::export::to_pdf(&document, None)).with_context(|| format!("cannot write {}", pdf.display()))?;
+        println!("wrote {}", pdf.display());
     }
     Ok(())
 }
