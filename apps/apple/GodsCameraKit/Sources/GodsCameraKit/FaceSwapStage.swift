@@ -57,6 +57,8 @@ public struct FaceSwapSettings: Equatable, Sendable {
     public var keepObjectsInFront = true
     /// Leave the real mouth showing through the swap.
     public var realMouth = false
+    /// Leave the real eyes showing through the swap: the gaze and the blinks are the person's own.
+    public var realEyes = false
     /// Blur the whole picture whenever the swap is not fully on the face, so
     /// the real face never shows.
     public var blurWhenUnswapped = false
@@ -145,7 +147,7 @@ public final class FaceSwapStage: FaceSwapping, @unchecked Sendable {
             settings: EngineSettings(
                 mask: settings.ovalMask ? .oval : .box, colourMatch: settings.colourMatch,
                 opacity: settings.opacity, scoreThreshold: 0.5, sharpen: settings.sharpen,
-                occlusion: settings.keepObjectsInFront, realMouth: settings.realMouth,
+                occlusion: settings.keepObjectsInFront, realMouth: settings.realMouth, realEyes: settings.realEyes,
                 blurWhenUnswapped: settings.blurWhenUnswapped))
     }
 

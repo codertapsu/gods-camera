@@ -500,6 +500,16 @@ pub fn mouth_oval(size: u32) -> Option<([f32; 2], [f32; 2])> {
     Some((centre, [0.75 * width, 0.5 * width]))
 }
 
+/// Where the eyes are in an aligned crop of side `size`: for each, the centre
+/// and the radii of an oval that covers the eye and its lids, not the brow.
+pub fn eye_ovals(size: u32) -> Option<[([f32; 2], [f32; 2]); 2]> {
+    let template = gc_align::template(size).ok()?;
+    let (left, right) = (template[0], template[1]);
+    let apart = ((right[0] - left[0]).powi(2) + (right[1] - left[1]).powi(2)).sqrt();
+    let oval = |eye: [f32; 2]| ([eye[0], eye[1] + 0.02 * apart], [0.3 * apart, 0.17 * apart]);
+    Some([oval(left), oval(right)])
+}
+
 /// Resize a square packed RGB crop from side `from` to side `to`, sampling
 /// between the nearest four pixels.
 pub fn resize_crop(crop_rgb: &[u8], from: u32, to: u32) -> Vec<u8> {
@@ -766,6 +776,27 @@ mod tests {
         assert_eq!(mask[centre[1] as usize * n + centre[0] as usize], 0, "the mouth shows the frame");
         assert_eq!(mask[52 * n + 46], eye, "the eyes are untouched");
         assert_eq!(mask[60 * n + 64], 255, "so is the nose");
+    }
+
+    #[test]
+    fn two_oval_holes_open_the_mask_where_the_eyes_are() {
+        let size = 128u32;
+        let [left, right] = eye_ovals(size).expect("a template for 128");
+        // Level with each other, either side of the middle, in the upper half.
+        assert!((left.0[1] - right.0[1]).abs() < 2.0 && left.0[0] < 64.0 && right.0[0] > 64.0, "{left:?} {right:?}");
+        assert!((40.0..64.0).contains(&left.0[1]), "{left:?}");
+        let mut mask = crop_mask(size, MaskShape::Oval);
+        let n = size as usize;
+        let (mouth, _) = mouth_oval(size).unwrap();
+        let mouth_before = mask[mouth[1] as usize * n + mouth[0] as usize];
+        for (centre, radii) in [left, right] {
+            cut_oval(&mut mask, size, centre, radii, 0.45);
+        }
+        for (centre, _) in [left, right] {
+            assert_eq!(mask[centre[1] as usize * n + centre[0] as usize], 0, "an eye shows the frame");
+        }
+        assert_eq!(mask[mouth[1] as usize * n + mouth[0] as usize], mouth_before, "the mouth is untouched");
+        assert_eq!(mask[64 * n + 64], 255, "so is the nose");
     }
 
     #[test]

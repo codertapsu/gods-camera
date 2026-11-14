@@ -2086,6 +2086,16 @@
         }
       }
     },
+    "Show my real eyes": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiện mắt thật của tôi"
+          }
+        }
+      }
+    },
     "Show my real mouth": {
       "localizations": {
         "vi": {
@@ -2658,6 +2668,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dữ liệu của bạn"
+          }
+        }
+      }
+    },
+    "Your own eyes show through the swapped face: where you look and when you blink are yours. The eyes are then yours, not the other face's.": {
+      "localizations": {
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mắt thật của bạn hiện qua khuôn mặt thay thế: bạn nhìn đâu và chớp mắt lúc nào là của bạn. Khi đó đôi mắt là của bạn, không phải của khuôn mặt kia."
           }
         }
       }

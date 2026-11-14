@@ -133,6 +133,9 @@ pub struct EngineSettings {
     pub occlusion: bool,
     /// Leave the real mouth showing through the swap.
     pub real_mouth: bool,
+    /// Leave the real eyes showing through the swap.
+    #[uniffi(default = false)]
+    pub real_eyes: bool,
     /// Ask for the picture to be blurred while the swap is not fully on the
     /// face. The amount comes back with every frame as `FrameOutput::blur`.
     pub blur_when_unswapped: bool,
@@ -291,6 +294,7 @@ impl FaceEngine {
             sharpen: settings.sharpen,
             occlusion: settings.occlusion,
             real_mouth: settings.real_mouth,
+            real_eyes: settings.real_eyes,
             blur_when_unswapped: settings.blur_when_unswapped,
         });
     }

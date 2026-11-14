@@ -62,6 +62,7 @@ pub struct Settings {
     pub sharpen: f32,
     pub keep_objects_in_front: bool,
     pub real_mouth: bool,
+    pub real_eyes: bool,
     pub blur_when_unswapped: bool,
     /// Closing the window leaves the app running, so other apps keep their camera.
     pub keep_running: bool,
@@ -90,6 +91,7 @@ impl Default for Settings {
             sharpen: gc_live::LiveSettings::default().sharpen,
             keep_objects_in_front: true,
             real_mouth: false,
+            real_eyes: false,
             blur_when_unswapped: false,
             keep_running: true,
             // The microphone is opened only when the user asks for this.
@@ -121,6 +123,7 @@ impl Settings {
             sharpen: self.sharpen.clamp(0.0, 1.0),
             occlusion: self.keep_objects_in_front,
             real_mouth: self.real_mouth,
+            real_eyes: self.real_eyes,
             blur_when_unswapped: self.blur_when_unswapped,
             ..gc_live::LiveSettings::default()
         }

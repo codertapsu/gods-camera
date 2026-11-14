@@ -88,6 +88,7 @@ final class FaceModel: ObservableObject {
         settings.sharpen = defaults.object(forKey: "swapSharpen") as? Float ?? settings.sharpen
         settings.keepObjectsInFront = defaults.object(forKey: "swapKeepObjects") as? Bool ?? true
         settings.realMouth = defaults.bool(forKey: "swapRealMouth")
+        settings.realEyes = defaults.bool(forKey: "swapRealEyes")
         settings.blurWhenUnswapped = defaults.bool(forKey: "swapBlurWhenOff")
         selectedID = defaults.string(forKey: "selectedFace").flatMap(UUID.init)
     }
@@ -200,6 +201,7 @@ final class FaceModel: ObservableObject {
         defaults.set(settings.sharpen, forKey: "swapSharpen")
         defaults.set(settings.keepObjectsInFront, forKey: "swapKeepObjects")
         defaults.set(settings.realMouth, forKey: "swapRealMouth")
+        defaults.set(settings.realEyes, forKey: "swapRealEyes")
         defaults.set(settings.blurWhenUnswapped, forKey: "swapBlurWhenOff")
         engine?.update { [badge = showAIBadge] in $0.showAIBadge = badge }
         stage?.update(settings)

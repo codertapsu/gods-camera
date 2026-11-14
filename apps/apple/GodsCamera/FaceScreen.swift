@@ -158,6 +158,9 @@ struct FacePanel: View {
             Toggle("Show my real mouth", isOn: $face.settings.realMouth)
                 .onChange(of: face.settings.realMouth) { face.settingsChanged() }
                 .help(String(localized: "Your own lips and teeth show through the swapped face. Speech looks more natural; the mouth is then yours, not the other face's."))
+            Toggle("Show my real eyes", isOn: $face.settings.realEyes)
+                .onChange(of: face.settings.realEyes) { face.settingsChanged() }
+                .help(String(localized: "Your own eyes show through the swapped face: where you look and when you blink are yours. The eyes are then yours, not the other face's."))
         }
     }
 

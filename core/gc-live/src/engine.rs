@@ -81,6 +81,9 @@ pub struct LiveSettings {
     pub occlusion: bool,
     /// Leave the real mouth showing through the swap.
     pub real_mouth: bool,
+    /// Leave the real eyes showing through the swap: the gaze and the blinks
+    /// are then the person's own, which reads as more natural on a call.
+    pub real_eyes: bool,
     /// Ask for the picture to be blurred whenever the swap is not fully on the
     /// face, so the real face never shows. See `FrameResult::blur`.
     pub blur_when_unswapped: bool,
@@ -96,6 +99,7 @@ impl Default for LiveSettings {
             sharpen: 0.4,
             occlusion: true,
             real_mouth: false,
+            real_eyes: false,
             blur_when_unswapped: false,
         }
     }
@@ -844,6 +848,11 @@ fn swap_worker(shared: &Shared, mut swapper: Swapper) {
     if let Some((centre, radii)) = image::mouth_oval(size) {
         image::cut_oval(&mut mouth_hole, size, centre, radii, 0.35);
     }
+    // The same over both eyes, for showing the real eyes.
+    let mut eye_holes = vec![255u8; (size * size) as usize];
+    for (centre, radii) in image::eye_ovals(size).into_iter().flatten() {
+        image::cut_oval(&mut eye_holes, size, centre, radii, 0.45);
+    }
     // The identity as the encoder gave it, and as this model wants it.
     let mut prepared: Option<(Arc<Vec<f32>>, Vec<f32>)> = None;
     let mut sequence = 0u64;
@@ -893,6 +902,9 @@ fn swap_worker(shared: &Shared, mut swapper: Swapper) {
         }
         if settings.real_mouth {
             narrow(&mouth_hole);
+        }
+        if settings.real_eyes {
+            narrow(&eye_holes);
         }
         let mut rgb = swapped.rgb;
         if settings.colour_match {

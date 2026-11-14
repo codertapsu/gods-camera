@@ -609,11 +609,11 @@ fn the_swap_asks_for_the_rules_first_and_says_what_it_lacks() {
 
     // The options are kept, also across a restart, and so is the wish to swap.
     fixture.app.set_quality(Quality::Sharper);
-    fixture.app.set_face_options(0.8, false, false, true, true, false);
+    fixture.app.set_face_options(0.8, false, false, true, true, true, false);
     let fixture = fixture.reopen();
     let state = fixture.app.state();
     assert_eq!((state.quality, state.sharpen, state.colour_match), (Quality::Sharper, 0.8, false));
-    assert_eq!((state.keep_objects_in_front, state.real_mouth, state.blur_when_unswapped, state.show_ai_badge), (false, true, true, false));
+    assert_eq!((state.keep_objects_in_front, state.real_mouth, state.real_eyes, state.blur_when_unswapped, state.show_ai_badge), (false, true, true, true, false));
     assert!(state.swap_wanted && state.policy_accepted);
     assert_eq!(state.swap_state, SwapState::Missing);
 

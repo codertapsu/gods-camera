@@ -326,6 +326,7 @@ pub struct AppState {
     pub can_keep_objects_in_front: bool,
     pub keep_objects_in_front: bool,
     pub real_mouth: bool,
+    pub real_eyes: bool,
     pub blur_when_unswapped: bool,
     pub show_ai_badge: bool,
 
@@ -935,6 +936,7 @@ impl DesktopApp {
             can_keep_objects_in_front: core.live_config(settings.quality).has_occlusion_model(),
             keep_objects_in_front: settings.keep_objects_in_front,
             real_mouth: settings.real_mouth,
+            real_eyes: settings.real_eyes,
             blur_when_unswapped: settings.blur_when_unswapped,
             show_ai_badge: settings.show_ai_badge,
             back_to_live_on_voice: settings.back_to_live_on_voice,
@@ -1303,6 +1305,7 @@ impl DesktopApp {
         colour_match: bool,
         keep_objects_in_front: bool,
         real_mouth: bool,
+        real_eyes: bool,
         blur_when_unswapped: bool,
         show_ai_badge: bool,
     ) {
@@ -1312,6 +1315,7 @@ impl DesktopApp {
         settings.colour_match = colour_match;
         settings.keep_objects_in_front = keep_objects_in_front;
         settings.real_mouth = real_mouth;
+        settings.real_eyes = real_eyes;
         settings.blur_when_unswapped = blur_when_unswapped;
         settings.show_ai_badge = show_ai_badge;
         self.core.save_settings(&inner);

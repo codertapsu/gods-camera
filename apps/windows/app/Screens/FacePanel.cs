@@ -29,6 +29,7 @@ internal sealed class FacePanel : StackPanel
     private readonly SwitchRow colour;
     private readonly SwitchRow keepObjects;
     private readonly SwitchRow realMouth;
+    private readonly SwitchRow realEyes;
     private readonly SwitchRow blur;
     private readonly SwitchRow aiBadge;
     private Quality[] qualities = Array.Empty<Quality>();
@@ -61,8 +62,10 @@ internal sealed class FacePanel : StackPanel
         ToolTipService.SetToolTip(keepObjects, T("A hand, a cup or a microphone in front of your face stays in front of the swapped face."));
         realMouth = new SwitchRow(T("Show my real mouth"), _ => OptionsChanged());
         ToolTipService.SetToolTip(realMouth, T("Your own lips and teeth show through the swapped face. Speech looks more natural; the mouth is then yours, not the other face's."));
+        realEyes = new SwitchRow(T("Show my real eyes"), _ => OptionsChanged());
+        ToolTipService.SetToolTip(realEyes, T("Your own eyes show through the swapped face: where you look and when you blink are yours. The eyes are then yours, not the other face's."));
         Children.Add(new Card(
-            T("How it looks"), Ui.IconWand, qualityRow, Ui.Column(4, Ui.Secondary(T("Sharpness"), 13), sharpen), colour, keepObjects, realMouth));
+            T("How it looks"), Ui.IconWand, qualityRow, Ui.Column(4, Ui.Secondary(T("Sharpness"), 13), sharpen), colour, keepObjects, realMouth, realEyes));
 
         blur = new SwitchRow(T("Blur the picture when the swap is not on my face"), _ => OptionsChanged());
         aiBadge = new SwitchRow(T("Show an AI badge to others"), _ => OptionsChanged());
@@ -100,7 +103,7 @@ internal sealed class FacePanel : StackPanel
     private void OptionsChanged()
     {
         if (showing) return;
-        shell.App.SetFaceOptions((float)sharpen.Value, colour.IsOn, keepObjects.IsOn, realMouth.IsOn, blur.IsOn, aiBadge.IsOn);
+        shell.App.SetFaceOptions((float)sharpen.Value, colour.IsOn, keepObjects.IsOn, realMouth.IsOn, realEyes.IsOn, blur.IsOn, aiBadge.IsOn);
     }
 
     // Faces
@@ -366,6 +369,7 @@ internal sealed class FacePanel : StackPanel
         keepObjects.Visible(state.CanKeepObjectsInFront);
         keepObjects.Show(state.KeepObjectsInFront);
         realMouth.Show(state.RealMouth);
+        realEyes.Show(state.RealEyes);
         blur.Show(state.BlurWhenUnswapped);
         aiBadge.Show(state.ShowAiBadge);
         showing = false;
