@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-14, revision 14 (the camera, the loop and the face swap become one screen, section 6.12; Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, its text reader is built and measured, its scanner is built, and the tablet has sent it a first real page; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-14, revision 15 (the camera, the loop and the face swap become one screen, section 6.12, on Windows and the Mac; Phase 5's gateway and the Windows assistant, try-on and AI settings are built, the remote has its routes, and Windows has an installer; Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, its text reader is built and measured, its scanner is built, and the tablet has sent it a first real page; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -584,7 +584,7 @@ Compositing
 - [x] Oval mask multiplied by the model's own mask and by track and pose fades.
 - [x] Occlusion mask from the XSeg model, on its own thread beside the swap, so a hand or an object stays in front of the swapped face. Tuning on your clips is open.
 - [x] Colour match and sharpening on the patch.
-- [x] Option to show the real mouth through the swap. The same for the eyes is open.
+- [x] Option to show the real mouth through the swap, and since 2026-11-14 the real eyes too.
 - [x] Late reprojection on every output frame.
 
 Quality and speed
@@ -626,7 +626,7 @@ State: the scanner works from end to end. Pictures sent from the Android app are
 - [x] Command-line client covering every hub operation so far: `gc upload`, `gc scan`.
 - [x] Document pipeline: OCR with Vision at the accurate level; layout and reading order; overlap removal by text alignment. Deskew, dewarp and contrast are left to Vision and to the phone's scanner for now.
 - [ ] Review screen on the Mac: image region beside text, confidence highlighting, quick fixes. The app lists received documents and opens, copies or reveals them; the review screen itself is open.
-- [x] Export to Markdown, plain text and JSON with geometry. DOCX and searchable PDF are open.
+- [x] Export to Markdown, plain text and JSON with geometry; since 2026-11-14 also Word, a typeset PDF, and the photos as a searchable PDF (on Windows, from the Scanner screen; everywhere through `gc merge-ocr`).
 - [x] Test documents with a character-error measure: `make_document.py` renders a page with known text and overlapping, skewed shots of it. Photos of real newspapers are still to be added.
 - [x] Android app in the emulator: Compose shell and hub client. It uploads pictures and follows a job. Loading the Rust core in the app waits for Phase 6, which is the first to need it; the core already builds for Android.
 
@@ -639,7 +639,7 @@ State: the scanner works from end to end. Pictures sent from the Android app are
 - [ ] On-device OCR preview with ML Kit, whose Latin model covers Vietnamese, so a page can be checked before moving on.
 - [x] Uploads that resume after a dropped connection. Carrying on in the background is open.
 - [ ] Phone as camera: CameraX into the hardware encoder into the hub stream, with lens, zoom and exposure controls. A camera foreground service keeps it running. The desktop lists it as an input source.
-- [ ] Remote control screen: loop on and off, source face, preset.
+- [ ] Remote control screen: loop on and off, source face, preset. Built on 2026-11-14: the hub's routes (`api/remote.md`), the Windows app's answers, and the Android app's Camera tab that uses them; the Android app is not yet built or tried, and the Mac app does not answer the routes yet.
 - [x] Adaptive layout for the tablet. Redesigned for version 0.4.0: a connection card, large actions, numbered page thumbnails, two panes on a tablet.
 
 Checks only you can do
@@ -685,7 +685,7 @@ Build
 - [ ] A fixed video-memory budget for the live pipeline. S3 measured about 0.7 GB for `inswapper_128` with the detector and the mask, and 1 GB with HyperSwap, of the card's 8 GB.
 - [x] OCR: `gc-ocr`, with PP-OCRv6's line detector and the AsterNet recogniser, because no PP-OCR recogniser can write Vietnamese. Measured on the test documents: 99.7 to 99.8 % of characters right in Vietnamese, 99.9 to 100 % in English. The tablet's first real page, a speckled scan, read at 93 %; the reader now cleans such a scan first and reads it at 98.5 %. More real pages are still to be read.
 - [ ] Hub on the shared core, WinUI shell, tray icon, hotkeys. The installer adds the firewall rule for the hub's network port, for private networks; Windows must never have to ask about it. Built: the shell, the tray icon, the hot keys, and the hub, which the app runs for its scanner. Until there is an installer, the app adds the firewall's rules itself when asked, with Windows' own administrator question. The tablet was connected with the code and sent its first page over Wi-Fi on 2026-11-13. Open: the installer's part.
-- [ ] Installer that registers the camera; file logging; single-instance guard. Built: the log and the guard. Until there is an installer, the app carries the driver and installs or removes it itself when asked, with Windows' own administrator question.
+- [ ] Installer that registers the camera; file logging; single-instance guard. Built: the log, the guard, and since 2026-11-14 the installer (`tools\build-windows-installer.ps1`): the app, the camera's registration, the firewall rules and the models in one `.msi`. Open: installing it, which needs an administrator.
 - [ ] App matrix: Zoom, Teams, Meet in Chrome and Edge, Slack, Discord, OBS, Camera.
 
 Exit: the exit criteria of Phases 1–3 are met on the Windows PC, against the Windows targets in section 7.
@@ -694,16 +694,16 @@ Exit: the exit criteria of Phases 1–3 are met on the Windows PC, against the W
 
 Goal: local and cloud models behind one interface, used first to improve scanned documents.
 
-- [ ] A settings screen where you enter each API key. The app stores it in the Keychain and never shows it again. The Terminal commands in [phase-0-results.md](phase-0-results.md) remain as an alternative.
-- [ ] Provider gateway: Anthropic, Google, OpenAI and OpenAI-compatible endpoints. Keys read from the Keychain.
-- [ ] Claude integration as described in 6.10; model picker from each provider's model list.
+- [ ] A settings screen where you enter each API key. The app stores it in the Keychain and never shows it again. The Terminal commands in [phase-0-results.md](phase-0-results.md) remain as an alternative. Built on Windows on 2026-11-14 (Credential Manager); the Mac's is open.
+- [x] Provider gateway: Anthropic, Google, OpenAI and OpenAI-compatible endpoints (`core/gc-llm`). Keys come from the Keychain or Credential Manager. Tested against a stand-in; no real provider called yet.
+- [x] Claude integration as described in 6.10; model picker from each provider's model list (Windows Settings).
 - [ ] Local models on the Mac: Apple's on-device model and the existing Ollama install.
 - [ ] Embedded local runtime, so the app no longer depends on a separately installed Ollama.
 - [ ] Phones and the command-line client use the desktop's local models and cloud providers through the hub.
-- [ ] Document workflows: clean-up constrained to OCR text with a diff view, summary, translation between Vietnamese and English, extraction to a schema, questions about the document.
+- [x] Document workflows: clean-up constrained to OCR text with a diff view, summary, translation between Vietnamese and English, extraction to a schema, questions about the document. On Windows in the Assistant screen; the Mac's screen is open.
 - [ ] A Vietnamese evaluation set that compares the local models and the three cloud providers; pick defaults by the results.
 - [ ] Hard pages: cloud vision as an option; a local document-vision model if it measures well.
-- [ ] Usage and cost meter; a local-only switch per feature.
+- [x] Usage and cost meter; a local-only switch per feature, every feature local until the user allows the cloud.
 
 Exit: a 100-image scan becomes a consolidated document with page and region references, fully offline on the Mac, or through any of the three cloud providers when switched on.
 
@@ -759,9 +759,9 @@ Goal: capture a person and their items, then generate try-on images.
 
 - [ ] Capture flows with pose guidance for body (front and side), garments (worn, flat or on a hanger), accessories (photos or a Phase 8 scan), and hair.
 - [ ] Wardrobe library with automatic tags for category, colour and material.
-- [ ] One generation interface over several backends. Cloud image models from Gemini and OpenAI come first, since the keys exist.
+- [x] One generation interface over several backends. Cloud image models from Gemini and OpenAI come first, since the keys exist. In gc-llm; the Windows Try-on screen uses it.
 - [ ] Local FASHN VTON v1.5 as the private path. Test it on the RTX 3050, where its stated 8 GB need is borderline, and on the Mac; keep whichever works.
-- [ ] Hairstyle studio: style, length and colour presets, generated previews, side-by-side comparison.
+- [ ] Hairstyle studio: style, length and colour presets, generated previews, side-by-side comparison. A first version on Windows: presets and a described style, generated pictures kept and looked through; side by side is open.
 - [ ] Live hair recolour by segmentation shader; face-anchored glasses and hats from scanned or stock 3D assets.
 - [ ] Experimental body measurements from photos plus height, shown with uncertainty.
 - [ ] Safety: output classifier against nudity, consent for photos of other people, encrypted storage, the per-feature cloud switch.

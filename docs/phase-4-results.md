@@ -339,11 +339,26 @@ You built the app, turned the scanner on, allowed devices in, and connected the 
 - **One page has arrived**, at 19:39, from the tablet: one photo, and the hub made a document of 33 lines from it. How well it read, and what I changed because of it, is under "The first real page" in "Reading text". The document in your app was read by the reader as it was then. To see the difference, rebuild the app and send the page again.
 - **Whether the tablet found the PC by itself**, or needed the address, only you saw.
 
+## Added on 2026-11-14
+
+You asked for the camera, the loop and the face swap to be used together, and for the coding of the rest of the plan. On Windows:
+
+- **One Camera screen** instead of three (plan, section 6.12). The picture others see, with what is happening on it and, at its lower left, the source and the mirror; under it the three controls of a call: *Face swap* with the chosen face's picture and a menu of the faces, *Record a loop*, which turns red while it records, and *Play the loop* or *Back to live*; one line saying what matters now; and at the right the tabs Face, Loop and Camera with everything the three screens had. The engine needed nothing: a loop already records the swapped picture, and the swap keeps following the live face while a loop plays.
+- **Back to live when you speak.** In the Loop tab. While a loop plays, the app listens to the default microphone and ends the loop when sound stays above -32 dB for a quarter of a second, the Mac's rule. Only the loudness is looked at, and the microphone is open only while a loop plays; the picture says LISTENING then.
+- **A diagnostics report** in Settings, under Help: the app's state and its log, without pictures, faces, tokens or device names.
+- **An installer.** `toolsuild-windows-installer.ps1` builds one `.msi` with the app, the camera other apps see (registered for the whole computer), the scanner's two firewall rules, and the model files Windows uses, about 1 GB. A running copy is asked to end first (`GodsCamera.exe --quit`). Installing it needs an administrator: your step.
+- **The remote**: a paired phone or tablet works the Camera screen during a call, through five new routes on the hub (`api/remote.md`): the picture others see as a small JPEG, the faces, and the swap, the face, recording and the loop. Checked against a running copy of the app over HTTP.
+- **Show my real eyes**, beside Show my real mouth, in the Face tab.
+- **The occlusion mask for every second swap**, see "The live engine on the PC": 30 swaps a second instead of 25.
+- **Phase 5 and try-on**: an Assistant screen, a Try-on screen and AI models in Settings; and saving a scanned document as Word or PDF. See [phase-5-results.md](phase-5-results.md).
+
+Not verified on 2026-11-14: the microphone was never opened (a stand-in tested the rule); the installer was built but not installed; no language or image model was called for real.
+
 ## Open
 
 - **The camera in a normal browser window and in meeting apps**, and the uneven timing with the real camera. See the top of this note.
 - **The scanner with your tablet.** See "The scanner in the Windows app".
-- **The rest of the Windows app.** The installer, which registers the camera, adds the firewall rules and carries the model files.
+- **Installing the installer**, which needs an administrator, and trying the app from it.
 - **More real pages for the text reader**, HEIC photos, and its speed. See "Reading text".
 - The occlusion mask at half rate on machines with one accelerator.
 - The Mac's own checkout has to pull, and the Mac app to be rebuilt and tried: the core changes made here pass `tools/check.sh` on the Mac, in a work folder beside it.
