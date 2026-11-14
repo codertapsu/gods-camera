@@ -96,7 +96,7 @@ impl Writer {
 /// A PDF with one page for each photo: the photo fills the page, and every
 /// line read from it lies over it as invisible text, in the line's place and
 /// at its size. The PDF can then be searched, and its text selected and
-/// copied, in any PDF reader, with Vietnamese marks intact.
+/// copied, with Vietnamese marks intact.
 ///
 /// Each photo comes as its file's bytes with what was read from it. A JPEG
 /// goes in as it is; PNG, WebP, TIFF and BMP are decoded and kept without
