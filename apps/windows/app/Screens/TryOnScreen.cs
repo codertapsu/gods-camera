@@ -24,6 +24,7 @@ internal sealed class TryOnScreen : UserControl, IScreen
 
     private readonly Shell shell;
     private string? person;
+    private FaceConsent personConsent = FaceConsent.Myself;
     private string? garment;
     private readonly Image personPicture = new() { Stretch = Stretch.UniformToFill };
     private readonly Image garmentPicture = new() { Stretch = Stretch.UniformToFill };
@@ -63,7 +64,10 @@ internal sealed class TryOnScreen : UserControl, IScreen
         {
             var files = await shell.PickFiles(false, PhotoTypes);
             if (files.Count == 0) return;
+            // As with a face: a photo of a person is used only once the user says whose it is.
+            if (await AskWhose() is not FaceConsent consent) return;
             person = files[0];
+            personConsent = consent;
             personPicture.Source = new BitmapImage(new Uri(person));
             Refresh();
         });
@@ -77,7 +81,7 @@ internal sealed class TryOnScreen : UserControl, IScreen
         });
         tryOn = Ui.PlainButton(T("Try it on"), () =>
         {
-            if (person != null && garment != null) Start(new PictureTask.TryOn(person, garment));
+            if (person != null && garment != null) Start(new PictureTask.TryOn(person, garment, personConsent));
         });
         tryOn.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         var photos = Ui.Row(16, Ui.Column(8, Frame(personPicture), choosePerson), Ui.Column(8, Frame(garmentPicture), chooseGarment));
@@ -114,7 +118,7 @@ internal sealed class TryOnScreen : UserControl, IScreen
         }
         showHair = Ui.PlainButton(T("Show me"), () =>
         {
-            if (person != null && style.Text.Trim().Length > 0) Start(new PictureTask.Hairstyle(person, style.Text.Trim()));
+            if (person != null && style.Text.Trim().Length > 0) Start(new PictureTask.Hairstyle(person, style.Text.Trim(), personConsent));
         });
         showHair.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         style.TextChanged += (_, _) => Refresh();
@@ -131,7 +135,12 @@ internal sealed class TryOnScreen : UserControl, IScreen
         var delete = Ui.PlainButton(T("Delete"), () =>
         {
             if (shown == null) return;
-            try { File.Delete(shown); } catch (IOException) { }
+            try
+            {
+                File.Delete(shown);
+                File.Delete(System.IO.Path.ChangeExtension(shown, ".json"));
+            }
+            catch (IOException) { }
             shown = null;
             made.Source = null;
             galleryKey = "";
@@ -243,6 +252,36 @@ internal sealed class TryOnScreen : UserControl, IScreen
             }
             wardrobe.Children.Add(choose);
         }
+    }
+
+    /// <summary>Whose photo of a person this is; null when the user does not say.</summary>
+    private async Task<FaceConsent?> AskWhose()
+    {
+        var whose = new RadioButtons { Header = T("Whose photo is this?") };
+        whose.Items.Add(T("This is me."));
+        whose.Items.Add(T("It is someone else, and I have their permission."));
+        whose.Items.Add(T("It is AI-generated and shows no real person."));
+        var body = new StackPanel { Spacing = 12, MaxWidth = 440 };
+        body.Children.Add(whose);
+        body.Children.Add(Ui.Secondary(T("The photo goes to the picture model chosen in Settings. If none of these is true, do not use the photo."), 13));
+        var dialog = new ContentDialog
+        {
+            XamlRoot = shell.Root,
+            Title = T("Use this photo"),
+            Content = body,
+            PrimaryButtonText = T("Use it"),
+            CloseButtonText = T("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
+        };
+        whose.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = whose.SelectedIndex >= 0;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
+        return whose.SelectedIndex switch
+        {
+            1 => FaceConsent.Permission,
+            2 => FaceConsent.Synthetic,
+            _ => FaceConsent.Myself,
+        };
     }
 
     private void Show(string file)

@@ -22,6 +22,7 @@ use gc_llm::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::model::FaceConsent;
 use crate::secrets::Secrets;
 
 /// A cloud provider whose key the user may enter.
@@ -212,13 +213,38 @@ pub enum DocumentTask {
     },
 }
 
-/// A picture to make from photos (Phase 9).
+/// A picture to make from photos (Phase 9). `consent` is what the user said
+/// of the person's photo; it is kept beside the picture made.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum PictureTask {
     /// The person in the first photo wearing the garment in the second.
-    TryOn { person: String, garment: String },
+    TryOn {
+        person: String,
+        garment: String,
+        consent: FaceConsent,
+    },
     /// The person with another hairstyle, as described.
-    Hairstyle { person: String, style: String },
+    Hairstyle {
+        person: String,
+        style: String,
+        consent: FaceConsent,
+    },
+}
+
+impl PictureTask {
+    /// What was made and whose photo it was made from, as kept beside the picture.
+    fn record(&self, model: &str, made_at: u128) -> serde_json::Value {
+        let (made, consent) = match self {
+            PictureTask::TryOn { consent, .. } => ("try_on", consent),
+            PictureTask::Hairstyle { consent, .. } => ("hairstyle", consent),
+        };
+        let consent = match consent {
+            FaceConsent::Myself => "the person is the user",
+            FaceConsent::Permission => "the user has the person's permission",
+            FaceConsent::Synthetic => "the photo is AI-generated and shows no real person",
+        };
+        serde_json::json!({ "made": made, "consent": consent, "model": model, "made_at_ms": made_at as u64 })
+    }
 }
 
 /// One stretch of a clean-up's changes, in order.
@@ -711,10 +737,10 @@ impl Assistant {
                 })
             };
             let (prompt, photos) = match &task {
-                PictureTask::TryOn { person, garment } => {
-                    (TRY_ON.to_string(), vec![read(person)?, read(garment)?])
-                }
-                PictureTask::Hairstyle { person, style } => (
+                PictureTask::TryOn {
+                    person, garment, ..
+                } => (TRY_ON.to_string(), vec![read(person)?, read(garment)?]),
+                PictureTask::Hairstyle { person, style, .. } => (
                     format!("{HAIRSTYLE}\n\nThe hairstyle: {}", style.trim()),
                     vec![read(person)?],
                 ),
@@ -741,6 +767,13 @@ impl Assistant {
             std::fs::write(&file, &made.png).map_err(|error| LlmError::Storage {
                 message: error.to_string(),
             })?;
+            // The consent is kept with the picture, as it is with a face.
+            let model = format!("{}/{}", made.provider, made.model);
+            let record = task.record(&model, made_at);
+            let _ = std::fs::write(
+                file.with_extension("json"),
+                serde_json::to_vec_pretty(&record).unwrap_or_default(),
+            );
             progress(1, 1);
             Ok(TaskResult {
                 text: made.text,
@@ -748,7 +781,7 @@ impl Assistant {
                 flagged: false,
                 quotes: Vec::new(),
                 picture: Some(file.to_string_lossy().into_owned()),
-                model: format!("{}/{}", made.provider, made.model),
+                model,
             })
         })
     }

@@ -2,8 +2,10 @@
 //! 127.0.0.1, and its keys kept in a folder: no cloud provider is called.
 
 use gc_app::assistant::{
-    AiFeature, Assistant, AssistantProblem, CloudProvider, DocumentTask, ModelChoice, TaskState,
+    AiFeature, Assistant, AssistantProblem, CloudProvider, DocumentTask, ModelChoice, PictureTask,
+    TaskState,
 };
+use gc_app::model::FaceConsent;
 use gc_app::secrets::{FolderSecrets, Secrets};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -54,6 +56,39 @@ fn stand_in(answer: &'static str) -> (String, Arc<std::sync::atomic::AtomicUsize
         }
     });
     (address, count)
+}
+
+/// A server that answers every request with the JSON `body`, and notes each
+/// request's first line.
+fn answering(body: String) -> (String, Arc<std::sync::Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}/v1", listener.local_addr().unwrap());
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let noted = Arc::clone(&seen);
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let (mut first, mut length, mut line) = (String::new(), 0usize, String::new());
+            loop {
+                line.clear();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                    break;
+                }
+                if first.is_empty() {
+                    first = line.trim().to_string();
+                }
+                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = value.trim().parse().unwrap_or(0);
+                }
+            }
+            let mut request = vec![0u8; length];
+            let _ = reader.read_exact(&mut request);
+            noted.lock().unwrap().push(first);
+            let mut stream = stream;
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+        }
+    });
+    (address, seen)
 }
 
 fn folder(tag: &str) -> std::path::PathBuf {
@@ -172,6 +207,81 @@ fn the_cloud_stays_closed_until_the_user_opens_it_for_a_feature() {
             .unwrap();
     let id = bare.start_document(DocumentTask::Summary { english: true }, "Text.".into());
     assert_eq!(finished(&bare, id).problem, Some(AssistantProblem::NoKey));
+}
+
+#[test]
+fn a_try_on_picture_is_kept_with_whose_photo_it_was_made_from() {
+    use base64::Engine as _;
+    let folder = folder("picture");
+    let assistant = Assistant::with_secrets(
+        &folder,
+        Arc::new(FolderSecrets::new(folder.join("Secrets"))),
+        0,
+    )
+    .unwrap();
+    let mut made = Vec::new();
+    image::RgbImage::from_pixel(8, 8, image::Rgb([200, 120, 40]))
+        .write_to(
+            &mut std::io::Cursor::new(&mut made),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    let reply = serde_json::json!({ "created": 1, "data": [{ "b64_json": base64::engine::general_purpose::STANDARD.encode(&made) }], "output_format": "png" });
+    let (address, seen) = answering(reply.to_string());
+    // OpenAI with a key, at the stand-in's address.
+    let key = gc_llm::ApiKey::new("sk-test-0123456789").unwrap();
+    assistant.set_provider(
+        gc_llm::Provider::openai(Some(key))
+            .with_base_url(&address)
+            .unwrap(),
+    );
+    assistant.set_image_model(Some(ModelChoice {
+        provider: "openai".into(),
+        model: "gpt-image-2.6-sunburst".into(),
+    }));
+
+    let photo = |name: &str, colour: [u8; 3]| {
+        let path = folder.join(name);
+        image::RgbImage::from_pixel(30, 40, image::Rgb(colour))
+            .save(&path)
+            .unwrap();
+        path.to_string_lossy().into_owned()
+    };
+    let task = PictureTask::TryOn {
+        person: photo("person.png", [90, 60, 50]),
+        garment: photo("shirt.png", [40, 80, 200]),
+        consent: FaceConsent::Permission,
+    };
+    // The photos leave only once the user allows the cloud for try-on.
+    let id = assistant.start_picture(task.clone());
+    assert_eq!(
+        finished(&assistant, id).problem,
+        Some(AssistantProblem::CloudNotAllowed)
+    );
+    assert!(seen.lock().unwrap().is_empty(), "nothing was sent");
+    assistant.set_cloud_allowed(AiFeature::TryOn, true);
+
+    let id = assistant.start_picture(task);
+    let state = finished(&assistant, id);
+    assert_eq!(state.problem, None);
+    let picture = std::path::PathBuf::from(state.result.unwrap().picture.expect("a picture"));
+    assert_eq!(
+        std::fs::read(&picture).unwrap(),
+        made,
+        "the picture is the model's, as it came"
+    );
+    assert!(picture.starts_with(folder.join("Assistant").join("Pictures")));
+    assert!(
+        seen.lock().unwrap()[0].starts_with("POST /v1/images/edits"),
+        "{:?}",
+        seen.lock().unwrap()
+    );
+    // Whose photo it was is kept beside it.
+    let record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(picture.with_extension("json")).unwrap()).unwrap();
+    assert_eq!(record["made"], "try_on");
+    assert_eq!(record["consent"], "the user has the person's permission");
+    assert_eq!(record["model"], "openai/gpt-image-2.6-sunburst");
 }
 
 #[test]
