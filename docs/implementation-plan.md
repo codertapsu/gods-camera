@@ -1,6 +1,6 @@
 # God's Camera — Implementation Plan
 
-Date: 2026-11-13, revision 13 (Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, its text reader is built and measured, its scanner is built, and the tablet has sent it a first real page; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
+Date: 2026-11-14, revision 14 (the camera, the loop and the face swap become one screen, section 6.12; Phases 1 and 2 built and revised after your first hands-on test; in Phase 3 the scanner and pairing over Wi-Fi are built; Phase 4 began on the Windows PC, a phase early, when you brought it in: its camera driver is registered and works in Chrome and Edge, its app has its main screens, its text reader is built and measured, its scanner is built, and the tablet has sent it a first real page; manual checks and the webcam clips are open) · Evidence and sources: [research-findings.md](research-findings.md)
 
 ## 1. Summary
 
@@ -406,6 +406,26 @@ Added on demand, per device:
 - **Generation limits.** No nudity or undress output; an output classifier backs this up.
 - **Data.** Face embeddings, body photos and measurements are encrypted at rest, stay on the user's devices, and have a delete-everything control.
 - **Cloud use** is a switch per feature, off until turned on, with a notice of what leaves the device.
+
+### 6.12 One camera screen: camera, loop and face together
+
+Decided on 2026-11-14: the three are used together, so every app shows them on one screen. This replaces the separate Camera, Loop and Face screens of the desktop apps.
+
+**Desktop, Mac and Windows: the Camera screen**
+
+- **The picture others see** fills most of the window, 16:9, with what is happening shown on it in small labels: Live, Recording and its seconds, or Playing the loop; the face being shown; whether an app is watching. Every state is visible on the picture itself.
+- **One row of large controls under the picture**, the ones used during a call: *Swap my face* (on and off, with the chosen face's picture; its arrow opens the faces), *Record a loop* and *Stop*, *Play the loop* and *Back to live*, the source (a camera, a picture, a video or the test pattern), and *Mirror*. A control's tooltip names its hot key.
+- **Three tabs at the right** for everything else: *Face* (the faces, adding one, how it looks, privacy), *Loop* (this loop, saving it, how it repeats, saved loops, going back to live when you speak), and *Camera* (the source's details, the camera for other apps, the apps watching).
+- **The sidebar** then lists Camera, Scanner, and the screens later phases bring (Assistant, 3D, Try-on), with Settings last. A screen appears only once its feature works.
+- **How the three work together.** The loop records the picture as others see it, swapped face included. The swap keeps following the live face while a loop plays, so going back to live does not jump. Recording, playing and the swap each keep working when the window is closed to the notification area or the menu bar.
+
+**Android: the Camera tab**
+
+- **The device's camera fills the screen**, with the same labels. At the bottom, within reach of a thumb: *Swap my face* (the faces come from the computer the device is connected to), *Record a loop*, *Play the loop*, and *Send to my computer*, which makes the device a camera for the computer (route 1 of section 3.3).
+- **The swap runs through the connected computer first** (section 6.8), and on the device itself only where spike S6 passes.
+- **Other tabs:** *Scan*, the scanner as it is; *Remote*, which controls the computer's Camera screen during a call (the loop, the face, the preset); and Settings. A clean full-screen view serves sharing the screen in a meeting app (route 3).
+
+**Everywhere:** plain words in English and Vietnamese, light and dark, keyboard use on the desktop and large touch targets on the device.
 
 ## 7. Targets
 

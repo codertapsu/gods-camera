@@ -15,7 +15,9 @@ A personal app for macOS, Windows and Android: a virtual camera for meeting apps
 - Personal, non-commercial use. Open-source libraries and research-licensed models are fine. Do not raise model licensing as a blocker; keep `commercial_ok` in the pack manifests for a later release.
 - Minimum requirements are firm and are never lowered to fit a device. Android's is Android 16 (API 36).
 - Safety defaults stay on: the "AI" badge, a consent statement for every face, faces encrypted at rest.
-- The apps should be clear, easy to use, clean, modern and friendly, with one screen per feature and plain words. Developer paths go under "For development". Every string exists in English and Vietnamese.
+- The apps should be clear, easy to use, clean, modern and friendly, in plain words. Developer paths go under "For development". Every string exists in English and Vietnamese.
+- Since 2026-11-14 the camera, the loop and the face swap are one screen, in the desktop apps and in the mobile app, so that they are used together. The interface may change a lot as the plan's features arrive; what counts is a modern, smooth, easy experience. The shared design is in section 6.12 of the plan.
+- On 2026-11-14 the user asked for the coding work of every remaining phase to be done, so that they can test everything at once. Phases 11 (no iPhone yet) and 12 (only for a release) wait. Checks that need a person are collected for them, not done one by one.
 - Everything the app needs to run is bundled with it.
 - Go through the plan's phases without asking for a go-ahead for each. Stop for real questions and for checks that need a person.
 - Since 2026-11-12 the work runs on two machines, and each platform's own work is done on its own machine. That brought the Windows start forward; Phase 4 runs beside what is left of Phase 3.
