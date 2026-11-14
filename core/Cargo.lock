@@ -925,6 +925,7 @@ dependencies = [
  "gc-infer",
  "gc-link",
  "gc-live",
+ "gc-llm",
  "gc-ocr",
  "gc-win",
  "getrandom 0.4.3",

@@ -262,7 +262,19 @@ async fn document_job_reads_merges_and_serves_results() {
     assert_eq!(result["pictures"], 2);
     assert_eq!(result["lines_read"], 4);
     assert_eq!(result["repeated_lines_removed"], 2);
-    assert_eq!(job.files, ["document.md", "document.txt", "document.json"]);
+    assert_eq!(job.files, ["document.md", "document.txt", "document.json", "pages.json"]);
+    // What was read from each photo is kept by the photo's name in the upload, never by the hub's own path.
+    let pages: Vec<gc_doc::OcrPage> = http
+        .get(format!("{base}/v1/jobs/{}/files/pages.json", job.id))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(pages.len(), 2);
+    assert!(pages.iter().all(|page| !page.path.contains('/') && !page.path.contains('\\')), "{pages:?}");
 
     let text = http
         .get(format!("{base}/v1/jobs/{}/files/document.txt", job.id))

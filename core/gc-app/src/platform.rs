@@ -12,6 +12,18 @@ fn try_out_secrets(data_dir: &str) -> Arc<dyn Secrets> {
     Arc::new(FolderSecrets::new(Path::new(data_dir).join("Secrets")))
 }
 
+/// Where the app's secrets are kept: Credential Manager for the user's own
+/// app on Windows, the data folder for a try-out and on other systems.
+pub fn app_secrets(data_dir: &str, try_out: bool) -> Arc<dyn Secrets> {
+    #[cfg(windows)]
+    return windows::secrets(data_dir, try_out);
+    #[cfg(not(windows))]
+    {
+        let _ = try_out;
+        try_out_secrets(data_dir)
+    }
+}
+
 /// The platform for the system this was built for.
 #[cfg(not(windows))]
 pub fn native(_config: &AppConfig) -> Result<Arc<dyn crate::model::Platform>, String> {
@@ -73,7 +85,7 @@ mod windows {
 
     /// The user's own app keeps its secrets in Credential Manager. A try-out
     /// keeps them in its scratch folder, and so cannot touch the user's.
-    fn secrets(data_dir: &str, try_out: bool) -> Arc<dyn Secrets> {
+    pub(super) fn secrets(data_dir: &str, try_out: bool) -> Arc<dyn Secrets> {
         match try_out {
             true => try_out_secrets(data_dir),
             false => Arc::new(Vault),

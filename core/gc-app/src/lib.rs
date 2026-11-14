@@ -6,6 +6,7 @@
 
 uniffi::setup_scaffolding!();
 
+pub mod assistant;
 pub mod faces;
 pub mod model;
 pub mod pattern;

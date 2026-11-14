@@ -14,6 +14,7 @@ gc-live = { version = "0.1.0", path = "../gc-live" }
 # whose model files it looks for.
 gc-doc = { version = "0.1.0", path = "../gc-doc" }
 gc-link = { version = "0.1.0", path = "../gc-link" }
+gc-llm = { version = "0.1.0", path = "../gc-llm" }
 gc-ocr = { version = "0.1.0", path = "../gc-ocr" }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync"] }
 # Saved faces are sealed with the cipher the pairing already uses.
