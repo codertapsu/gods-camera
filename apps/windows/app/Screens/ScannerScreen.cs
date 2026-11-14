@@ -327,13 +327,13 @@ internal sealed class ScannerScreen : UserControl, IScreen
             {
                 body.Children.Add(Ui.Text(T("Connect a phone or tablet"), 20, true));
                 body.Children.Add(Step(1, T("Open God's Camera on the phone or tablet, on the same Wi-Fi network as this PC.")));
-                body.Children.Add(Step(2, T("Tap “Connect to a Mac” and choose “{0}”. The app there says Mac for any computer.", state.Name)));
+                body.Children.Add(Step(2, T("Tap “Connect to a computer” and choose “{0}”.", state.Name)));
                 body.Children.Add(Step(3, T("Enter this code there.")));
                 body.Children.Add(Digits(state.PairingCode));
                 body.Children.Add(Centred(remaining));
                 if (state.Addresses.Length > 0)
                 {
-                    body.Children.Add(Ui.Secondary(T("If this PC is not in the list there, tap “Enter the Mac's address instead” and enter {0}.", state.Addresses[0]), 13));
+                    body.Children.Add(Ui.Secondary(T("If this PC is not in the list there, tap “Enter the computer's address instead” and enter {0}.", state.Addresses[0]), 13));
                 }
                 dialog.CloseButtonText = T("Cancel");
             }
