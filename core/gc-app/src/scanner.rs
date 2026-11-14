@@ -143,6 +143,19 @@ pub struct DocumentInfo {
     pub folder: String,
     /// Why a failed document failed, in words fit for the user.
     pub error: Option<String>,
+    /// What was read from each photo was kept, so a searchable PDF of the photos can be made.
+    pub searchable: bool,
+}
+
+/// What a document can be saved as, besides its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DocumentExport {
+    /// A Word document with the headings and paragraphs.
+    Word,
+    /// The text set as a PDF.
+    Pdf,
+    /// The photos as a PDF, with their text laid over them so it can be searched and copied.
+    SearchablePdf,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -391,6 +404,33 @@ impl Scanner {
     }
 
     /// The documents the hub has made or is making, newest first.
+    /// The photos of a document with their text laid over them, as one PDF.
+    fn searchable_pdf(&self, folder: &Path) -> Result<Vec<u8>, String> {
+        let job: gc_link::Job = std::fs::read(folder.join("job.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .ok_or("the document cannot be read")?;
+        if !valid_id(&job.upload_id) {
+            return Err("the document's photos are not known".into());
+        }
+        let pages: Vec<gc_doc::OcrPage> = std::fs::read(folder.join("pages.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .ok_or("this document was read before its photos' text was kept")?;
+        let photos = self.hub_folder().join("uploads").join(&job.upload_id);
+        let mut with_pictures = Vec::with_capacity(pages.len());
+        for page in pages {
+            // The hub keeps file names only; one that leads anywhere else is not a photo of this document.
+            let name = Path::new(&page.path).file_name().map(|name| name.to_os_string()).unwrap_or_default();
+            if name.is_empty() || Path::new(&name) != Path::new(&page.path) {
+                return Err("the document's photos are not known".into());
+            }
+            let picture = std::fs::read(photos.join(&name)).map_err(|_| format!("the photo {} is missing", page.path))?;
+            with_pictures.push((picture, page));
+        }
+        gc_doc::export::to_searchable_pdf(&with_pictures)
+    }
+
     fn read_documents(&self) -> Vec<DocumentInfo> {
         let Ok(folders) = std::fs::read_dir(self.hub_folder().join("jobs")) else { return Vec::new() };
         let mut documents: Vec<DocumentInfo> = folders
@@ -428,6 +468,7 @@ impl Scanner {
                     progress: job.progress,
                     pictures,
                     title,
+                    searchable: folder.join("pages.json").is_file(),
                     folder: folder.to_string_lossy().into_owned(),
                     error: job.error,
                 })
@@ -609,6 +650,36 @@ impl Scanner {
             true => std::fs::read_to_string(self.hub_folder().join("jobs").join(id).join("document.txt")).unwrap_or_default(),
             false => String::new(),
         }
+    }
+
+    /// Write a document to the file `to`. `None` when it is written;
+    /// otherwise what went wrong, for the log.
+    pub fn export_document(&self, id: String, kind: DocumentExport, to: String) -> Option<String> {
+        if !valid_id(&id) {
+            return Some("no such document".into());
+        }
+        let folder = self.hub_folder().join("jobs").join(&id);
+        let bytes = match kind {
+            DocumentExport::Word | DocumentExport::Pdf => {
+                let text = match std::fs::read(folder.join("document.json")) {
+                    Ok(text) => text,
+                    Err(error) => return Some(format!("the document cannot be read: {error}")),
+                };
+                let document: gc_doc::Document = match serde_json::from_slice(&text) {
+                    Ok(document) => document,
+                    Err(error) => return Some(format!("the document cannot be read: {error}")),
+                };
+                match kind {
+                    DocumentExport::Word => gc_doc::export::to_docx(&document, None),
+                    _ => gc_doc::export::to_pdf(&document, None),
+                }
+            }
+            DocumentExport::SearchablePdf => match self.searchable_pdf(&folder) {
+                Ok(bytes) => bytes,
+                Err(why) => return Some(why),
+            },
+        };
+        std::fs::write(&to, bytes).err().map(|error| format!("{to} could not be written: {error}"))
     }
 
     /// Remove a document and the pictures it came from.

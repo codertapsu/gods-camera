@@ -921,6 +921,7 @@ version = "0.1.0"
 dependencies = [
  "chacha20poly1305",
  "gc-camera",
+ "gc-doc",
  "gc-infer",
  "gc-link",
  "gc-live",

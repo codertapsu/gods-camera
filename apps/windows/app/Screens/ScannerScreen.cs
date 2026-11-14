@@ -479,8 +479,23 @@ internal sealed class ScannerScreen : UserControl, IScreen
             show.Click += (_, _) => Shell.ShowInExplorer(file);
             var delete = new MenuFlyoutItem { Text = T("Delete") };
             delete.Click += (_, _) => Delete(id);
+            var named = Title(document);
+            var word = new MenuFlyoutItem { Text = T("Save as Word…") };
+            word.Click += (_, _) => Export(id, named, DocumentExport.Word);
+            var pdf = new MenuFlyoutItem { Text = T("Save as PDF…") };
+            pdf.Click += (_, _) => Export(id, named, DocumentExport.Pdf);
             menu.Items.Add(openFile);
             menu.Items.Add(show);
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(word);
+            menu.Items.Add(pdf);
+            // The photos with their text over them: only for documents whose photos' text was kept.
+            if (document.Searchable)
+            {
+                var photos = new MenuFlyoutItem { Text = T("Save the photos as a searchable PDF…") };
+                photos.Click += (_, _) => Export(id, named, DocumentExport.SearchablePdf);
+                menu.Items.Add(photos);
+            }
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(delete);
             var more = new Button { Content = Ui.Icon(Ui.IconMore, 14), Flyout = menu };
@@ -503,6 +518,31 @@ internal sealed class ScannerScreen : UserControl, IScreen
         row.Children.Add(words);
         row.Children.Add(buttons);
         return row;
+    }
+
+    /// <summary>Save a document as Word or PDF where the user chooses, and show it in File Explorer.</summary>
+    private async void Export(string id, string title, DocumentExport kind)
+    {
+        var (label, extension) = kind == DocumentExport.Word ? (T("Word document"), ".docx") : (T("PDF document"), ".pdf");
+        var name = string.Concat(title.Split(System.IO.Path.GetInvalidFileNameChars())).Trim();
+        if (name.Length > 60) name = name[..60].Trim();
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+        {
+            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = name.Length > 0 ? name : T("Scanned document"),
+        };
+        picker.FileTypeChoices.Add(label, new List<string> { extension });
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(shell));
+        var file = await picker.PickSaveFileAsync();
+        if (file == null) return;
+        var problem = await Task.Run(() => shell.Scanner.ExportDocument(id, kind, file.Path));
+        if (problem == null)
+        {
+            Shell.ShowInExplorer(file.Path);
+            return;
+        }
+        Log.Write($"saving a document as {kind}: {problem}");
+        await shell.Ask(T("The document could not be saved"), Ui.Text(problem), T("OK"), T("Cancel"));
     }
 
     private void Delete(string id)

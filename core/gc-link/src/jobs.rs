@@ -118,6 +118,9 @@ async fn document(state: &AppState, id: &str, pictures: &[PathBuf]) -> Result<(s
     for page in &mut pages {
         page.path = Path::new(&page.path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     }
+    // What was read from each photo, by its file name in the upload: a
+    // searchable PDF lays these lines over the photos themselves.
+    let read = serde_json::to_string(&pages).unwrap_or_else(|_| "[]".into());
     let built = tokio::task::spawn_blocking(move || gc_doc::build(&pages)).await.map_err(|_| "merging the text failed".to_string())?;
 
     let dir = job_dir(&state.config, id);
@@ -125,6 +128,7 @@ async fn document(state: &AppState, id: &str, pictures: &[PathBuf]) -> Result<(s
         ("document.md", gc_doc::export::to_markdown(&built)),
         ("document.txt", gc_doc::export::to_text(&built)),
         ("document.json", gc_doc::export::to_json(&built)),
+        ("pages.json", read),
     ];
     for (name, content) in &outputs {
         tokio::fs::write(dir.join(name), content).await.map_err(|error| {

@@ -43,7 +43,7 @@ pub struct OcrPage {
 }
 
 /// A line placed in the document's frame.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlacedLine {
     pub text: String,
     pub confidence: f32,
@@ -64,7 +64,7 @@ impl PlacedLine {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BlockKind {
     Heading,
@@ -72,7 +72,7 @@ pub enum BlockKind {
 }
 
 /// A heading or a paragraph, in reading order.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Block {
     pub kind: BlockKind,
     pub text: String,
@@ -81,8 +81,8 @@ pub struct Block {
     pub lines: Vec<PlacedLine>,
 }
 
-/// The finished document.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// The finished document. `export::to_json` writes it, and it reads back.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
     pub blocks: Vec<Block>,
     /// How many photos went in.

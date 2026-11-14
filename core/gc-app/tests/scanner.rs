@@ -265,6 +265,60 @@ fn job(hub: &Path, id: &str, kind: &str, status: &str, progress: f32, text: Opti
 }
 
 #[test]
+fn a_document_is_saved_as_word_and_as_pdfs() {
+    use gc_app::scanner::DocumentExport;
+    let fixture = Fixture::new("exports");
+    let hub = fixture.hub();
+    let (read, older) = ("aaaaaaaa-0000-4000-8000-000000000011", "aaaaaaaa-0000-4000-8000-000000000012");
+    job(&hub, read, "document", "done", 1.0, Some("Chợ nổi buổi sớm\n\nGhe xuồng đã tấp nập trên sông.\n"));
+    job(&hub, older, "document", "done", 1.0, Some("Older\n"));
+    // What the hub keeps: the merged document, and what was read from each photo by its name.
+    let line = |text: &str, y: f32| gc_doc::OcrLine { text: text.into(), confidence: 0.98, quad: [40.0, y, 600.0, y, 600.0, y + 40.0, 40.0, y + 40.0], title: false };
+    let page = gc_doc::OcrPage {
+        path: "page-1.jpg".into(),
+        width: 640,
+        height: 480,
+        lines: vec![line("Chợ nổi buổi sớm", 40.0), line("Ghe xuồng đã tấp nập trên sông.", 120.0)],
+        error: None,
+    };
+    let document = gc_doc::build(std::slice::from_ref(&page));
+    for id in [read, older] {
+        std::fs::write(hub.join("jobs").join(id).join("document.json"), gc_doc::export::to_json(&document)).unwrap();
+    }
+    std::fs::write(hub.join("jobs").join(read).join("pages.json"), serde_json::to_vec(&[page]).unwrap()).unwrap();
+    // A real picture where the hub keeps the photo.
+    let upload = hub.join("uploads").join(read.replace('a', "b"));
+    image::RgbImage::from_pixel(640, 480, image::Rgb([240, 236, 228])).save(upload.join("page-1.jpg")).unwrap();
+
+    let scanner = fixture.scanner();
+    let state = scanner.state();
+    let find = |id: &str| state.documents.iter().find(|document| document.id == id).expect("listed").clone();
+    assert!(find(read).searchable && !find(older).searchable);
+
+    let out = fixture.folder.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    let save = |id: &str, kind, name: &str| {
+        let to = out.join(name);
+        (scanner.export_document(id.into(), kind, to.to_string_lossy().into_owned()), std::fs::read(&to).unwrap_or_default())
+    };
+    let (problem, word) = save(read, DocumentExport::Word, "a.docx");
+    assert!(problem.is_none() && word.starts_with(b"PK"), "{problem:?}");
+    let (problem, pdf) = save(read, DocumentExport::Pdf, "a.pdf");
+    assert!(problem.is_none() && pdf.starts_with(b"%PDF"), "{problem:?}");
+    let (problem, searchable) = save(read, DocumentExport::SearchablePdf, "b.pdf");
+    assert!(problem.is_none() && searchable.starts_with(b"%PDF"), "{problem:?}");
+    // The photo is in it, which the typeset one has none of.
+    assert!(searchable.len() > pdf.len());
+
+    // A document read before the photos' text was kept has Word and the typeset PDF, and says why not the other.
+    assert_eq!(save(older, DocumentExport::Word, "c.docx").0, None);
+    let (problem, nothing) = save(older, DocumentExport::SearchablePdf, "c.pdf");
+    assert!(problem.is_some_and(|why| why.contains("before")) && nothing.is_empty());
+    // Only a document's own number names it.
+    assert_eq!(save("..", DocumentExport::Word, "d.docx").0.as_deref(), Some("no such document"));
+}
+
+#[test]
 fn documents_are_listed_read_and_deleted_with_their_pictures() {
     let fixture = Fixture::new("documents");
     let hub = fixture.hub();
