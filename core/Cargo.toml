@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-doc", "gc-ocr", "gc-pair", "gc-link", "gc-live", "gc-render", "gc-camera", "gc-win", "gc-app", "gc-ffi", "gc-mobile", "gc-cli"]
+members = ["gc-align", "gc-track", "gc-infer", "gc-models", "gc-doc", "gc-ocr", "gc-llm", "gc-pair", "gc-link", "gc-live", "gc-render", "gc-camera", "gc-win", "gc-app", "gc-ffi", "gc-mobile", "gc-cli"]
 
 [workspace.package]
 version = "0.1.0"

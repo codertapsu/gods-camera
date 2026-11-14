@@ -1,0 +1,26 @@
+[package]
+name = "gc-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "One way to reach language and image models: Anthropic, OpenAI, Gemini and local servers, with a usage meter and a cloud switch per feature."
+
+[dependencies]
+base64 = "0.23.1"
+# Pictures a provider sends back in another format are turned into PNG.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# HTTPS through rustls with the `ring` library, as the hub and the `gc` tool
+# use it: it needs no extra tools when the core is built for Android and
+# Windows from a Mac. No SDK: every provider is spoken to in plain HTTP.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "time", "sync"] }
+# Text from scans is compared and handed back in one Unicode form, NFC.
+unicode-normalization = "0.1"
+zeroize = "1.9.1"
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "time", "sync", "macros"] }
