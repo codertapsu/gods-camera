@@ -919,6 +919,7 @@ version = "0.1.0"
 name = "gc-app"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "chacha20poly1305",
  "gc-camera",
  "gc-doc",

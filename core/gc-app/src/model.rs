@@ -6,8 +6,8 @@
 //! shows up in the next state.
 
 use crate::faces::{
-    self, face_from_pending, read_photos, without_photo, Consent, FaceLibrary, FindFace, KeyStore,
-    PendingFace, SavedFace, MAX_PHOTOS,
+    self, face_from_pending, read_photos, without_photo, Consent, FaceLibrary, FindFace, KeyStore, PendingFace, SavedFace,
+    MAX_PHOTOS,
 };
 use crate::pattern::Pattern;
 use crate::settings::{LoopStyle, Quality, Settings, SourceKind};
@@ -122,11 +122,7 @@ pub trait Platform: Send + Sync {
         Vec::new()
     }
     /// Start fetching pictures. They are delivered until what is returned is dropped.
-    fn capture(
-        &self,
-        _from: CaptureFrom,
-        _on_frame: OnFrame,
-    ) -> Result<Box<dyn Send>, SourceProblem> {
+    fn capture(&self, _from: CaptureFrom, _on_frame: OnFrame) -> Result<Box<dyn Send>, SourceProblem> {
         Err(SourceProblem::NotAvailable)
     }
     /// Listen to the microphone: its sound is delivered until what is
@@ -447,18 +443,14 @@ struct Core {
 }
 
 fn now_unix_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs())
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }
 
 impl Core {
     fn lock(&self) -> MutexGuard<'_, Inner> {
         // Every change under this lock leaves the state whole, so a panic
         // elsewhere while it was held does no harm here.
-        self.inner
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn settings_path(&self) -> PathBuf {
@@ -524,10 +516,7 @@ impl Core {
     /// virtual camera, or a recording or a loop that is under way.
     fn picture_needed(&self, inner: &Inner) -> bool {
         let status = self.engine.status();
-        inner.preview_wanted
-            || self.platform.watched()
-            || status.is_recording
-            || status.mode == Mode::Looping
+        inner.preview_wanted || self.platform.watched() || status.is_recording || status.mode == Mode::Looping
     }
 
     /// Switch the source off while nobody looks, and on again when somebody does.
@@ -576,15 +565,8 @@ impl Core {
                     return;
                 }
                 // The camera chosen last time if it is still there, otherwise the first.
-                let chosen = inner
-                    .settings
-                    .camera
-                    .as_ref()
-                    .filter(|id| inner.cameras.iter().any(|camera| &&camera.id == id))
-                    .cloned();
-                let Some(id) =
-                    chosen.or_else(|| inner.cameras.first().map(|camera| camera.id.clone()))
-                else {
+                let chosen = inner.settings.camera.as_ref().filter(|id| inner.cameras.iter().any(|camera| &&camera.id == id)).cloned();
+                let Some(id) = chosen.or_else(|| inner.cameras.first().map(|camera| camera.id.clone())) else {
                     inner.source_problem = Some(SourceProblem::NoCamera);
                     return;
                 };
@@ -601,34 +583,21 @@ impl Core {
         };
         let stop = Arc::new(AtomicBool::new(false));
         let (core, stopped) = (Arc::clone(self), Arc::clone(&stop));
-        let thread = std::thread::Builder::new()
-            .name("picture source".into())
-            .spawn(move || deliver(&core, &stopped, frames));
-        inner.source = thread.ok().map(|thread| {
-            Box::new(Running {
-                stop,
-                thread: Some(thread),
-            }) as Box<dyn Send>
-        });
+        let thread = std::thread::Builder::new().name("picture source".into()).spawn(move || deliver(&core, &stopped, frames));
+        inner.source = thread.ok().map(|thread| Box::new(Running { stop, thread: Some(thread) }) as Box<dyn Send>);
     }
 
     /// Have the platform fetch pictures and hand them to the engine.
     fn capture(self: &Arc<Self>, inner: &mut Inner, from: CaptureFrom) {
         let core = Arc::clone(self);
-        let started = self.platform.capture(
-            from,
-            Box::new(move |picture, taken| core.engine.push_frame(picture, taken)),
-        );
+        let started = self.platform.capture(from, Box::new(move |picture, taken| core.engine.push_frame(picture, taken)));
         match started {
             Ok(capture) => {
                 // Told only now, so that a source that will not open never
                 // looks live for a moment. A picture that came before this is
                 // passed over; the next one is a thirtieth of a second away.
                 self.engine.source_started();
-                inner.source = Some(Box::new(Captured {
-                    capture: Some(capture),
-                    core: Arc::clone(self),
-                }));
+                inner.source = Some(Box::new(Captured { capture: Some(capture), core: Arc::clone(self) }));
             }
             Err(problem) => inner.source_problem = Some(problem),
         }
@@ -658,15 +627,10 @@ impl Core {
             inner.swap_detail = missing;
             return;
         }
-        if let Some(stage) = inner
-            .stage
-            .as_ref()
-            .filter(|stage| stage.quality == quality)
-        {
+        if let Some(stage) = inner.stage.as_ref().filter(|stage| stage.quality == quality) {
             stage.engine.set_identity(Some(identity));
             stage.engine.set_settings(inner.settings.live());
-            self.engine
-                .set_swap(Some(Arc::clone(&stage.engine) as Arc<dyn SwapStage>));
+            self.engine.set_swap(Some(Arc::clone(&stage.engine) as Arc<dyn SwapStage>));
             inner.swap = SwapState::On;
             inner.swap_detail.clear();
             return;
@@ -677,32 +641,27 @@ impl Core {
         inner.swap_detail.clear();
         inner.loading += 1;
         let (core, attempt) = (Arc::clone(self), inner.loading);
-        let spawned = std::thread::Builder::new()
-            .name("swap models".into())
-            .spawn(move || {
-                let loaded = LiveEngine::new(&config);
-                let mut inner = core.lock();
-                if inner.loading != attempt {
-                    // The user changed their mind while this loaded; a newer attempt is on its way.
-                    return;
-                }
-                match loaded {
-                    Ok(engine) => {
-                        inner.stage = Some(Stage {
-                            quality,
-                            engine: Arc::new(engine),
-                        });
-                        match inner.settings.swap_wanted {
-                            true => core.turn_on(&mut inner),
-                            false => core.turn_off(&mut inner),
-                        }
-                    }
-                    Err(error) => {
-                        inner.swap = SwapState::Failed;
-                        inner.swap_detail = error.to_string();
+        let spawned = std::thread::Builder::new().name("swap models".into()).spawn(move || {
+            let loaded = LiveEngine::new(&config);
+            let mut inner = core.lock();
+            if inner.loading != attempt {
+                // The user changed their mind while this loaded; a newer attempt is on its way.
+                return;
+            }
+            match loaded {
+                Ok(engine) => {
+                    inner.stage = Some(Stage { quality, engine: Arc::new(engine) });
+                    match inner.settings.swap_wanted {
+                        true => core.turn_on(&mut inner),
+                        false => core.turn_off(&mut inner),
                     }
                 }
-            });
+                Err(error) => {
+                    inner.swap = SwapState::Failed;
+                    inner.swap_detail = error.to_string();
+                }
+            }
+        });
         if spawned.is_err() {
             inner.swap = SwapState::Failed;
             inner.swap_detail = "no thread could be started".into();
@@ -712,11 +671,7 @@ impl Core {
     /// Hand the face swap whatever the settings and the chosen face now say.
     fn refresh_swap(self: &Arc<Self>, inner: &mut Inner) {
         self.engine.update({
-            let (badge, loop_badge, mirror) = (
-                inner.settings.show_ai_badge,
-                inner.settings.show_loop_badge,
-                inner.settings.mirror,
-            );
+            let (badge, loop_badge, mirror) = (inner.settings.show_ai_badge, inner.settings.show_loop_badge, inner.settings.mirror);
             move |settings| {
                 settings.show_ai_badge = badge;
                 settings.show_loop_badge = loop_badge;
@@ -731,21 +686,14 @@ impl Core {
     }
 
     fn reload_faces(&self, inner: &mut Inner) {
-        inner.saved = inner
-            .faces
-            .as_ref()
-            .map_or_else(Vec::new, FaceLibrary::list);
+        inner.saved = inner.faces.as_ref().map_or_else(Vec::new, FaceLibrary::list);
         if self.selected(inner).is_none() {
             inner.settings.selected_face = inner.saved.first().map(|face| face.id.clone());
         }
     }
 
     fn open_faces(&self, inner: &mut Inner) {
-        let opened = self
-            .platform
-            .key_store()
-            .load_or_create()
-            .and_then(|key| FaceLibrary::new(self.data_dir.join("Faces"), key));
+        let opened = self.platform.key_store().load_or_create().and_then(|key| FaceLibrary::new(self.data_dir.join("Faces"), key));
         match opened {
             Ok(library) => inner.faces = Some(library),
             Err(_) => {
@@ -762,12 +710,7 @@ fn still_picture(path: &std::path::Path) -> Option<(Vec<u8>, u32, u32)> {
     let photo = faces::Photo::open(path).ok()?;
     let picture = image::RgbImage::from_raw(photo.width, photo.height, photo.rgb)?;
     let picture = match picture.width() > 1920 || picture.height() > 1080 {
-        true => image::imageops::resize(
-            &picture,
-            1920,
-            1920 * picture.height() / picture.width().max(1),
-            image::imageops::FilterType::Triangle,
-        ),
+        true => image::imageops::resize(&picture, 1920, 1920 * picture.height() / picture.width().max(1), image::imageops::FilterType::Triangle),
         false => picture,
     };
     // An even size, which the camera's picture format needs.
@@ -794,13 +737,7 @@ fn deliver(core: &Core, stop: &AtomicBool, mut frames: Draw) {
     let mut picture = Vec::new();
     while !stop.load(Ordering::Acquire) {
         let (width, height) = frames(started.elapsed().as_secs_f32(), &mut picture);
-        if let Some(view) = ImageView::new(
-            &picture,
-            width,
-            height,
-            width as usize * 4,
-            PixelFormat::Bgra,
-        ) {
+        if let Some(view) = ImageView::new(&picture, width, height, width as usize * 4, PixelFormat::Bgra) {
             core.engine.push_frame(&view, core.platform.clock());
         }
         // On a schedule that does not drift.
@@ -867,30 +804,20 @@ impl DesktopApp {
             core.restart_source(&mut inner);
         }
         // The newest app is the one whose picture `gc_app_preview` copies.
-        *CURRENT
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Arc::downgrade(&core);
+        *CURRENT.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Arc::downgrade(&core);
         Arc::new(Self { core })
     }
 
     /// Copy the outgoing picture into `into`: four bytes a pixel, blue, green,
     /// red, unused. `None` before the first picture.
     pub fn preview(&self, into: &mut Vec<u8>) -> Option<PreviewFrame> {
-        self.core.engine.preview(into).map(|info| PreviewFrame {
-            width: info.width,
-            height: info.height,
-            sequence: info.sequence,
-        })
+        self.core.engine.preview(into).map(|info| PreviewFrame { width: info.width, height: info.height, sequence: info.sequence })
     }
 
     /// Use `finder` to read photos instead of the models. For tests.
     #[doc(hidden)]
     pub fn set_face_finder(&self, finder: Box<dyn FindFace + Send>) {
-        *self
-            .core
-            .finder
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(finder);
+        *self.core.finder.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(finder);
     }
 
     /// Wait until the engine has done everything asked of it so far. For tests.
@@ -906,8 +833,7 @@ impl DesktopApp {
     /// and start the picture source chosen last time.
     #[uniffi::constructor]
     pub fn new(config: AppConfig) -> Result<Arc<Self>, AppError> {
-        let platform =
-            crate::platform::native(&config).map_err(|message| AppError::Failed { message })?;
+        let platform = crate::platform::native(&config).map_err(|message| AppError::Failed { message })?;
         Ok(Self::with_platform(config, platform))
     }
 
@@ -933,14 +859,10 @@ impl DesktopApp {
             saved: inner.clip_saved,
         });
         let lighting_differs = inner.clip.as_ref().is_some_and(|clip| {
-            status.mode == Mode::Live
-                && status.live_luma > 0.0
-                && (clip.mean_luma() - status.live_luma).abs() > 25.0
+            status.mode == Mode::Live && status.live_luma > 0.0 && (clip.mean_luma() - status.live_luma).abs() > 25.0
         });
-        let qualities: Vec<Quality> = [Quality::Standard, Quality::Sharper]
-            .into_iter()
-            .filter(|quality| core.live_config(*quality).missing_file().is_none())
-            .collect();
+        let qualities: Vec<Quality> =
+            [Quality::Standard, Quality::Sharper].into_iter().filter(|quality| core.live_config(*quality).missing_file().is_none()).collect();
         let settings = &inner.settings;
         AppState {
             mode: match status.mode {
@@ -967,18 +889,10 @@ impl DesktopApp {
                 SourceKind::Video => settings.video.as_ref(),
                 _ => settings.file.as_ref(),
             }
-            .and_then(|file| {
-                PathBuf::from(file)
-                    .file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-            }),
+            .and_then(|file| PathBuf::from(file).file_name().map(|name| name.to_string_lossy().into_owned())),
             source_problem: inner.source_problem,
             cameras: inner.cameras.clone(),
-            camera: settings
-                .camera
-                .clone()
-                .filter(|id| inner.cameras.iter().any(|camera| &camera.id == id))
-                .or_else(|| inner.cameras.first().map(|camera| camera.id.clone())),
+            camera: settings.camera.clone().filter(|id| inner.cameras.iter().any(|camera| &camera.id == id)).or_else(|| inner.cameras.first().map(|camera| camera.id.clone())),
             mirror: settings.mirror,
             virtual_camera,
             virtual_camera_detail,
@@ -989,15 +903,7 @@ impl DesktopApp {
             can_loop: clip.is_some() && status.mode != Mode::Idle || status.mode == Mode::Looping,
             clip,
             saved_clips: inner.clips.as_ref().map_or_else(Vec::new, |library| {
-                library
-                    .list()
-                    .into_iter()
-                    .map(|clip| SavedClipInfo {
-                        id: clip.id,
-                        name: clip.name,
-                        duration: clip.duration,
-                    })
-                    .collect()
+                library.list().into_iter().map(|clip| SavedClipInfo { id: clip.id, name: clip.name, duration: clip.duration }).collect()
             }),
             loop_style: settings.loop_style,
             show_loop_badge: settings.show_loop_badge,
@@ -1032,11 +938,7 @@ impl DesktopApp {
                     .collect(),
                 skipped: pending.skipped.clone(),
                 target: pending.target.clone(),
-                target_name: pending
-                    .target
-                    .as_ref()
-                    .and_then(|id| inner.saved.iter().find(|face| &face.id == id))
-                    .map(|face| face.name.clone()),
+                target_name: pending.target.as_ref().and_then(|id| inner.saved.iter().find(|face| &face.id == id)).map(|face| face.name.clone()),
             }),
             face_notice: inner.notice,
             quality: settings.quality,
@@ -1099,11 +1001,7 @@ impl DesktopApp {
         let changed = inner.cameras != cameras;
         inner.cameras = cameras;
         // A camera that has just arrived is used at once if one was waited for.
-        if changed
-            && inner.settings.source == SourceKind::Camera
-            && inner.source.is_none()
-            && inner.settings.camera_allowed
-        {
+        if changed && inner.settings.source == SourceKind::Camera && inner.source.is_none() && inner.settings.camera_allowed {
             self.core.restart_source(&mut inner);
         }
     }
@@ -1136,9 +1034,7 @@ impl DesktopApp {
         let mut inner = self.core.lock();
         inner.settings.mirror = mirror;
         self.core.save_settings(&inner);
-        self.core
-            .engine
-            .update(move |settings| settings.mirror = mirror);
+        self.core.engine.update(move |settings| settings.mirror = mirror);
     }
 
     // Loop
@@ -1193,17 +1089,13 @@ impl DesktopApp {
         let mut inner = self.core.lock();
         inner.settings.show_loop_badge = show;
         self.core.save_settings(&inner);
-        self.core
-            .engine
-            .update(move |settings| settings.show_loop_badge = show);
+        self.core.engine.update(move |settings| settings.show_loop_badge = show);
     }
 
     /// Keep the loop in hand for later, under `name` if one is given.
     pub fn save_clip(&self, name: String) -> bool {
         let mut inner = self.core.lock();
-        let (Some(clip), Some(library)) = (inner.clip.clone(), inner.clips.as_ref()) else {
-            return false;
-        };
+        let (Some(clip), Some(library)) = (inner.clip.clone(), inner.clips.as_ref()) else { return false };
         let mut named = Clip::clone(&clip);
         if !name.trim().is_empty() {
             named.name = name.trim().to_string();
@@ -1219,9 +1111,7 @@ impl DesktopApp {
     /// Take a saved loop in hand.
     pub fn select_saved_clip(&self, id: String) -> bool {
         let mut inner = self.core.lock();
-        let Some(Ok(clip)) = inner.clips.as_ref().map(|library| library.load(&id)) else {
-            return false;
-        };
+        let Some(Ok(clip)) = inner.clips.as_ref().map(|library| library.load(&id)) else { return false };
         inner.clip = Some(Arc::new(clip));
         inner.clip_saved = true;
         true
@@ -1293,51 +1183,44 @@ impl DesktopApp {
             inner.busy_adding = true;
             target.and_then(|id| inner.saved.iter().find(|face| face.id == id).cloned())
         };
-        let spawned = std::thread::Builder::new()
-            .name("photo reader".into())
-            .spawn({
-                let core = Arc::clone(&core);
-                move || {
-                    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-                    let mut finder = core
-                        .finder
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    if finder.is_none() {
-                        if let Some(missing) = Enroller::missing_file(&core.pack_dirs) {
-                            let mut inner = core.lock();
-                            inner.busy_adding = false;
-                            inner.notice = Some(FaceNotice::ModelMissing);
-                            inner.swap_detail = missing;
-                            return;
-                        }
-                        *finder = Enroller::new(&core.pack_dirs, core.cache_dir.as_deref())
-                            .ok()
-                            .map(|enroller| Box::new(enroller) as Box<dyn FindFace + Send>);
-                    }
-                    let Some(reader) = finder.as_mut() else {
+        let spawned = std::thread::Builder::new().name("photo reader".into()).spawn({
+            let core = Arc::clone(&core);
+            move || {
+                let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+                let mut finder = core.finder.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                if finder.is_none() {
+                    if let Some(missing) = Enroller::missing_file(&core.pack_dirs) {
                         let mut inner = core.lock();
                         inner.busy_adding = false;
-                        inner.notice = Some(FaceNotice::FacesCouldNotBeOpened);
+                        inner.notice = Some(FaceNotice::ModelMissing);
+                        inner.swap_detail = missing;
                         return;
-                    };
-                    let pending = read_photos(&paths, target_face.as_ref(), reader.as_mut());
-                    drop(finder);
+                    }
+                    *finder = Enroller::new(&core.pack_dirs, core.cache_dir.as_deref()).ok().map(|enroller| Box::new(enroller) as Box<dyn FindFace + Send>);
+                }
+                let Some(reader) = finder.as_mut() else {
                     let mut inner = core.lock();
                     inner.busy_adding = false;
-                    if pending.photos.is_empty() {
-                        inner.notice = Some(match paths.len() {
-                            1 => FaceNotice::NoFaceInThatPicture,
-                            _ => FaceNotice::NoFaceInThosePictures,
-                        });
-                    } else {
-                        if pending.some_not_read {
-                            inner.notice = Some(FaceNotice::TooManyPhotos);
-                        }
-                        inner.pending = Some(pending);
+                    inner.notice = Some(FaceNotice::FacesCouldNotBeOpened);
+                    return;
+                };
+                let pending = read_photos(&paths, target_face.as_ref(), reader.as_mut());
+                drop(finder);
+                let mut inner = core.lock();
+                inner.busy_adding = false;
+                if pending.photos.is_empty() {
+                    inner.notice = Some(match paths.len() {
+                        1 => FaceNotice::NoFaceInThatPicture,
+                        _ => FaceNotice::NoFaceInThosePictures,
+                    });
+                } else {
+                    if pending.some_not_read {
+                        inner.notice = Some(FaceNotice::TooManyPhotos);
                     }
+                    inner.pending = Some(pending);
                 }
-            });
+            }
+        });
         if spawned.is_err() {
             core.lock().busy_adding = false;
         }
@@ -1347,21 +1230,9 @@ impl DesktopApp {
     /// into the saved face they were read for.
     pub fn save_pending(&self, name: String, consent: FaceConsent) -> bool {
         let mut inner = self.core.lock();
-        let Some(pending) = inner.pending.clone() else {
-            return false;
-        };
-        let target = pending
-            .target
-            .as_ref()
-            .and_then(|id| inner.saved.iter().find(|face| &face.id == id))
-            .cloned();
-        let Some(mut face) = face_from_pending(
-            &pending,
-            target.as_ref(),
-            &name,
-            consent.into(),
-            inner.saved.len() + 1,
-        ) else {
+        let Some(pending) = inner.pending.clone() else { return false };
+        let target = pending.target.as_ref().and_then(|id| inner.saved.iter().find(|face| &face.id == id)).cloned();
+        let Some(mut face) = face_from_pending(&pending, target.as_ref(), &name, consent.into(), inner.saved.len() + 1) else {
             return false;
         };
         // The list is in the order of adding. Two faces added in the same
@@ -1370,11 +1241,7 @@ impl DesktopApp {
             let newest = inner.saved.iter().map(|face| face.added).max().unwrap_or(0);
             face.added = face.added.max(newest + 1);
         }
-        if inner
-            .faces
-            .as_ref()
-            .is_none_or(|library| library.save(&face).is_err())
-        {
+        if inner.faces.as_ref().is_none_or(|library| library.save(&face).is_err()) {
             inner.notice = Some(FaceNotice::FaceCouldNotBeSaved);
             return false;
         }
@@ -1396,9 +1263,7 @@ impl DesktopApp {
     pub fn rename_face(&self, id: String, name: String) {
         let mut inner = self.core.lock();
         let name = name.trim();
-        let Some(mut face) = inner.saved.iter().find(|face| face.id == id).cloned() else {
-            return;
-        };
+        let Some(mut face) = inner.saved.iter().find(|face| face.id == id).cloned() else { return };
         if name.is_empty() {
             return;
         }
@@ -1412,21 +1277,14 @@ impl DesktopApp {
     /// Take one photo out of a face. The last photo stays; delete the face instead.
     pub fn remove_photo(&self, face_id: String, photo_id: String) {
         let mut inner = self.core.lock();
-        let Some(changed) = inner
-            .saved
-            .iter()
-            .find(|face| face.id == face_id)
-            .and_then(|face| without_photo(face, &photo_id))
-        else {
+        let Some(changed) = inner.saved.iter().find(|face| face.id == face_id).and_then(|face| without_photo(face, &photo_id)) else {
             return;
         };
         if let Some(library) = &inner.faces {
             let _ = library.save(&changed);
         }
         self.core.reload_faces(&mut inner);
-        if inner.settings.swap_wanted
-            && inner.settings.selected_face.as_deref() == Some(face_id.as_str())
-        {
+        if inner.settings.swap_wanted && inner.settings.selected_face.as_deref() == Some(face_id.as_str()) {
             self.core.turn_on(&mut inner);
         }
     }
@@ -1465,9 +1323,7 @@ impl DesktopApp {
         let show_ai_badge = options.show_ai_badge;
         settings.show_ai_badge = show_ai_badge;
         self.core.save_settings(&inner);
-        self.core
-            .engine
-            .update(move |settings| settings.show_ai_badge = show_ai_badge);
+        self.core.engine.update(move |settings| settings.show_ai_badge = show_ai_badge);
         if let Some(stage) = &inner.stage {
             stage.engine.set_settings(inner.settings.live());
         }
@@ -1477,16 +1333,10 @@ impl DesktopApp {
     /// that waits to be saved, as PNG. Empty if there is none.
     pub fn face_picture(&self, face_id: String, photo_id: Option<String>) -> Vec<u8> {
         let inner = self.core.lock();
-        let Some(face) = inner.saved.iter().find(|face| face.id == face_id) else {
-            return Vec::new();
-        };
+        let Some(face) = inner.saved.iter().find(|face| face.id == face_id) else { return Vec::new() };
         match photo_id {
             None => face.thumbnail().to_vec(),
-            Some(photo_id) => face
-                .photos
-                .iter()
-                .find(|photo| photo.id == photo_id)
-                .map_or_else(Vec::new, |photo| photo.thumbnail.clone()),
+            Some(photo_id) => face.photos.iter().find(|photo| photo.id == photo_id).map_or_else(Vec::new, |photo| photo.thumbnail.clone()),
         }
     }
 
@@ -1569,19 +1419,12 @@ static CURRENT: Mutex<Weak<Core>> = Mutex::new(Weak::new());
 /// generated interface: a picture thirty times a second should be copied
 /// once, straight into the window's own memory.
 pub fn copy_current_preview(into: &mut [u8]) -> Option<PreviewFrame> {
-    let core = CURRENT
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .upgrade()?;
+    let core = CURRENT.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).upgrade()?;
     PREVIEW.with(|scratch| {
         let mut scratch = scratch.borrow_mut();
         let info = core.engine.preview(&mut scratch)?;
         into.get_mut(..scratch.len())?.copy_from_slice(&scratch);
-        Some(PreviewFrame {
-            width: info.width,
-            height: info.height,
-            sequence: info.sequence,
-        })
+        Some(PreviewFrame { width: info.width, height: info.height, sequence: info.sequence })
     })
 }
 
