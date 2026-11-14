@@ -13,6 +13,7 @@ internal sealed class SettingsScreen : UserControl, IScreen
     private readonly Button remove;
     private readonly Hint removeHint = new();
     private readonly SwitchRow keepRunning;
+    private readonly AiSettings ai;
 
     public SettingsScreen(Shell shell)
     {
@@ -38,6 +39,10 @@ internal sealed class SettingsScreen : UserControl, IScreen
             T("When the window is closed"), Ui.IconApps,
             keepRunning,
             new Hint(T("The camera exists for other apps only while God's Camera runs. With this on, closing the window leaves an icon beside the clock; Quit in its menu ends the app. Your own camera is switched off while no app uses God's Camera."))));
+
+        // The language and image models: keys, choices, the cloud switches and the cost.
+        ai = new AiSettings(shell);
+        column.Children.Add(ai);
 
         static TextBlock Keys(string keys, bool works) => new()
         {
@@ -112,17 +117,19 @@ internal sealed class SettingsScreen : UserControl, IScreen
 
     private async void DeleteEverything()
     {
-        var words = Ui.Text(T("Saved faces, their encryption key, saved loops, scanned documents and what the app remembered are removed from this PC. Phones and tablets that were connected must be connected again. This cannot be undone."));
+        var words = Ui.Text(T("Saved faces, their encryption key, saved loops, scanned documents, the keys for AI models, the pictures they made and what the app remembered are removed from this PC. Phones and tablets that were connected must be connected again. This cannot be undone."));
         words.MaxWidth = 420;
         if (await shell.Ask(T("Delete everything the app has saved?"), words, T("Delete everything"), T("Cancel")))
         {
             shell.App.DeleteAllData();
             shell.Scanner.DeleteEverything();
+            shell.Assistant.DeleteEverything();
         }
     }
 
     public void Update(AppState state)
     {
+        ai.Tick();
         keepRunning.Show(state.KeepRunning);
         var removable = state.VirtualCamera == VirtualCamera.Ready && shell.CarriesCamera;
         remove.Visible(removable);

@@ -22,6 +22,7 @@ internal sealed class Shell : Window
 {
     public DesktopApp App { get; }
     public Scanner Scanner { get; }
+    public Assistant Assistant { get; }
     public PreviewSource Preview { get; } = new();
     public string DataFolder { get; }
     public string[] PackFolders { get; }
@@ -97,6 +98,8 @@ internal sealed class Shell : Window
         Scanner = new Scanner(new ScannerConfig(launch.DataFolder, reader.ToArray(), launch.PackFolders, Environment.ProcessPath ?? "", launch.TryOut));
         // Paired phones and tablets can work the camera from their Remote tab.
         Scanner.SetCamera(App);
+        // The language and image models; the meter counts days in the user's time zone.
+        Assistant = new Assistant(launch.DataFolder, launch.TryOut, (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes);
         if (launch.ScannerOn) Scanner.SetWanted(true);
         else Scanner.Start();
         handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -122,6 +125,8 @@ internal sealed class Shell : Window
         // The camera, the loop and the face swap are one screen, so that they are used together.
         Add("camera", T("Camera"), Ui.IconCamera, () => new CameraScreen(this));
         Add("scanner", T("Scanner"), Ui.IconScanner, () => new ScannerScreen(this));
+        Add("assistant", T("Assistant"), Ui.IconAssistant, () => new AssistantScreen(this));
+        Add("tryon", T("Try-on"), Ui.IconShirt, () => new TryOnScreen(this));
         Add("settings", T("Settings"), Ui.IconSettings, () => new SettingsScreen(this));
         navigation.PaneFooter = StatusCard();
         navigation.SelectionChanged += (_, change) =>
@@ -187,6 +192,7 @@ internal sealed class Shell : Window
                 tray?.Dispose();
             }
             Scanner.Dispose();
+            Assistant.Dispose();
             App.Dispose();
         };
         Poll();
