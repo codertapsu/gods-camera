@@ -5,6 +5,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,7 +36,13 @@ data class Job(
 )
 
 /** The hub said no. [status] is the HTTP status. */
-class HubException(val status: Int, message: String) : IOException(message)
+class HubException(val status: Int, message: String) : IOException(message) {
+    /** The `error` of the hub's answer: for the camera's routes, a code (api/remote.md). */
+    val code: String?
+        get() = runCatching {
+            Json.parseToJsonElement(message ?: "").jsonObject["error"]?.jsonPrimitive?.content
+        }.getOrNull()
+}
 
 /**
  * The hub on the desktop, as this app talks to it. Every call runs off the
@@ -94,4 +102,32 @@ class HubClient(baseUrl: String, private val token: String, private val http: Ok
     suspend fun job(id: String): Job = json.decodeFromString(send(request("/v1/jobs/$id").build()))
 
     suspend fun jobFile(id: String, name: String): String = send(request("/v1/jobs/$id/files/$name").build())
+
+    // The computer's camera (api/remote.md)
+
+    private suspend fun bytes(request: Request): ByteArray = withContext(Dispatchers.IO) {
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw HubException(response.code, response.body.string().take(200))
+            response.body.bytes()
+        }
+    }
+
+    suspend fun camera(): RemoteState = json.decodeFromString(send(request("/v1/camera").build()))
+
+    suspend fun cameraFaces(): List<RemoteFace> = json.decodeFromString(send(request("/v1/camera/faces").build()))
+
+    /** The picture others see, as a small JPEG. */
+    suspend fun cameraPicture(): ByteArray = bytes(request("/v1/camera/picture").build())
+
+    /** A face's small picture, PNG. */
+    suspend fun facePicture(id: String): ByteArray = bytes(request("/v1/camera/faces/$id/picture").build())
+
+    /**
+     * Ask the computer to do something. When it cannot, it answers 409, and
+     * [HubException.code] holds the code that says why.
+     */
+    suspend fun cameraDo(action: String) {
+        val body = action.toRequestBody("application/json".toMediaType())
+        send(request("/v1/camera").post(body).build())
+    }
 }

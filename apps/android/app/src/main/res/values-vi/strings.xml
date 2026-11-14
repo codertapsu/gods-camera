@@ -8,24 +8,28 @@
     <string name="try_again">Thử lại</string>
     <string name="continue_action">Tiếp tục</string>
 
-    <!-- The connection to the Mac -->
-    <string name="not_paired_title">Chưa kết nối với máy Mac</string>
-    <string name="not_paired_body">Kết nối một lần bằng mã sáu chữ số hiện trên máy Mac. Từ đó về sau, thiết bị này tự tìm máy Mac.</string>
-    <string name="connect_to_mac">Kết nối với máy Mac</string>
+    <!-- The tabs at the foot of the screen -->
+    <string name="tab_remote">Camera</string>
+    <string name="tab_scan">Quét</string>
+
+    <!-- The connection to the computer: a Mac or a Windows PC with God's Camera -->
+    <string name="not_paired_title">Chưa kết nối với máy tính</string>
+    <string name="not_paired_body">Kết nối một lần bằng mã sáu chữ số hiện trên máy tính. Từ đó về sau, thiết bị này tự tìm máy tính.</string>
+    <string name="connect_to_mac">Kết nối với máy tính</string>
     <string name="searching_title">Đang tìm %s…</string>
     <string name="searching_body">Việc này mất vài giây.</string>
     <string name="connected_title">Đã kết nối với %s</string>
     <string name="connected_body">Sẵn sàng gửi các trang qua Wi-Fi.</string>
     <string name="not_found_title">Không tìm thấy %s</string>
-    <string name="not_found_body">Trên máy Mac, hãy mở God\'s Camera và bật “Nhận bản quét trên máy Mac này” trong mục Máy quét. Máy Mac và thiết bị này phải dùng chung một mạng Wi-Fi.</string>
+    <string name="not_found_body">Trên máy tính, hãy mở God\'s Camera và bật nhận bản quét trong mục Máy quét. Máy tính và thiết bị này phải dùng chung một mạng Wi-Fi.</string>
     <string name="refused_title">%s không còn chấp nhận thiết bị này</string>
-    <string name="refused_body">Thiết bị này đã bị gỡ trên máy Mac. Hãy kết nối lại bằng mã mới.</string>
+    <string name="refused_body">Thiết bị này đã bị gỡ trên máy tính. Hãy kết nối lại bằng mã mới.</string>
     <string name="connect_again">Kết nối lại</string>
-    <string name="connect_another">Kết nối với máy Mac khác</string>
+    <string name="connect_another">Kết nối với máy tính khác</string>
     <string name="dev_title">Kết nối gỡ lỗi</string>
-    <string name="dev_connected">Đã kết nối với máy Mac qua kết nối gỡ lỗi.</string>
-    <string name="dev_wrong_token">Máy Mac có trả lời nhưng không chấp nhận mã truy cập.</string>
-    <string name="dev_unreachable">Không liên lạc được với máy Mac qua kết nối gỡ lỗi.</string>
+    <string name="dev_connected">Đã kết nối với máy tính qua kết nối gỡ lỗi.</string>
+    <string name="dev_wrong_token">Máy tính có trả lời nhưng không chấp nhận mã truy cập.</string>
+    <string name="dev_unreachable">Không liên lạc được với máy tính qua kết nối gỡ lỗi.</string>
     <string name="dev_unknown">Đang kiểm tra kết nối gỡ lỗi…</string>
 
     <!-- Adding pages -->
@@ -42,61 +46,94 @@
         <item quantity="other">%d trang</item>
     </plurals>
     <string name="no_pages_title">Chưa có trang nào</string>
-    <string name="no_pages_body">Hãy quét tài liệu hoặc chọn ảnh. Một trang dài có thể chụp thành nhiều ảnh gối lên nhau; máy Mac sẽ ghép chúng thành một văn bản.</string>
+    <string name="no_pages_body">Hãy quét tài liệu hoặc chọn ảnh. Một trang dài có thể chụp thành nhiều ảnh gối lên nhau; máy tính sẽ ghép chúng thành một văn bản.</string>
     <string name="page_number">Trang %d</string>
     <string name="remove_page">Bỏ trang %d</string>
     <string name="remove_all">Bỏ tất cả</string>
-    <string name="send_to_mac">Gửi sang máy Mac</string>
-    <string name="send_needs_mac">Hãy kết nối với máy Mac để gửi các trang.</string>
+    <string name="send_to_mac">Gửi sang máy tính</string>
+    <string name="send_needs_mac">Hãy kết nối với máy tính để gửi các trang.</string>
     <string name="uploading">Đang gửi trang %1$d trên %2$d…</string>
-    <string name="reading">Máy Mac đang đọc chữ… %d %%</string>
+    <string name="reading">Máy tính đang đọc chữ… %d %%</string>
 
     <!-- The result -->
     <string name="result_title">Văn bản của bạn</string>
     <string name="result_summary">Số ảnh: %1$d · Số dòng đọc được: %2$d · Số dòng lặp đã bỏ: %3$d</string>
-    <string name="result_empty">Máy Mac không tìm thấy chữ nào trong các trang này.</string>
+    <string name="result_empty">Máy tính không tìm thấy chữ nào trong các trang này.</string>
     <string name="copy">Sao chép</string>
     <string name="share">Chia sẻ</string>
     <string name="copied">Đã sao chép.</string>
     <string name="scan_another">Quét tài liệu khác</string>
 
     <!-- When sending does not work -->
-    <string name="failed_unreachable_title">Không liên lạc được với máy Mac</string>
-    <string name="failed_unreachable_body">Hãy kiểm tra xem God\'s Camera có đang mở trên máy Mac không và hai máy có dùng chung một mạng Wi-Fi không. Các trang của bạn vẫn còn ở đây.</string>
-    <string name="failed_refused_title">Máy Mac không chấp nhận thiết bị này</string>
-    <string name="failed_refused_body">Thiết bị này đã bị gỡ trên máy Mac. Hãy kết nối lại bằng mã mới. Các trang của bạn vẫn còn ở đây.</string>
-    <string name="failed_reading_title">Máy Mac không đọc được các trang này</string>
+    <string name="failed_unreachable_title">Không liên lạc được với máy tính</string>
+    <string name="failed_unreachable_body">Hãy kiểm tra xem God\'s Camera có đang mở trên máy tính không và hai máy có dùng chung một mạng Wi-Fi không. Các trang của bạn vẫn còn ở đây.</string>
+    <string name="failed_refused_title">Máy tính không chấp nhận thiết bị này</string>
+    <string name="failed_refused_body">Thiết bị này đã bị gỡ trên máy tính. Hãy kết nối lại bằng mã mới. Các trang của bạn vẫn còn ở đây.</string>
+    <string name="failed_reading_title">Máy tính không đọc được các trang này</string>
     <string name="failed_reading_body">Hãy thử lại, hoặc chụp lại ảnh ở nơi sáng hơn. Các trang của bạn vẫn còn ở đây.</string>
-    <string name="failed_detail">Máy Mac báo: %s</string>
+    <string name="failed_detail">Máy tính báo: %s</string>
     <string name="back_to_pages">Quay lại các trang</string>
 
     <!-- Connecting with a code -->
-    <string name="connect_step_1">Trên máy Mac, mở God\'s Camera và vào mục Máy quét.</string>
-    <string name="connect_step_2">Bấm “Kết nối điện thoại hoặc máy tính bảng”. Máy Mac sẽ hiện một mã sáu chữ số.</string>
-    <string name="connect_step_3">Chọn máy Mac ở dưới rồi nhập mã.</string>
-    <string name="macs_nearby">Các máy Mac trong mạng Wi-Fi này</string>
-    <string name="looking_for_macs">Đang tìm máy Mac… Máy Mac và thiết bị này phải dùng chung một mạng Wi-Fi, và God\'s Camera phải đang mở trên máy Mac.</string>
-    <string name="enter_address_instead">Nhập địa chỉ của máy Mac</string>
-    <string name="address_title">Nhập địa chỉ của máy Mac</string>
+    <string name="connect_step_1">Trên máy tính, mở God\'s Camera và vào mục Máy quét.</string>
+    <string name="connect_step_2">Bấm “Kết nối điện thoại hoặc máy tính bảng”. Máy tính sẽ hiện một mã sáu chữ số.</string>
+    <string name="connect_step_3">Chọn máy tính ở dưới rồi nhập mã.</string>
+    <string name="macs_nearby">Các máy tính trong mạng Wi-Fi này</string>
+    <string name="looking_for_macs">Đang tìm máy tính… Máy tính và thiết bị này phải dùng chung một mạng Wi-Fi, và God\'s Camera phải đang mở trên máy tính.</string>
+    <string name="enter_address_instead">Nhập địa chỉ của máy tính</string>
+    <string name="address_title">Nhập địa chỉ của máy tính</string>
     <string name="address_label">Địa chỉ</string>
-    <string name="address_hint">Ví dụ 192.168.1.20. Trên máy Mac, địa chỉ nằm trong Cài đặt hệ thống, Wi-Fi, Chi tiết.</string>
+    <string name="address_hint">Ví dụ 192.168.1.20. Trên máy Windows, God\'s Camera hiện địa chỉ dưới mã. Trên máy Mac, địa chỉ nằm trong Cài đặt hệ thống, Wi-Fi, Chi tiết.</string>
     <string name="address_bad">Đó không giống một địa chỉ.</string>
-    <string name="address_unreachable">Không có máy Mac nào chạy God\'s Camera trả lời ở địa chỉ đó.</string>
+    <string name="address_unreachable">Không có máy tính nào chạy God\'s Camera trả lời ở địa chỉ đó.</string>
     <string name="code_title">Nhập mã đang hiện trên %s</string>
     <string name="code_field">Mã sáu chữ số</string>
-    <string name="code_hint">Mã hiện trên màn hình máy Mac và dùng được trong vài phút.</string>
+    <string name="code_hint">Mã hiện trên màn hình máy tính và dùng được trong vài phút.</string>
     <string name="connecting">Đang kết nối…</string>
-    <string name="code_wrong">Mã đó không đúng. Hãy xem lại sáu chữ số trên máy Mac rồi nhập lại.</string>
-    <string name="code_not_offered">Máy Mac hiện không đưa ra mã nào. Trên máy Mac, bấm “Kết nối điện thoại hoặc máy tính bảng” để lấy mã mới.</string>
-    <string name="code_unreachable">Không liên lạc được với máy Mac. Hãy kiểm tra xem hai máy có dùng chung một mạng Wi-Fi không.</string>
-    <string name="code_too_many">Máy Mac đã kết nối đủ số thiết bị cho phép. Hãy gỡ bớt một thiết bị trên máy Mac trước.</string>
+    <string name="code_wrong">Mã đó không đúng. Hãy xem lại sáu chữ số trên máy tính rồi nhập lại.</string>
+    <string name="code_not_offered">Máy tính hiện không đưa ra mã nào. Trên máy tính, bấm “Kết nối điện thoại hoặc máy tính bảng” để lấy mã mới.</string>
+    <string name="code_unreachable">Không liên lạc được với máy tính. Hãy kiểm tra xem hai máy có dùng chung một mạng Wi-Fi không.</string>
+    <string name="code_too_many">Máy tính đã kết nối đủ số thiết bị cho phép. Hãy gỡ bớt một thiết bị trên máy tính trước.</string>
     <string name="paired_title">Đã kết nối với %s</string>
-    <string name="paired_body">Từ giờ, thiết bị này tự tìm máy Mac mỗi khi hai máy dùng chung một mạng Wi-Fi.</string>
+    <string name="paired_body">Từ giờ, thiết bị này tự tìm máy tính mỗi khi hai máy dùng chung một mạng Wi-Fi.</string>
+
+    <!-- The computer's camera, worked from here -->
+    <string name="remote_title">Camera của máy tính</string>
+    <string name="remote_picture">Hình người khác thấy</string>
+    <string name="remote_no_picture">Không có hình: camera trên máy tính đang tắt.</string>
+    <string name="remote_watched">Có người trong cuộc gọi đang thấy</string>
+    <string name="remote_face_swap">Thay khuôn mặt</string>
+    <string name="remote_record">Ghi đoạn lặp</string>
+    <string name="remote_stop">Dừng ghi</string>
+    <string name="remote_play">Phát đoạn lặp</string>
+    <string name="remote_back_to_live">Trở về trực tiếp</string>
+    <string name="remote_faces">Khuôn mặt</string>
+    <string name="remote_no_faces">Máy tính chưa có khuôn mặt nào. Hãy thêm ở thẻ Khuôn mặt của God\'s Camera trên máy tính.</string>
+    <string name="remote_swapping">Đang hiện khuôn mặt thay thế.</string>
+    <string name="remote_not_connected">Hãy kết nối với máy tính để điều khiển camera của nó từ đây: thay khuôn mặt, đoạn lặp và hình người khác thấy.</string>
+    <string name="remote_not_here">God\'s Camera trên máy tính này chưa cho điều khiển từ đây. Hãy cập nhật lên bản mới nhất.</string>
+    <string name="remote_unreachable">Hiện không liên lạc được với camera của máy tính. Hãy kiểm tra God\'s Camera có đang mở ở đó không.</string>
+    <string name="remote_failed">Không làm được: %s</string>
+    <string name="remote_accept_rules">Hãy bật thay khuôn mặt một lần trên máy tính trước: máy tính sẽ hỏi bạn đồng ý với quy tắc thay khuôn mặt.</string>
+    <string name="remote_add_a_face">Hãy thêm một khuôn mặt trên máy tính trước.</string>
+    <string name="remote_no_such_face">Khuôn mặt đó không còn trên máy tính.</string>
+    <string name="remote_cannot_record">Chỉ ghi được đoạn lặp khi hình đang trực tiếp.</string>
+    <string name="remote_no_loop">Chưa có đoạn lặp nào. Hãy ghi một đoạn trước.</string>
+    <string name="remote_getting_ready">Máy tính đang chuẩn bị thay khuôn mặt.</string>
+    <string name="remote_model_missing">Máy tính đang thiếu một tệp mô hình.</string>
+    <string name="remote_swap_failed">Thay khuôn mặt đã dừng trên máy tính. Hãy xem lý do ở đó.</string>
+    <string name="remote_no_face_seen">Không có khuôn mặt nào trong hình.</string>
+    <string name="remote_not_on_face">Khuôn mặt thay thế không nằm trên mặt, nên hình bị làm mờ.</string>
+    <string name="chip_live">TRỰC TIẾP</string>
+    <string name="chip_looping">ĐANG LẶP</string>
+    <string name="chip_no_picture">KHÔNG CÓ HÌNH</string>
+    <string name="chip_ai_face">MẶT AI</string>
+    <string name="chip_recording">GHI %d giây</string>
 
     <!-- Settings -->
-    <string name="settings_mac">Máy Mac đã kết nối</string>
-    <string name="settings_no_mac">Chưa kết nối với máy Mac nào.</string>
-    <string name="forget_mac">Quên máy Mac này</string>
+    <string name="settings_mac">Máy tính đã kết nối</string>
+    <string name="settings_no_mac">Chưa kết nối với máy tính nào.</string>
+    <string name="forget_mac">Quên máy tính này</string>
     <string name="forget_title">Quên %s?</string>
     <string name="forget_body">Thiết bị này sẽ không gửi trang sang máy đó nữa. Muốn dùng lại, hãy kết nối bằng mã mới.</string>
     <string name="forget_confirm">Quên</string>

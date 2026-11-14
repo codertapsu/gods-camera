@@ -77,4 +77,27 @@ object AppIcons {
             moveTo(9f, 17f); lineTo(13f, 17f)
         }
     }
+
+    /** A ring around a dot: recording. */
+    val Record: ImageVector by lazy {
+        lines("Record") {
+            moveTo(20f, 12f); arcTo(8f, 8f, 0f, true, true, 4f, 12f); arcTo(8f, 8f, 0f, true, true, 20f, 12f)
+            moveTo(14.5f, 12f); arcTo(2.5f, 2.5f, 0f, true, true, 9.5f, 12f); arcTo(2.5f, 2.5f, 0f, true, true, 14.5f, 12f)
+        }
+    }
+
+    /** A square: stopping. */
+    val Stop: ImageVector by lazy {
+        lines("Stop") {
+            moveTo(7f, 7f); lineTo(17f, 7f); lineTo(17f, 17f); lineTo(7f, 17f); close()
+        }
+    }
+
+    /** A video camera: the live picture. */
+    val Live: ImageVector by lazy {
+        lines("Live") {
+            moveTo(3f, 7f); lineTo(15f, 7f); lineTo(15f, 17f); lineTo(3f, 17f); close()
+            moveTo(15f, 10.5f); lineTo(21f, 7.5f); lineTo(21f, 16.5f); lineTo(15f, 13.5f)
+        }
+    }
 }

@@ -12,26 +12,38 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import dev.godscamera.android.ui.AppIcons
 import dev.godscamera.android.ui.ConnectScreen
 import dev.godscamera.android.ui.GodsCameraTheme
 import dev.godscamera.android.ui.HomeScreen
+import dev.godscamera.android.ui.RemoteScreen
 import dev.godscamera.android.ui.SettingsSheet
 
 class MainActivity : ComponentActivity() {
     private val model: ScanViewModel by viewModels()
+    private val remote: RemoteViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,9 +51,11 @@ class MainActivity : ComponentActivity() {
         // Only at a fresh start. When the screen is turned, Android makes the
         // activity anew with the same intent, and what it carried was already taken.
         if (savedInstanceState == null) takeIntent(intent)
+        // The Remote tab reaches the computer the scanner is connected to.
+        remote.attach(model::hubClient)
         setContent {
             GodsCameraTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) { App(model) }
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) { App(model, remote) }
             }
         }
     }
@@ -97,13 +111,24 @@ class MainActivity : ComponentActivity() {
         // Send the pages as soon as a Mac is there to take them.
         if (intent.getBooleanExtra("debug_send", false)) model.debugSendWhenReady()
         // Show one screen, for pictures of the app.
-        intent.getStringExtra("debug_screen")?.let(model::debugShow)
+        intent.getStringExtra("debug_screen")?.let { screen ->
+            when (screen) {
+                // A made-up computer's camera: nothing is asked of a real one.
+                "remote" -> remote.showSample()
+                else -> {
+                    remote.tab.value = Tab.Scan
+                    model.debugShow(screen)
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun App(model: ScanViewModel) {
+fun App(model: ScanViewModel, remote: RemoteViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
+    val remoteUi by remote.ui.collectAsStateWithLifecycle()
+    val tab by remote.tab.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     val choosePhotos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(50)) { uris ->
@@ -117,21 +142,47 @@ fun App(model: ScanViewModel) {
     if (state.pairing != PairFlow.Hidden) {
         ConnectScreen(state, model)
     } else {
-        HomeScreen(
-            state = state,
-            model = model,
-            onScan = {
-                val options = GmsDocumentScannerOptions.Builder()
-                    .setGalleryImportAllowed(true)
-                    .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
-                    .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
-                    .build()
-                GmsDocumentScanning.getClient(options).getStartScanIntent(context as ComponentActivity)
-                    .addOnSuccessListener { scanDocument.launch(IntentSenderRequest.Builder(it).build()) }
-                    .addOnFailureListener { Toast.makeText(context, R.string.scanner_unavailable, Toast.LENGTH_LONG).show() }
+        // Two tabs at the foot: the computer's camera, and the scanner.
+        Scaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            bottomBar = {
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = tab == Tab.Remote,
+                        onClick = { remote.tab.value = Tab.Remote },
+                        icon = { Icon(AppIcons.Live, contentDescription = null) },
+                        label = { Text(stringResource(R.string.tab_remote)) },
+                    )
+                    NavigationBarItem(
+                        selected = tab == Tab.Scan,
+                        onClick = { remote.tab.value = Tab.Scan },
+                        icon = { Icon(AppIcons.Scan, contentDescription = null) },
+                        label = { Text(stringResource(R.string.tab_scan)) },
+                    )
+                }
             },
-            onChoosePhotos = { choosePhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-        )
+        ) { padding ->
+            Box(modifier = Modifier.padding(bottom = padding.calculateBottomPadding())) {
+                when (tab) {
+                    Tab.Remote -> RemoteScreen(remoteUi, remote, onConnect = model::openConnect, onSettings = model::openSettings)
+                    Tab.Scan -> HomeScreen(
+                        state = state,
+                        model = model,
+                        onScan = {
+                            val options = GmsDocumentScannerOptions.Builder()
+                                .setGalleryImportAllowed(true)
+                                .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+                                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+                                .build()
+                            GmsDocumentScanning.getClient(options).getStartScanIntent(context as ComponentActivity)
+                                .addOnSuccessListener { scanDocument.launch(IntentSenderRequest.Builder(it).build()) }
+                                .addOnFailureListener { Toast.makeText(context, R.string.scanner_unavailable, Toast.LENGTH_LONG).show() }
+                        },
+                        onChoosePhotos = { choosePhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    )
+                }
+            }
+        }
     }
     if (state.settingsOpen) {
         val coreVersion = remember { runCatching { uniffi.gc_mobile.coreVersion() }.getOrDefault("?") }

@@ -402,6 +402,9 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun client(): HubClient? = if (devMode) devClient() else link.client()
 
+    /** The hub of the computer in use, for the Remote tab: `null` while there is none. */
+    fun hubClient(): HubClient? = if (_state.value.connection.canSend) client() else null
+
     /** Upload the pages, have the Mac read and join them, and fetch the text. */
     fun send() {
         val pages = _state.value.pages
