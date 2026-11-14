@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use gc_llm::{ApiKey, ChangeKind, DocOptions, Feature, Gateway, ImageRequest, Language, LlmError, Picture, Provider, Target};
+use gc_llm::{ApiKey, ChangeKind, DocOptions, Feature, Gateway, ImageRequest, Language, LlmError, Message, Picture, Provider, Request, Target};
 use serde::{Deserialize, Serialize};
 
 use crate::secrets::Secrets;
@@ -164,6 +164,9 @@ pub enum DocumentTask {
     Ask { question: String },
     /// The title, date, people, places, organisations, amounts and contacts the document names.
     KeyFacts,
+    /// Read the document's photos again with a model that sees pictures:
+    /// for pages the text reader could not read, such as handwriting.
+    ReadPhotos { photos: Vec<String> },
 }
 
 /// A picture to make from photos (Phase 9).
@@ -471,6 +474,23 @@ impl Assistant {
                     let facts = gateway.extract(&target, &text, &key_facts_schema(), &options, Some(progress))?;
                     Ok(plain(key_facts_text(&facts)))
                 }
+                DocumentTask::ReadPhotos { photos } => {
+                    // One photo at a time: each answer is one page's text, and a stop takes effect between them.
+                    let mut pages = Vec::with_capacity(photos.len());
+                    for (done, photo) in photos.iter().enumerate() {
+                        if !progress(done, photos.len()) {
+                            return Err(LlmError::Cancelled);
+                        }
+                        let bytes = std::fs::read(photo).map_err(|error| LlmError::InvalidInput { message: format!("{photo} cannot be read: {error}") })?;
+                        let mut request = Request::new(&target.model, "").with_system(READ_PHOTO);
+                        request.messages = vec![Message::user_with_pictures("The photo of the page:", vec![Picture::new(bytes)?])];
+                        request.max_tokens = 8000;
+                        let reply = gateway.chat(Feature::HardPages, &target.provider, &request)?;
+                        pages.push(gc_llm::text::nfc(reply.text.trim()));
+                    }
+                    progress(photos.len(), photos.len());
+                    Ok(plain(pages.join("\n\n")))
+                }
             }
         })
     }
@@ -553,6 +573,13 @@ impl Assistant {
         let _ = std::fs::remove_dir_all(&self.folder);
     }
 }
+
+/// What reading a page from its photo asks of a model that sees pictures.
+const READ_PHOTO: &str = "You read the text in a photo of a page, as a careful typist would. \
+Write out all of the text, in reading order: headings, then the columns one after the other, top to bottom. \
+Keep the language as it is, Vietnamese or English, with every tone mark and diacritic exactly as printed or written. \
+Separate paragraphs with one blank line. Do not translate, summarise, correct or comment. \
+Where a word cannot be read, write [...] in its place. If the photo holds no text, write nothing.";
 
 /// What a try-on asks of the image model. The person's own photo and a
 /// garment's; nothing else of them is changed.

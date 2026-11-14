@@ -70,6 +70,8 @@ internal sealed class AssistantScreen : UserControl, IScreen
         var summary = Action(Ui.IconDocument, T("Summarise"), () => new DocumentTask.Summary(language.SelectedIndex == 1));
         var translate = Action(Ui.IconAssistant, T("Translate"), () => new DocumentTask.Translate(language.SelectedIndex == 1), T("Into the language chosen beside it."));
         var facts = Action(Ui.IconCheck, T("Key facts"), () => new DocumentTask.KeyFacts(), T("Dates, people, places, organisations, amounts and contacts."));
+        var readPhotos = Action(Ui.IconPicture, T("Read the photos again"), () => new DocumentTask.ReadPhotos(shell.Scanner.DocumentPhotos(chosen ?? "")),
+            T("With a model that sees pictures: for pages the text reader could not read, such as handwriting. The photos are sent to the model."));
         var ask = Ui.PlainButton(T("Ask"), () =>
         {
             if (question.Text.Trim().Length > 0) Start(new DocumentTask.Ask(question.Text.Trim()), T("Answer"));
@@ -106,7 +108,7 @@ internal sealed class AssistantScreen : UserControl, IScreen
             MaxHeight = 300,
             Child = new ScrollViewer { Content = text, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
         });
-        right.Children.Add(Ui.Row(8, cleanUp, summary, translate, facts, language));
+        right.Children.Add(Ui.Row(8, cleanUp, summary, translate, facts, readPhotos, language));
         right.Children.Add(askRow);
         right.Children.Add(modelLine);
         right.Children.Add(resultCard);

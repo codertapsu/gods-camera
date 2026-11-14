@@ -141,9 +141,28 @@ fn a_local_model_does_the_document_work_on_this_computer() {
     assert!(result.changes.iter().any(|change| change.kind == "added" && change.text.contains("Chợ")), "{:?}", result.changes);
     assert!(!result.flagged);
 
+    // Photos read again by a model that sees pictures: one request a photo, the pages joined.
+    let (address, requests) = stand_in("Viết tay: hẹn gặp lúc 9 giờ.");
+    assistant.set_provider(gc_llm::Provider::compatible("ollama", &address, None).unwrap());
+    let photos: Vec<String> = (0..2)
+        .map(|n| {
+            let path = folder.join(format!("page-{n}.png"));
+            image::RgbImage::from_pixel(32, 24, image::Rgb([250, 250, 250])).save(&path).unwrap();
+            path.to_string_lossy().into_owned()
+        })
+        .collect();
+    let id = assistant.start_document(DocumentTask::ReadPhotos { photos }, String::new());
+    let state = finished(&assistant, id);
+    assert_eq!(state.problem, None);
+    assert_eq!(state.result.unwrap().text, "Viết tay: hẹn gặp lúc 9 giờ.\n\nViết tay: hẹn gặp lúc 9 giờ.");
+    assert_eq!(requests.load(std::sync::atomic::Ordering::Relaxed), 2);
+    // A photo that is not a picture is said, not sent.
+    let id = assistant.start_document(DocumentTask::ReadPhotos { photos: vec![folder.join("missing.png").to_string_lossy().into_owned()] }, String::new());
+    assert!(matches!(finished(&assistant, id).problem, Some(AssistantProblem::Other { .. })));
+
     // What it cost is counted, and a local model costs nothing.
     let usage = assistant.usage();
-    assert!(usage.today_requests >= 2 && usage.today_cost == 0.0, "{usage:?}");
+    assert!(usage.today_requests >= 4 && usage.today_cost == 0.0, "{usage:?}");
     assistant.forget(id);
     assert!(assistant.task(id).problem.is_some(), "a forgotten task is gone");
 }

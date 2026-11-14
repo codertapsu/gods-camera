@@ -682,6 +682,26 @@ impl Scanner {
         std::fs::write(&to, bytes).err().map(|error| format!("{to} could not be written: {error}"))
     }
 
+    /// The photos a document was read from, as files, in the order they were sent.
+    pub fn document_photos(&self, id: String) -> Vec<String> {
+        if !valid_id(&id) {
+            return Vec::new();
+        }
+        let job: Option<gc_link::Job> = std::fs::read(self.hub_folder().join("jobs").join(&id).join("job.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        let Some(upload) = job.map(|job| job.upload_id).filter(|upload| valid_id(upload)) else { return Vec::new() };
+        let Ok(files) = std::fs::read_dir(self.hub_folder().join("uploads").join(upload)) else { return Vec::new() };
+        let mut photos: Vec<String> = files
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "jpg" | "jpeg" | "png")))
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect();
+        photos.sort();
+        photos
+    }
+
     /// Remove a document and the pictures it came from.
     pub fn delete_document(&self, id: String) {
         self.remove_document(&id);
